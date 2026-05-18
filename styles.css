@@ -1,0 +1,567 @@
+:root {
+  --panel-bg: #f6f8fb;
+  --panel-border: #d6dde7;
+  --text: #1f2937;
+  --muted: #5f6b7a;
+  --accent: #114b84;
+  --timeline-ink: #111111;
+  --timeline-paper: #ffffff;
+  --timeline-size: 180px;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  font-family: "Source Sans 3", "Segoe UI", sans-serif;
+  color: var(--text);
+}
+
+#app {
+  position: relative;
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  width: 100%;
+  height: 100%;
+}
+
+#controls {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  background: var(--panel-bg);
+  border-right: 1px solid var(--panel-border);
+  padding: 16px;
+}
+
+#controls h1 {
+  margin: 0 0 12px;
+  font-size: 1.2rem;
+}
+
+.citation,
+.codebook-link {
+  margin: 8px 0 10px;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.codebook-link a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+#datasetCitation {
+  margin-top: auto;
+}
+
+.variable-meta-item + .variable-meta-item {
+  margin-top: 8px;
+}
+
+.variable-meta-label {
+  margin: 0 0 2px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.variable-meta-value {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
+.variable-meta-dialog {
+  width: min(860px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  border: 1px solid #c4ccd8;
+  border-radius: 10px;
+  padding: 0;
+}
+
+.variable-meta-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.variable-meta-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.variable-meta-dialog-header h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.variable-meta-close-btn {
+  width: auto !important;
+  margin-top: 0 !important;
+  padding: 6px 10px !important;
+}
+
+.variable-meta-content {
+  max-height: calc(100vh - 170px);
+  overflow: auto;
+  padding: 14px 16px 18px;
+}
+
+#controls label {
+  display: block;
+  margin: 10px 0 6px;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+#controls select,
+#controls input[type="number"],
+#controls button {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #c4ccd8;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  background: #fff;
+}
+
+#controls input[type="range"] {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+#controls button {
+  margin-top: 14px;
+  cursor: pointer;
+  border: 1px solid #0f3f6f;
+  color: #fff;
+  background: var(--accent);
+}
+
+#controls button:hover {
+  background: #0f3f6f;
+}
+
+.variant-picker {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid #c4ccd8;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.variant-picker summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.variant-picker label {
+  margin-top: 8px;
+}
+
+.timeline-main {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.timeline-slider-wrap {
+  --selected-pct: 50%;
+  --axis-y: 34px;
+  position: relative;
+  height: var(--timeline-size);
+  min-width: 0;
+}
+
+.timeline-line {
+  position: absolute;
+  top: var(--axis-y);
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--timeline-ink);
+  transform: translateY(-50%);
+}
+
+#yearSlider {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  cursor: ew-resize;
+}
+
+#yearSlider:focus-visible {
+  outline: none;
+}
+
+.timeline-scale {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.timeline-tick {
+  position: absolute;
+  top: var(--axis-y);
+  transform: translate(-50%, 0%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.timeline-tick-mark {
+  width: 2px;
+  height: 8px;
+  background: var(--timeline-ink);
+  opacity: 0.4;
+}
+
+.timeline-tick.is-major .timeline-tick-mark {
+  height: 16px;
+  opacity: 0.8;
+}
+
+.timeline-tick-label {
+  margin-top: 3px;
+  font-size: 0.68rem;
+  line-height: 1;
+  color: var(--timeline-ink);
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.timeline-selected-marker {
+  position: absolute;
+  top: var(--axis-y);
+  left: var(--selected-pct);
+  transform: translate(-50%, 0%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: auto;
+  z-index: 3;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.timeline-selected-marker.is-dragging {
+  cursor: grabbing;
+}
+
+.timeline-year-label {
+  background: var(--timeline-ink);
+  color: var(--timeline-paper);
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  line-height: 1;
+  font-weight: 700;
+  padding: 8px 20px;
+  border-radius: 6px;
+  letter-spacing: 0.01em;
+}
+
+.timeline-marker-line {
+  width: 3px;
+  height: 60px;
+  background: var(--timeline-ink);
+}
+
+.timeline-controls {
+  display: flex;
+  align-items: center;
+}
+
+.playback-control {
+  display: inline-flex;
+  border: 2px solid var(--timeline-ink);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--timeline-paper);
+}
+
+.playback-control button {
+  border: 0;
+  background: transparent;
+  color: var(--timeline-ink);
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.playback-control .play-button {
+  border-right: 2px solid var(--timeline-ink);
+  padding: 6px 18px;
+  min-width: 64px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.playback-control .play-button svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.25;
+}
+
+.speed-button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 0 4px;
+}
+
+.speed-button button {
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+}
+
+.speed-button svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.5;
+}
+
+#speedDisplay {
+  min-width: 2em;
+  text-align: center;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--timeline-ink);
+}
+
+.playback-control button:hover {
+  background: #ebebeb;
+}
+
+.playback-control button:active {
+  background: #ddd;
+}
+
+#timeline-overlay {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: calc(340px + ((100vw - 340px) / 2));
+  transform: translateX(-50%);
+  z-index: 1200;
+  width: min(760px, calc(100vw - 340px - 28px));
+  margin: 0 14px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+
+.timeline-year-readout {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.hint {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.citation {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border-left: 3px solid var(--accent);
+  background: #eef3fa;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  border-radius: 0 4px 4px 0;
+}
+
+#map {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---- Quantile legend (Leaflet control) ---- */
+.map-legend {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #c4ccd8;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: "Source Sans 3", "Segoe UI", sans-serif;
+  font-size: 0.8rem;
+  color: #1f2937;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  min-width: 160px;
+}
+
+.legend-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #5f6b7a;
+}
+
+.legend-subtitle {
+  margin-bottom: 6px;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  color: #5f6b7a;
+}
+
+.legend-bar {
+  display: flex;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.legend-swatch {
+  flex: 1;
+  height: 14px;
+}
+
+.legend-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 0.75rem;
+  color: #5f6b7a;
+}
+
+.legend-note {
+  margin-top: 5px;
+  font-size: 0.7rem;
+  line-height: 1.3;
+  color: #5f6b7a;
+}
+
+/* Suppress Leaflet tile fade animation during auto-play */
+.autoplay-active .leaflet-tile {
+  transition: none !important;
+  opacity: 1 !important;
+}
+
+/* Keep the data overlay steady during zoom tile refreshes */
+.demscore-hex-pane .leaflet-tile {
+  transition: none !important;
+}
+
+.zoom-display {
+  background: rgba(255, 255, 255, 0.8);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #333;
+  pointer-events: none;
+}
+
+/* Loading indicator */
+#loading-indicator {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1150;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid rgba(17, 75, 132, 0.18);
+  border-top-color: #114b84;
+  animation: demscore-spin 0.75s linear infinite;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+#loading-indicator.is-loading {
+  opacity: 1;
+}
+
+@keyframes demscore-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 900px) {
+  #app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  #controls {
+    border-right: 0;
+    border-bottom: 1px solid var(--panel-border);
+    max-height: 45vh;
+  }
+
+  #map {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  #timeline-overlay {
+    position: relative;
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: center;
+    align-self: start;
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    left: auto;
+    transform: none;
+    width: min(620px, calc(100vw - 20px));
+    margin: 0 10px;
+  }
+
+  .timeline-slider-wrap {
+    --axis-y: 34px;
+    height: 164px;
+  }
+
+  .timeline-year-label {
+    font-size: clamp(1.6rem, 6vw, 2.2rem);
+    padding: 7px 16px;
+  }
+
+  .timeline-marker-line {
+    height: 50px;
+  }
+
+  .timeline-tick-mark {
+    height: 6px;
+  }
+
+  .timeline-tick.is-major .timeline-tick-mark {
+    height: 12px;
+  }
+
+  .timeline-controls {
+    justify-content: flex-end;
+  }
+}

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Demscore Hex Map</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="controls">
+        <h1>Demscore Hex Map</h1>
+
+        <label for="datasetSelect">Dataset</label>
+        <select id="datasetSelect"></select>
+        <p id="datasetCodebookWrap" class="codebook-link" hidden>
+          <a id="datasetCodebookLink" href="#" target="_blank" rel="noopener noreferrer">Open codebook PDF</a>
+        </p>
+
+        <label for="variableSelect">Variable</label>
+        <select id="variableSelect"></select>
+        <details id="variantPicker" class="variant-picker" hidden>
+          <summary id="variantPickerSummary">Variants</summary>
+          <label for="variantSelect">Variant</label>
+          <select id="variantSelect"></select>
+        </details>
+
+        <button id="variableMetaBtn" type="button">Variable information</button>
+
+        <p id="datasetCitation" class="citation" hidden></p>
+
+
+      </aside>
+
+      <main id="map">
+        <div id="loading-indicator" aria-hidden="true"></div>
+      </main>
+
+      <div id="timeline-overlay">
+        <div class="timeline-main">
+          <div class="timeline-controls">
+            <div class="playback-control">
+              <button id="yearPlayBtn" type="button" class="play-button" aria-label="Play timeline">Animate</button>
+              <div class="speed-button" role="group" aria-label="Timeline speed">
+                <button id="speedDownBtn" type="button" aria-label="Decrease speed"><i data-lucide="chevron-left"></i></button>
+                <span id="speedDisplay" aria-live="polite">1x</span>
+                <button id="speedUpBtn" type="button" aria-label="Increase speed"><i data-lucide="chevron-right"></i></button>
+              </div>
+            </div>
+          </div>
+          <div class="timeline-slider-wrap" id="timelineWrap">
+            <div class="timeline-line" aria-hidden="true"></div>
+            <input id="yearSlider" type="range" step="1" aria-label="Year timeline" />
+            <div id="timelineScale" class="timeline-scale" aria-hidden="true"></div>
+            <div id="timelineSelectedMarker" class="timeline-selected-marker" aria-hidden="true">
+              <div class="timeline-marker-line"></div>
+              <div id="yearDisplayHero" class="timeline-year-label"></div>
+            </div>
+          </div>
+        </div>
+        <span id="yearDisplay" class="timeline-year-readout" aria-live="polite"></span>
+      </div>
+    </div>
+
+    <dialog id="variableMetaDialog" class="variable-meta-dialog">
+      <div class="variable-meta-dialog-header">
+        <h2 id="variableMetaTitle">Variable information</h2>
+        <button id="variableMetaCloseBtn" type="button" class="variable-meta-close-btn">Close</button>
+      </div>
+      <div id="variableMetaContent" class="variable-meta-content"></div>
+    </dialog>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="./app.js"></script>
+    <script>lucide.createIcons();</script>
+  </body>
+</html>

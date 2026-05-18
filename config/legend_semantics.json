@@ -1,0 +1,55 @@
+{
+  "defaults": {
+    "title": "Quantile class (country-year)",
+    "low": "Lower value",
+    "high": "Higher value",
+    "note": "Colors show relative rank for the selected year.",
+    "direction": "low-to-high"
+  },
+  "dataset_defaults": {
+    "v_dem": {
+      "low": "Lower democratic performance",
+      "high": "Higher democratic performance",
+      "note": "For most V-Dem indicators here, higher values indicate stronger democratic performance.",
+      "direction": "low-to-high"
+    }
+  },
+  "rules": [
+    {
+      "dataset": "v_dem",
+      "match": "^v2meharjrn(?:_|$)",
+      "low": "Less / no harassment",
+      "high": "More harassment",
+      "note": "Interpreted as intensity of harassment: higher values are shown as more severe.",
+      "direction": "good-to-bad"
+    },
+    {
+      "dataset": "v_dem",
+      "match": "^v2mecenefm(?:_|$)",
+      "low": "Less censorship",
+      "high": "More censorship",
+      "direction": "good-to-bad"
+    },
+    {
+      "dataset": "v_dem",
+      "match": "^v2jupoatck(?:_|$)",
+      "low": "Fewer / no attacks",
+      "high": "More attacks",
+      "direction": "good-to-bad"
+    },
+    {
+      "dataset": "v_dem",
+      "match": "^v2smgovdom(?:_|$)",
+      "low": "Less false information",
+      "high": "More false information",
+      "direction": "good-to-bad"
+    },
+    {
+      "dataset": "v_dem",
+      "match": "^v2exbribe(?:_|$)",
+      "low": "Less bribery",
+      "high": "More bribery",
+      "direction": "good-to-bad"
+    }
+  ]
+}
