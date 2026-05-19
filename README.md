@@ -23,13 +23,13 @@ Simple Leaflet frontend for the Demscore MapServer WMS layer.
 
 ## Backend API
 
-- Webapp config is fetched from split endpoints on `http://127.0.0.1:8091`:
+- Webapp config is fetched from same-origin router endpoints (no explicit port in frontend URLs):
   - `/api/config/variables`
   - `/api/config/legend-semantics`
   - `/api/config/variable-polarity`
   - `/api/config/variable-metadata/:dataset` (lightweight summary, loaded on demand per dataset)
   - `/api/config/variable-metadata/:dataset/:variable` (full metadata, loaded only when opening Variable Information)
-- Map tiles/imagery are still fetched directly from MapServer (`:8088` or cached `:8089`).
+- WMS tiles are fetched from same-origin router endpoint: `/mapserver?map=/etc/mapserver/mapserver.map...`
 
 ## URL
 
@@ -38,8 +38,8 @@ Simple Leaflet frontend for the Demscore MapServer WMS layer.
 ## Optional cached WMS mode
 
 - Toggle cache in repo `.env`:
-  - `DEMSCORE_ENABLE_MAPCACHE=0` disables cache (default)
+  - `DEMSCORE_ENABLE_MAPCACHE=0` disables cache
   - `DEMSCORE_ENABLE_MAPCACHE=1` enables cache
 - Start services for local dev: `./scripts/dev_up.sh`
-- Open app in cached mode: `http://127.0.0.1:8090/?cache=1`
-- Override WMS base manually: `?wmsBase=http://127.0.0.1:8089/?map=/etc/mapserver/mapserver.map`
+- Open app normally: `http://127.0.0.1:8090/`
+- The app WMS target is selected automatically from `DEMSCORE_ENABLE_MAPCACHE` via `web-backend` runtime config.

@@ -33,6 +33,8 @@ export class DemscoreApp extends BaseController {
   }
 
   async start() {
+    await this.backendClient.hydrateRuntime();
+
     const [meta, legendMeta, polarityMeta] = await Promise.all([
       this.backendClient.fetchJson("/api/config/variables", "Could not load variables config"),
       this.backendClient.fetchJson("/api/config/legend-semantics", "Could not load legend semantics config"),
