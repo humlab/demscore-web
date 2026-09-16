@@ -2,6 +2,31 @@ import { BaseController } from "../core/BaseController.js";
 
 const POLARITY_POSITIVE = "positive";
 const LEGEND_COLORS_NEGATIVE = ["#313695", "#4575b4", "#74add1", "#abd9e9", "#fdae61", "#f46d43", "#d73027"];
+// The map reads as one world, so it never zooms out past the point where that
+// world fills the window — the real floor is measured per window size in
+// applyWorldFitMinZoom, and this is only the absolute limit that measurement is
+// allowed to return.
+const WORLD_BOUNDS = [
+  [-85, -180],
+  [85, 180],
+];
+const MIN_ZOOM_FLOOR = 0;
+const MAX_ZOOM = 6;
+// Zoom is continuous (zoomSnap 0) so the wheel and pinch land wherever they
+// land; this is only the step the +/- buttons and the keyboard move by. Whole
+// levels were too coarse a jump to frame a region with.
+const ZOOM_DELTA = 0.25;
+// One mesh for every zoom: the hex layer is a country-level reading, not a
+// detail view, and holding the mesh still keeps a zoom from re-rendering and
+// re-caching every tile. demscore.hex_mesh holds 40000-600000 in 10000 steps if
+// this is ever made to follow the zoom.
+const HEX_SIZE_M = 200000;
+
+// Leaflet reports fractional zoom now, and "Zoom: 3.2500000000000004" is not a
+// reading anyone wants.
+function formatZoom(zoom) {
+  return String(Math.round(zoom * 100) / 100);
+}
 
 function compileLegendMeaning(legendMeta) {
   const meaning = {
@@ -64,49 +89,34 @@ export class MapController extends BaseController {
     this.legendNoteEl = null;
 
     this.loadingRevealTimer = null;
+    this.demscoreBasemapPaneName = "demscoreBasemapPane";
     this.demscoreHexPaneName = "demscoreHexPane";
   }
 
   initialize() {
-    const osm = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
-      maxZoom: 20,
-      subdomains: "abcd",
-      attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+    const landmassBase = L.layerGroup([], {
+      attribution: '<a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener noreferrer">Natural Earth</a>',
     });
-
-    const stamenTerrain = L.tileLayer(
-      "https://tiles.stadiamaps.com/tiles/stamen_terrain_background/{z}/{x}/{y}{r}.png",
-      {
-        maxZoom: 18,
-        attribution:
-          "&copy; <a href=\"https://stadiamaps.com/\" target=\"_blank\" rel=\"noopener noreferrer\">Stadia Maps</a> " +
-          "&copy; <a href=\"https://stamen.com/\" target=\"_blank\" rel=\"noopener noreferrer\">Stamen Design</a> " +
-          "&copy; <a href=\"https://openmaptiles.org/\" target=\"_blank\" rel=\"noopener noreferrer\">OpenMapTiles</a> " +
-          "&copy; OpenStreetMap contributors",
-      },
-    );
-
-    const esriWorldImagery = L.tileLayer(
-      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      {
-        maxZoom: 19,
-        attribution: "Tiles &copy; Esri",
-      },
-    );
 
     this.map = L.map("map", {
       center: [20, 10],
       zoom: 2,
-      minZoom: 1,
-      maxZoom: 4,
-      layers: [osm],
-      maxBounds: [
-        [-85, -180],
-        [85, 180],
-      ],
+      // The floor is replaced by the measured world-fit zoom below; it starts
+      // open because getBoundsZoom clamps its answer to the map's current min.
+      minZoom: MIN_ZOOM_FLOOR,
+      maxZoom: MAX_ZOOM,
+      zoomSnap: 0,
+      zoomDelta: ZOOM_DELTA,
+      layers: [landmassBase],
+      maxBounds: WORLD_BOUNDS,
       maxBoundsViscosity: 1.0,
       worldCopyJump: false,
     });
+
+    this.map.createPane(this.demscoreBasemapPaneName);
+    const demscoreBasemapPane = this.map.getPane(this.demscoreBasemapPaneName);
+    demscoreBasemapPane.style.zIndex = "100";
+    demscoreBasemapPane.style.pointerEvents = "none";
 
     this.map.createPane(this.demscoreHexPaneName);
     const demscoreHexPane = this.map.getPane(this.demscoreHexPaneName);
@@ -120,9 +130,7 @@ export class MapController extends BaseController {
 
     this.layerControl = L.control.layers(
       {
-        "Stamen Terrain": stamenTerrain,
-        "OpenStreetMap": osm,
-        "Esri World Imagery": esriWorldImagery,
+        Landmasses: landmassBase,
       },
       {
         "Demscore Hex Layer": this.hexLayerGroup,
@@ -133,9 +141,31 @@ export class MapController extends BaseController {
 
     this.initializeLegend();
     this.installZoomIndicator();
+    this.applyWorldFitMinZoom();
+    this.loadLandmassBaseLayer(landmassBase);
 
-    this.map.on("resize", () => this.rebalanceLegendPosition());
+    this.map.on("resize", () => {
+      // A taller or wider window fits the world at a different zoom, so the
+      // floor is re-measured rather than fixed once at startup.
+      this.applyWorldFitMinZoom();
+      this.rebalanceLegendPosition();
+    });
     window.addEventListener("resize", () => this.rebalanceLegendPosition());
+  }
+
+  // The zoom at which the whole world fits the window. Leaflet clamps
+  // getBoundsZoom to the map's current minimum, so the floor comes off for the
+  // measurement — otherwise a window that shrinks could never zoom back out far
+  // enough to see the world it was showing a moment ago.
+  applyWorldFitMinZoom() {
+    const previousMin = this.map.options.minZoom;
+    this.map.options.minZoom = MIN_ZOOM_FLOOR;
+    const worldFit = this.map.getBoundsZoom(L.latLngBounds(WORLD_BOUNDS), false);
+    this.map.options.minZoom = previousMin;
+
+    const nextMin = Math.min(Math.max(worldFit, MIN_ZOOM_FLOOR), MAX_ZOOM);
+    if (!Number.isFinite(nextMin) || nextMin === this.map.getMinZoom()) return;
+    this.map.setMinZoom(nextMin);
   }
 
   getMap() {
@@ -144,6 +174,31 @@ export class MapController extends BaseController {
 
   getContainer() {
     return this.map.getContainer();
+  }
+
+  async loadLandmassBaseLayer(layerGroup) {
+    try {
+      const response = await fetch("/api/basemap/land");
+      if (!response.ok) {
+        throw new Error(`Could not load land basemap: ${response.status}`);
+      }
+      const geojson = await response.json();
+      const landLayer = L.geoJSON(geojson, {
+        pane: this.demscoreBasemapPaneName,
+        interactive: false,
+        style: {
+          color: "#ffffff",
+          fillColor: "#ffffff",
+          fillOpacity: 1,
+          opacity: 1,
+          stroke: true,
+          weight: 1,
+        },
+      });
+      layerGroup.addLayer(landLayer);
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   refresh() {
@@ -160,6 +215,61 @@ export class MapController extends BaseController {
     this.activeWmsLayer.setParams({ hex_size: nextHexSize });
     if (this.pendingWmsLayer) {
       this.pendingWmsLayer.setParams({ hex_size: nextHexSize });
+    }
+  }
+
+  getVisibleTileCoords(layer = this.activeWmsLayer) {
+    if (!this.map || !layer) return [];
+
+    // Between whole zooms the grid keeps requesting one whole tile zoom and
+    // scales what comes back, so the preload asks the grid which zoom and which
+    // pixel bounds it is actually working in. Rounding the map's own fractional
+    // zoom here would name tiles the map never asks for, and the preload marks
+    // would then be reporting on the wrong tiles.
+    const tileZoom = Number.isFinite(layer._tileZoom) ? layer._tileZoom : Math.round(this.map.getZoom());
+    const tileSize = layer.getTileSize();
+    const pixelBounds = typeof layer._getTiledPixelBounds === "function"
+      ? layer._getTiledPixelBounds(this.map.getCenter())
+      : this.map.getPixelBounds();
+    // Same rounding as Leaflet's own _pxBoundsToTileRange, so the two agree on
+    // the last row and column.
+    const tileRange = L.bounds(
+      pixelBounds.min.unscaleBy(tileSize).floor(),
+      pixelBounds.max.unscaleBy(tileSize).ceil().subtract([1, 1]),
+    );
+    const coords = [];
+
+    for (let y = tileRange.min.y; y <= tileRange.max.y; y += 1) {
+      for (let x = tileRange.min.x; x <= tileRange.max.x; x += 1) {
+        const point = new L.Point(x, y);
+        point.z = tileZoom;
+        if (typeof layer._isValidTile === "function" && !layer._isValidTile(point)) {
+          continue;
+        }
+        coords.push(typeof layer._wrapCoords === "function" ? layer._wrapCoords(point) : point);
+      }
+    }
+
+    return coords;
+  }
+
+  getVisibleWmsTileUrls(paramOverrides = {}) {
+    const layer = this.activeWmsLayer;
+    if (!layer || typeof layer.getTileUrl !== "function") return [];
+
+    const originalParams = { ...layer.wmsParams };
+    const originalKeys = new Set(Object.keys(originalParams));
+
+    try {
+      Object.assign(layer.wmsParams, paramOverrides);
+      return [...new Set(this.getVisibleTileCoords(layer).map((coords) => layer.getTileUrl(coords)))];
+    } finally {
+      for (const key of Object.keys(layer.wmsParams)) {
+        if (!originalKeys.has(key)) {
+          delete layer.wmsParams[key];
+        }
+      }
+      Object.assign(layer.wmsParams, originalParams);
     }
   }
 
@@ -198,15 +308,12 @@ export class MapController extends BaseController {
       pane: this.demscoreHexPaneName,
       zIndex: 2,
       noWrap: true,
-      bounds: L.latLngBounds([-85, -180], [85, 180]),
+      bounds: L.latLngBounds(WORLD_BOUNDS),
     });
   }
 
   hexSizeFromZoom() {
-    const zoom = this.map.getZoom();
-    if (zoom <= 2) return 200000;
-    if (zoom <= 3) return 200000;
-    return 200000;
+    return HEX_SIZE_M;
   }
 
   showLoadingIndicator() {
@@ -288,14 +395,15 @@ export class MapController extends BaseController {
   refreshLegend() {
     const text = this.resolveLegendMeaning(this.state.dataset, this.state.variable);
     const variableTitle = this.metadataController.getVariableTitle(this.state.dataset, this.state.variable);
-    const datasetLabel = this.meta.datasets[this.state.dataset]?.label || this.state.dataset;
+    const datasetMeta = this.meta.datasets[this.state.dataset];
+    const datasetTitle = datasetMeta?.title || datasetMeta?.label || this.state.dataset;
     const polarity = this.metadataController.getActivePolarity();
     const legendColors =
       polarity === POLARITY_POSITIVE ? LEGEND_COLORS_NEGATIVE.slice().reverse() : LEGEND_COLORS_NEGATIVE;
 
     if (this.legendTitleEl) this.legendTitleEl.textContent = text.title;
     if (this.legendSubtitleEl) {
-      this.legendSubtitleEl.textContent = `${variableTitle} (${this.state.variable}) - ${datasetLabel}, ${this.state.year}`;
+      this.legendSubtitleEl.textContent = `${variableTitle} (${this.state.variable}) - ${datasetTitle}, ${this.state.year}`;
     }
     if (this.legendBarEl) {
       this.legendBarEl.innerHTML = legendColors
@@ -343,13 +451,17 @@ export class MapController extends BaseController {
     const zoomControl = L.control({ position: "bottomleft" });
     zoomControl.onAdd = () => {
       const div = L.DomUtil.create("div", "zoom-display");
-      div.textContent = `Zoom: ${this.map.getZoom()}`;
+      div.textContent = `Zoom: ${formatZoom(this.map.getZoom())}`;
       return div;
     };
     zoomControl.addTo(this.map);
 
+    // The reading follows a continuous zoom while it moves, not only where it
+    // stops; the layer only needs to hear about it once it has stopped.
+    this.map.on("zoom zoomlevelschange", () => {
+      zoomControl.getContainer().textContent = `Zoom: ${formatZoom(this.map.getZoom())}`;
+    });
     this.map.on("zoomend", () => {
-      zoomControl.getContainer().textContent = `Zoom: ${this.map.getZoom()}`;
       this.updateHexLayerForZoom();
     });
   }

@@ -144,6 +144,31 @@ Common tasks and where to work:
 - Change autoplay/timeline behavior:
   - `DemscoreApp` methods: `scheduleAutoPlayTick`, `setYear`, `renderTimelineScale`
 
+- Change the timeline axis / tile-preload progress bar:
+  - the axis *is* the preload track: `#timelinePreloadTrack` is a flex row of
+    `.timeline-preload-segment` boxes that fill in teal as `LayerPreloadController`
+    caches tiles (there is no separate `.timeline-line`)
+  - `DemscoreApp.buildPreloadSegments()` buckets years into boxes so each stays at
+    least `PRELOAD_SEGMENT_MIN_PX` wide, so the segment count depends on the rendered
+    track width and is rebuilt (debounced) on window resize
+  - boxes are absolutely positioned and centred on the years they cover, using the
+    same `(year - yearMin) / span` mapping as the ticks and the selected marker, so
+    they line up; the end boxes overhang the track by half a box, which nothing clips
+  - a coverage of only a few years caps box width at `PRELOAD_SEGMENT_MAX_PX` and adds
+    `.is-sparse` to the track, which draws a baseline behind the boxes so the axis
+    still reads as a line (a two-year dataset would otherwise be two loose slabs)
+  - `buildTimelineTickYears()` ticks *every* year for spans up to
+    `TIMELINE_DENSE_TICK_SPAN`, endpoints included; the wider step ladder only ticks
+    inside the range, which left short spans with no scale at all
+  - `DemscoreApp.renderPreloadState()` aggregates per-year status/progress into each
+    box; `renderTimelineScale()` replays the last snapshot after a rebuild
+  - box height lives in `--track-height` on `.timeline-slider-wrap`, box width in
+    `--preload-box-width` written onto the track by JS; tick marks sit above the boxes
+    and tick labels below, both offset from `--track-height`
+  - `.timeline-scale` sits above the marker on purpose, and tick labels use an opaque
+    halo instead of `opacity`, so the marker line breaks around a label instead of
+    striking through it
+
 - Change map baselayers or WMS swap behavior:
   - `MapController.initialize()` and `MapController.loadNextLayer()`
 
