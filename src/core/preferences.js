@@ -1,0 +1,39 @@
+// Per-visitor UI choices that outlive the page, kept in a cookie so the browser
+// carries them between visits without a backend round trip.
+const VARIABLE_COOKIE = "demscore_variable_by_dataset";
+const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
+
+function readCookie(name) {
+  const prefix = `${name}=`;
+  const entry = document.cookie.split("; ").find((part) => part.startsWith(prefix));
+  return entry ? decodeURIComponent(entry.slice(prefix.length)) : null;
+}
+
+function writeCookie(name, value) {
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${COOKIE_MAX_AGE_SECONDS}; SameSite=Lax`;
+}
+
+// The variable each dataset was last left on, as `{ [datasetKey]: variable }`.
+// A missing, malformed or storage-less cookie just means no memory yet, so
+// every failure here reads as an empty map rather than an error.
+export function readVariableChoices() {
+  try {
+    const parsed = JSON.parse(readCookie(VARIABLE_COOKIE) || "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const choices = {};
+    for (const [datasetKey, variable] of Object.entries(parsed)) {
+      if (typeof variable === "string" && variable.length > 0) choices[datasetKey] = variable;
+    }
+    return choices;
+  } catch (_) {
+    return {};
+  }
+}
+
+export function writeVariableChoices(choices) {
+  try {
+    writeCookie(VARIABLE_COOKIE, JSON.stringify(choices));
+  } catch (_) {
+    // A browser that refuses cookies still works; it just forgets between visits.
+  }
+}

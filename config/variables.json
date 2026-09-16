@@ -8,6 +8,7 @@
   "datasets": {
     "qog": {
       "label": "QoG",
+      "title": "Quality of Government",
       "codebook": "./assets/codebooks/qog-codebook.pdf",
       "defaultVariable": "qog_std_ts_ti_cpi",
       "yearMin": 1946,
@@ -42,6 +43,7 @@
     },
     "repdem": {
       "label": "REPDEM",
+      "title": "Representative Democracy",
       "codebook": "./assets/codebooks/repdem-codebook.pdf",
       "defaultVariable": "repdem_basic_enpp",
       "yearMin": 1943,
@@ -78,6 +80,7 @@
     },
     "v_dem": {
       "label": "V-Dem",
+      "title": "Varieties of Democracy",
       "codebook": "./assets/codebooks/v-dem-codebook.pdf",
       "defaultVariable": "v2x_polyarchy",
       "yearMin": 1789,

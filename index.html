@@ -15,23 +15,28 @@
   <body>
     <div id="app">
       <aside id="controls">
-        <h1>Demscore Hex Map</h1>
+        <h1 class="app-title">
+          <img
+            src="./assets/images/demscore-logo.svg"
+            alt="Demscore Hex Map"
+            width="200"
+            height="50"
+          />
+        </h1>
 
-        <label for="datasetSelect">Dataset</label>
-        <select id="datasetSelect"></select>
-        <p id="datasetCodebookWrap" class="codebook-link" hidden>
-          <a id="datasetCodebookLink" href="#" target="_blank" rel="noopener noreferrer">Open codebook PDF</a>
-        </p>
+        <div id="datasetSection" class="dataset-section">
+          <div id="datasetTabs" class="dataset-tabs" role="tablist" aria-label="Dataset"></div>
 
-        <label for="variableSelect">Variable</label>
-        <select id="variableSelect"></select>
-        <details id="variantPicker" class="variant-picker" hidden>
-          <summary id="variantPickerSummary">Variants</summary>
-          <label for="variantSelect">Variant</label>
-          <select id="variantSelect"></select>
-        </details>
+          <section id="datasetPanel" class="dataset-panel" role="tabpanel" tabindex="0">
+            <p id="variableListLabel" class="field-label">Variable</p>
+            <div id="variableList" class="variable-list" role="radiogroup" aria-labelledby="variableListLabel"></div>
 
-        <button id="variableMetaBtn" type="button">Variable information</button>
+            <button id="variableMetaBtn" type="button">Variable information</button>
+            <p id="datasetCodebookWrap" class="codebook-link" hidden>
+              <a id="datasetCodebookLink" href="#" target="_blank" rel="noopener noreferrer">Open codebook PDF</a>
+            </p>
+          </section>
+        </div>
 
         <p id="datasetCitation" class="citation" hidden></p>
 
@@ -55,7 +60,7 @@
             </div>
           </div>
           <div class="timeline-slider-wrap" id="timelineWrap">
-            <div class="timeline-line" aria-hidden="true"></div>
+            <div id="timelinePreloadTrack" class="timeline-preload-track" aria-hidden="true"></div>
             <input id="yearSlider" type="range" step="1" aria-label="Year timeline" />
             <div id="timelineScale" class="timeline-scale" aria-hidden="true"></div>
             <div id="timelineSelectedMarker" class="timeline-selected-marker" aria-hidden="true">
@@ -66,6 +71,17 @@
         </div>
         <span id="yearDisplay" class="timeline-year-readout" aria-live="polite"></span>
       </div>
+    </div>
+
+    <div id="variantMenu" class="variant-menu" role="menu" aria-labelledby="variantMenuTitle" hidden>
+      <p id="variantMenuTitle" class="variant-menu-title"></p>
+      <div id="variantMenuItems" class="variant-menu-items"></div>
+    </div>
+
+    <div id="variableTooltip" class="variable-tooltip" role="tooltip" hidden>
+      <p id="variableTooltipTitle" class="variable-tooltip-title"></p>
+      <p id="variableTooltipKey" class="variable-tooltip-key"></p>
+      <div id="variableTooltipBody" class="variable-tooltip-body"></div>
     </div>
 
     <dialog id="variableMetaDialog" class="variable-meta-dialog">

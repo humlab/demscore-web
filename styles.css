@@ -37,9 +37,35 @@ body {
   padding: 16px;
 }
 
+/* The heading is the Demscore wordmark; the text lives in the image's alt. */
 #controls h1 {
   margin: 0 0 12px;
   font-size: 1.2rem;
+}
+
+/* The heading is the Demscore wordmark; its text lives in the image's alt. */
+#controls .app-title {
+  margin: 2px 0 14px;
+  line-height: 0;
+}
+
+#controls .app-title img {
+  display: block;
+  width: 100%;
+  max-width: 200px;
+  height: auto;
+}
+
+#controls .app-title {
+  margin: 2px 0 14px;
+  line-height: 0;
+}
+
+#controls .app-title img {
+  display: block;
+  width: 100%;
+  max-width: 200px;
+  height: auto;
 }
 
 .citation,
@@ -54,8 +80,516 @@ body {
   text-decoration: underline;
 }
 
+/* ---- Dataset tabs + contextual panel ---- */
+.dataset-section {
+  --ds-accent: var(--accent);
+  --ds-image: none;
+  --ds-scrim: color-mix(in srgb, var(--ds-accent) 60%, #000);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  margin: 4px 0 10px;
+}
+
+.dataset-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  border-bottom: 3px solid var(--ds-accent);
+}
+
+/* Tabs carry the dataset's full name, so they share the row in equal columns
+   and wrap onto as many lines as the longest name needs. */
+#controls .dataset-tab {
+  display: flex;
+  flex: 1 1 0;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 0;
+  width: auto;
+  margin-top: 0;
+  padding: 7px 6px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  text-align: center;
+  hyphens: auto;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+#controls .dataset-tab:hover {
+  background: color-mix(in srgb, var(--ds-accent) 12%, #fff);
+  color: var(--ds-accent);
+}
+
+#controls .dataset-tab:focus-visible {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: -2px;
+}
+
+#controls .dataset-tab.is-active,
+#controls .dataset-tab.is-active:hover {
+  border-color: var(--ds-accent);
+  background: var(--ds-accent);
+  color: #fff;
+}
+
+/* Each dataset carries its own photo, veiled by an accent-tinted scrim tuned to
+   keep white text at >= 5:1 contrast over the busiest part of every image. */
+.dataset-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  padding: 10px 12px 14px;
+  border: 1px solid var(--ds-accent);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  background-color: var(--ds-scrim);
+  background-image:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--ds-scrim) 74%, transparent),
+      color-mix(in srgb, var(--ds-scrim) 82%, transparent)
+    ),
+    var(--ds-image);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  color: #fff;
+}
+
+.dataset-panel:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -3px;
+}
+
+.dataset-panel .codebook-link {
+  margin: 10px 0 0;
+  text-align: center;
+  color: #eef2f7;
+}
+
+.dataset-panel .codebook-link a {
+  color: #fff;
+}
+
+.dataset-panel select:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+
+.field-label {
+  display: block;
+  margin: 10px 0 6px;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: #eef2f7;
+}
+
+/* Radio group styled as a list: every variable stays visible, and the list
+   takes whatever vertical space the panel has left before scrolling. */
+.variable-list {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-height: 116px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 6px;
+  /* Dark inset well: darkening (rather than lightening) the photo behind the
+     list is what keeps the small key line above 4.5:1 on every image. The blur
+     softens the photo's detail behind the text; where it is unsupported the
+     wash alone still carries the contrast. */
+  background: rgba(0, 0, 0, 0.22);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.45) transparent;
+}
+
+/* A row is a split control: the label picks the variable, the caret opens the
+   version menu. Reset the generic `#controls label` styling on the inner label:
+   these are list items, not field captions. */
+#controls .variable-option {
+  display: flex;
+  position: relative;
+  align-items: stretch;
+  margin: 0;
+  border-radius: 5px;
+  font-size: 1rem;
+  font-weight: 400;
+  color: #fff;
+}
+
+#controls .variable-option-pick {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 6px 9px;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+#controls .variable-option + .variable-option {
+  margin-top: 2px;
+}
+
+.variable-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.variable-option:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.variable-option:has(input:focus-visible) {
+  outline: 2px solid #fff;
+  outline-offset: -2px;
+}
+
+/* The caret shares the row's background and only shows its own edge on hover,
+   so a row still reads as one object until you reach for the menu. */
+#controls .variable-option-variants {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  margin-top: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0 5px 5px 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+#controls .variable-option-variants svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.75;
+}
+
+#controls .variable-option-variants:hover,
+#controls .variable-option.is-menu-open .variable-option-variants {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+#controls .variable-option.is-selected .variable-option-variants:hover,
+#controls .variable-option.is-selected.is-menu-open .variable-option-variants {
+  background: rgba(17, 75, 132, 0.12);
+}
+
+#controls .variable-option-variants:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -2px;
+}
+
+#controls .variable-option.is-selected .variable-option-variants:focus-visible {
+  outline-color: var(--accent);
+}
+
+#controls .variable-option-variants svg {
+  transition: transform 0.12s ease;
+}
+
+#controls .variable-option.is-menu-open .variable-option-variants svg {
+  transform: rotate(180deg);
+}
+
+#controls .variable-option.is-selected,
+#controls .variable-option.is-selected:hover {
+  background: #fff;
+  color: var(--text);
+}
+
+.variable-option-name {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+/* Second line: which version this row is set to — or, for a title that appears
+   on more than one row, the key that tells the two apart. */
+.variable-option-key {
+  display: block;
+  margin-top: 1px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 500;
+  line-height: 1.2;
+  opacity: 0.82;
+}
+
+.variable-option.is-selected .variable-option-key {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.variable-option-variant {
+  display: block;
+  margin-top: 1px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  opacity: 0.86;
+}
+
+.variable-option.is-selected .variable-option-variant {
+  color: var(--muted);
+  opacity: 1;
+}
+
+/* A row set to something other than Main says so in the row's own accent. */
+.variable-option.has-variant-selected .variable-option-variant {
+  font-weight: 700;
+}
+
+.variable-option.is-selected.has-variant-selected .variable-option-variant {
+  color: var(--accent);
+}
+
+/* Ghost button: reads cleanly over the photo without competing with it. */
+#controls .dataset-panel button {
+  border-color: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-weight: 600;
+}
+
+#controls .dataset-panel button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+#controls .dataset-panel button:disabled {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.55);
+  cursor: not-allowed;
+}
+
 #datasetCitation {
   margin-top: auto;
+}
+
+/* Version menu: body-level and fixed, like the hover card, because the sidebar
+   and the variable list both scroll and would clip a menu parented in the row. */
+.variant-menu {
+  position: fixed;
+  z-index: 1300;
+  box-sizing: border-box;
+  width: 268px;
+  max-width: calc(100vw - 24px);
+  max-height: min(340px, calc(100vh - 24px));
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.24);
+  color: var(--text);
+}
+
+.variant-menu-title {
+  margin: 2px 6px 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#controls .variant-menu-item,
+.variant-menu-item {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.variant-menu-item:hover {
+  background: color-mix(in srgb, var(--accent) 10%, #fff);
+}
+
+.variant-menu-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.variant-menu-item[aria-checked="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.variant-menu-item-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.variant-menu-item-key {
+  display: block;
+  margin-top: 1px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  color: var(--muted);
+}
+
+.variant-menu-item[aria-checked="true"] .variant-menu-item-key {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+/* Variable hover card: sits on <body> and is placed in viewport coordinates by
+   `MetadataController.positionVariableTooltip()`, because both the sidebar and
+   the variable list scroll and would otherwise clip it. The accent edge and the
+   arrow share `--tip-accent`, written per dataset when the card is filled. */
+.variable-tooltip {
+  position: fixed;
+  z-index: 1200;
+  box-sizing: border-box;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  /* No `overflow: hidden` here: it would clip the arrow. The card's height is
+     bounded by the line clamps on its content instead. */
+  padding: 11px 14px 13px;
+  border: 1px solid var(--panel-border);
+  border-left: 4px solid var(--tip-accent, var(--accent));
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.24);
+  color: var(--text);
+  /* The card only ever follows the pointer's row; it must never eat the hover. */
+  pointer-events: none;
+}
+
+/* Two stacked triangles: an accent one showing as a hairline outline behind a
+   white one. A plain accent arrow disappeared against the dark panel photo it
+   points back into. */
+.variable-tooltip::before,
+.variable-tooltip::after {
+  content: "";
+  position: absolute;
+  top: var(--arrow-top, 24px);
+  width: 0;
+  height: 0;
+  transform: translateY(-50%);
+}
+
+.variable-tooltip::before {
+  left: -20px;
+  border: 10px solid transparent;
+  border-right-color: var(--tip-accent, var(--accent));
+}
+
+.variable-tooltip::after {
+  left: -18px;
+  border: 9px solid transparent;
+  border-right-color: #fff;
+}
+
+/* Flipped placement (no room to the right): the accent edge and arrow swap sides
+   so the card still points back at its row. */
+.variable-tooltip.is-left {
+  border-left: 1px solid var(--panel-border);
+  border-right: 4px solid var(--tip-accent, var(--accent));
+}
+
+.variable-tooltip.is-left::before {
+  left: auto;
+  right: -20px;
+  border-right-color: transparent;
+  border-left-color: var(--tip-accent, var(--accent));
+}
+
+.variable-tooltip.is-left::after {
+  left: auto;
+  right: -18px;
+  border-right-color: transparent;
+  border-left-color: #fff;
+}
+
+.variable-tooltip-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.variable-tooltip-key {
+  margin: 3px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.variable-tooltip-body {
+  margin-top: 9px;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+/* Codebook descriptions run long; clamp to keep the card a card. */
+.variable-tooltip-desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 10;
+  line-clamp: 10;
+  overflow: hidden;
+  margin: 0;
+}
+
+.variable-tooltip-item {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  margin: 9px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--panel-border);
+  color: var(--muted);
+}
+
+.variable-tooltip-item-label {
+  margin-right: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tip-accent, var(--accent));
 }
 
 .variable-meta-item + .variable-meta-item {
@@ -155,24 +689,6 @@ body {
 
 #controls button:hover {
   background: #0f3f6f;
-}
-
-.variant-picker {
-  margin-top: 8px;
-  padding: 8px;
-  border: 1px solid #c4ccd8;
-  border-radius: 6px;
-  background: #ffffff;
-}
-
-.variant-picker summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.variant-picker label {
-  margin-top: 8px;
 }
 
 .timeline-main {
@@ -395,8 +911,8 @@ body {
 .citation {
   margin: 6px 0 0;
   padding: 6px 8px;
-  border-left: 3px solid var(--accent);
-  background: #eef3fa;
+  border-left: 3px solid var(--ds-accent, var(--accent));
+  background: color-mix(in srgb, var(--ds-accent, var(--accent)) 7%, #fff);
   color: var(--muted);
   font-size: 0.82rem;
   line-height: 1.4;
