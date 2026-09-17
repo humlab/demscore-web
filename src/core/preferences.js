@@ -37,3 +37,23 @@ export function writeVariableChoices(choices) {
     // A browser that refuses cookies still works; it just forgets between visits.
   }
 }
+
+// Whether the map draws a black perimeter around each run of same-coloured
+// hexagons. Off is a deliberate choice as much as on, so an unreadable cookie
+// falls back to the argument rather than to a hardcoded default.
+const AREA_OUTLINES_COOKIE = "demscore_area_outlines";
+
+export function readAreaOutlinesEnabled(fallback) {
+  const stored = readCookie(AREA_OUTLINES_COOKIE);
+  if (stored === "1") return true;
+  if (stored === "0") return false;
+  return fallback;
+}
+
+export function writeAreaOutlinesEnabled(enabled) {
+  try {
+    writeCookie(AREA_OUTLINES_COOKIE, enabled ? "1" : "0");
+  } catch (_) {
+    // A browser that refuses cookies still works; it just forgets between visits.
+  }
+}

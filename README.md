@@ -6,7 +6,8 @@ Simple Leaflet frontend for the Demscore MapServer WMS layer.
 
 - Select dataset (`qog`, `repdem`, `v_dem`)
 - Select variable per dataset
-- Select year and hex size
+- Select year
+- Increase hex resolution automatically as the map zooms in
 - Switch between multiple baselayers
 - Overlay dynamic WMS hex layer from MapServer
 - Read UI config from `web-backend` API endpoints

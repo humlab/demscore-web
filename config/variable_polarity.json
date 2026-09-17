@@ -9,17 +9,8 @@
   },
   "variable_overrides": {
     "qog": {
-      "qog_oecd_ts_bicc_gmi": "negative",
       "qog_std_ts_bicc_gmi": "negative",
-      "qog_oecd_ts_wdi_gini": "negative",
       "qog_std_ts_wdi_gini": "negative"
-    },
-    "v_dem": {
-      "v2jupoatck": "negative",
-      "v2mecenefm": "negative",
-      "v2meharjrn": "negative",
-      "v2smgovdom": "negative",
-      "v2exbribe": "negative"
     }
   }
 }

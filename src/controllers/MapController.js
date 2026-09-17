@@ -1,6 +1,17 @@
 import { BaseController } from "../core/BaseController.js";
+import { readAreaOutlinesEnabled, writeAreaOutlinesEnabled } from "../core/preferences.js";
 
 const POLARITY_POSITIVE = "positive";
+const LAND_BASEMAP_COLOR = "#fffaf0";
+const HEX_FILL_LAYER = "hex_variable";
+// Drawn by MapServer over the fills, from the precomputed edge table; see
+// the hex_outline layer in mapserver/mapserver.map. Asking for it in the same
+// GetMap as the fills keeps the two in step -- one image, one cache entry, and
+// no window where outlines from the previous year sit over this year's colours.
+const HEX_OUTLINE_LAYER = "hex_outline";
+// Adjacent quantile classes can be a shade apart, which is the whole reason the
+// outlines exist, so they start on and the toggle is there to take them off.
+const AREA_OUTLINES_DEFAULT = true;
 const LEGEND_COLORS_NEGATIVE = ["#313695", "#4575b4", "#74add1", "#abd9e9", "#fdae61", "#f46d43", "#d73027"];
 // The map reads as one world, so it never zooms out past the point where that
 // world fills the window — the real floor is measured per window size in
@@ -16,11 +27,15 @@ const MAX_ZOOM = 6;
 // land; this is only the step the +/- buttons and the keyboard move by. Whole
 // levels were too coarse a jump to frame a region with.
 const ZOOM_DELTA = 0.25;
-// One mesh for every zoom: the hex layer is a country-level reading, not a
-// detail view, and holding the mesh still keeps a zoom from re-rendering and
-// re-caching every tile. demscore.hex_mesh holds 40000-600000 in 10000 steps if
-// this is ever made to follow the zoom.
-const HEX_SIZE_M = 200000;
+// Keep the hex layer generalized at world scale, then step into denser meshes
+// as the user settles on regional views. Values match demscore.hex_mesh's
+// precomputed 10km grid increments.
+const HEX_RESOLUTION_STOPS = [
+  { minZoom: 0, hexSizeM: 200000 },
+  { minZoom: 2.75, hexSizeM: 120000 },
+  { minZoom: 3.75, hexSizeM: 80000 },
+  { minZoom: 4.75, hexSizeM: 50000 },
+];
 
 // Leaflet reports fractional zoom now, and "Zoom: 3.2500000000000004" is not a
 // reading anyone wants.
@@ -64,15 +79,18 @@ function compileLegendMeaning(legendMeta) {
 }
 
 export class MapController extends BaseController {
-  constructor({ state, meta, legendMeta, mapServerBase, metadataController }) {
+  constructor({ state, meta, legendMeta, mapServerBase, metadataController, onLayerParamsChange }) {
     super();
     this.state = state;
     this.meta = meta;
     this.mapServerBase = mapServerBase;
     this.metadataController = metadataController;
     this.legendMeaning = compileLegendMeaning(legendMeta);
+    this.onLayerParamsChange = typeof onLayerParamsChange === "function" ? onLayerParamsChange : () => {};
+    this.areaOutlinesEnabled = readAreaOutlinesEnabled(AREA_OUTLINES_DEFAULT);
 
     this.loadingIndicator = this.getEl("loading-indicator");
+    this.legendDock = this.getEl("mapLegendDock");
 
     this.map = null;
     this.layerControl = null;
@@ -98,7 +116,7 @@ export class MapController extends BaseController {
       attribution: '<a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener noreferrer">Natural Earth</a>',
     });
 
-    this.map = L.map("map", {
+    this.map = L.map("mapCanvas", {
       center: [20, 10],
       zoom: 2,
       // The floor is replaced by the measured world-fit zoom below; it starts
@@ -140,6 +158,7 @@ export class MapController extends BaseController {
     this.layerControl.addTo(this.map);
 
     this.initializeLegend();
+    this.installAreaOutlineToggle();
     this.installZoomIndicator();
     this.applyWorldFitMinZoom();
     this.loadLandmassBaseLayer(landmassBase);
@@ -187,8 +206,8 @@ export class MapController extends BaseController {
         pane: this.demscoreBasemapPaneName,
         interactive: false,
         style: {
-          color: "#ffffff",
-          fillColor: "#ffffff",
+          color: LAND_BASEMAP_COLOR,
+          fillColor: LAND_BASEMAP_COLOR,
           fillOpacity: 1,
           opacity: 1,
           stroke: true,
@@ -212,10 +231,7 @@ export class MapController extends BaseController {
     const activeHexSize = String(this.activeWmsLayer.wmsParams?.hex_size ?? "");
     if (activeHexSize === nextHexSize) return;
 
-    this.activeWmsLayer.setParams({ hex_size: nextHexSize });
-    if (this.pendingWmsLayer) {
-      this.pendingWmsLayer.setParams({ hex_size: nextHexSize });
-    }
+    this.loadNextLayer();
   }
 
   getVisibleTileCoords(layer = this.activeWmsLayer) {
@@ -291,7 +307,7 @@ export class MapController extends BaseController {
 
   createWmsLayer() {
     return L.tileLayer.wms(this.mapServerBase, {
-      layers: "hex_variable",
+      layers: this.wmsLayerNames(),
       styles: "",
       format: "image/png",
       transparent: true,
@@ -312,8 +328,59 @@ export class MapController extends BaseController {
     });
   }
 
+  wmsLayerNames() {
+    return this.areaOutlinesEnabled ? `${HEX_FILL_LAYER},${HEX_OUTLINE_LAYER}` : HEX_FILL_LAYER;
+  }
+
+  getAreaOutlinesEnabled() {
+    return this.areaOutlinesEnabled;
+  }
+
+  setAreaOutlinesEnabled(enabled) {
+    const next = Boolean(enabled);
+    if (next === this.areaOutlinesEnabled) return;
+
+    this.areaOutlinesEnabled = next;
+    writeAreaOutlinesEnabled(next);
+    // The outlines ride along in the fill request, so switching them changes the
+    // tile URL: the visible tiles are re-fetched and the preload marks, which
+    // count tiles under the old URL, no longer describe what is cached.
+    this.loadNextLayer();
+    this.onLayerParamsChange();
+  }
+
+  installAreaOutlineToggle() {
+    const control = L.control({ position: "bottomleft" });
+    control.onAdd = () => {
+      const div = L.DomUtil.create("div", "map-display-options");
+      div.innerHTML = `
+        <label class="map-display-option">
+          <input id="areaOutlineToggle" type="checkbox" />
+          <span>Outline equal-colour areas</span>
+        </label>`;
+      const checkbox = div.querySelector("#areaOutlineToggle");
+      checkbox.checked = this.areaOutlinesEnabled;
+      checkbox.addEventListener("change", () => this.setAreaOutlinesEnabled(checkbox.checked));
+      // The control sits over the map, so a click on it must not also pan or
+      // zoom the map underneath.
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.disableScrollPropagation(div);
+      return div;
+    };
+    control.addTo(this.map);
+  }
+
   hexSizeFromZoom() {
-    return HEX_SIZE_M;
+    const zoom = this.map ? this.map.getZoom() : 0;
+    let hexSize = HEX_RESOLUTION_STOPS[0].hexSizeM;
+
+    for (const stop of HEX_RESOLUTION_STOPS) {
+      if (zoom >= stop.minZoom) {
+        hexSize = stop.hexSizeM;
+      }
+    }
+
+    return hexSize;
   }
 
   showLoadingIndicator() {
@@ -369,27 +436,27 @@ export class MapController extends BaseController {
   }
 
   initializeLegend() {
-    this.legend = L.control({ position: "bottomright" });
-
-    this.legend.onAdd = () => {
-      const div = L.DomUtil.create("div", "map-legend");
-      div.innerHTML = `
+    const div = document.createElement("div");
+    div.className = "map-legend";
+    div.innerHTML = `
+      <div class="legend-copy">
         <div class="legend-title"></div>
         <div class="legend-subtitle"></div>
+      </div>
+      <div class="legend-scale">
         <div class="legend-bar"></div>
         <div class="legend-labels"><span></span><span></span></div>
-        <div class="legend-note"></div>`;
+        <div class="legend-note"></div>
+      </div>`;
 
-      this.legendTitleEl = div.querySelector(".legend-title");
-      this.legendSubtitleEl = div.querySelector(".legend-subtitle");
-      this.legendBarEl = div.querySelector(".legend-bar");
-      this.legendLowEl = div.querySelector(".legend-labels span:first-child");
-      this.legendHighEl = div.querySelector(".legend-labels span:last-child");
-      this.legendNoteEl = div.querySelector(".legend-note");
-      return div;
-    };
-
-    this.legend.addTo(this.map);
+    this.legendTitleEl = div.querySelector(".legend-title");
+    this.legendSubtitleEl = div.querySelector(".legend-subtitle");
+    this.legendBarEl = div.querySelector(".legend-bar");
+    this.legendLowEl = div.querySelector(".legend-labels span:first-child");
+    this.legendHighEl = div.querySelector(".legend-labels span:last-child");
+    this.legendNoteEl = div.querySelector(".legend-note");
+    this.legendDock.append(div);
+    this.legend = div;
   }
 
   refreshLegend() {
@@ -423,28 +490,8 @@ export class MapController extends BaseController {
     window.requestAnimationFrame(() => this.rebalanceLegendPosition());
   }
 
-  rectsOverlap(a, b, gap = 0) {
-    return !(
-      a.right + gap <= b.left ||
-      a.left >= b.right + gap ||
-      a.bottom + gap <= b.top ||
-      a.top >= b.bottom + gap
-    );
-  }
-
   rebalanceLegendPosition() {
-    const legendEl = this.legend.getContainer();
-    const layersEl = this.layerControl.getContainer();
-    if (!legendEl || !layersEl) return;
-
-    legendEl.style.marginBottom = "";
-
-    const legendRect = legendEl.getBoundingClientRect();
-    const layersRect = layersEl.getBoundingClientRect();
-    const overlaps = this.rectsOverlap(legendRect, layersRect, 8);
-    if (!overlaps) return;
-
-    legendEl.style.marginBottom = `${Math.ceil(layersRect.height + 12)}px`;
+    this.map?.invalidateSize({ pan: false });
   }
 
   installZoomIndicator() {

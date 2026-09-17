@@ -46,10 +46,15 @@ export class DemscoreApp extends BaseController {
   async start() {
     await this.backendClient.hydrateRuntime();
 
-    const [meta, legendMeta, polarityMeta] = await Promise.all([
+    const [meta, legendMeta, polarityMeta, coverageMeta] = await Promise.all([
       this.backendClient.fetchJson("/api/config/variables", "Could not load variables config"),
       this.backendClient.fetchJson("/api/config/legend-semantics", "Could not load legend semantics config"),
       this.backendClient.fetchJson("/api/config/variable-polarity", "Could not load variable polarity config"),
+      // Precomputed by scripts/build_variable_coverage.sh; the strips are decoration
+      // on a list that works without them, so a missing file must not fail startup.
+      this.backendClient
+        .fetchJson("/api/config/variable-coverage", "Could not load variable coverage config")
+        .catch(() => null),
     ]);
 
     if (!meta || typeof meta !== "object" || !meta.datasets || !meta.defaults) {
@@ -72,6 +77,7 @@ export class DemscoreApp extends BaseController {
     this.metadataController = new MetadataController({
       meta,
       polarityMeta,
+      coverageMeta,
       state: this.state,
       backendClient: this.backendClient,
     });
@@ -83,6 +89,9 @@ export class DemscoreApp extends BaseController {
       legendMeta,
       mapServerBase: this.backendClient.mapServerBase,
       metadataController: this.metadataController,
+      // Toggling the area outlines rewrites the tile URLs, so the preload has to
+      // start over against the request the map is now making.
+      onLayerParamsChange: () => this.restartPreload?.(),
     });
     this.mapController.initialize();
 

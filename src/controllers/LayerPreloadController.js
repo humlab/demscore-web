@@ -81,10 +81,11 @@ export class LayerPreloadController {
     const years = buildYearQueue(availableYears, selectedYear);
     const polarity = this.metadataController.getActivePolarity();
     const hexSize = this.mapController.hexSizeFromZoom();
+    const areaOutlines = this.mapController.getAreaOutlinesEnabled();
 
     // Without a tile cache nothing survives a restart, so there is nothing to
     // resume: every tile is fetched again and every year genuinely starts over.
-    const signature = `${dataset}|${variable}|${polarity}|${hexSize}|${yearMin}-${yearMax}|${years.length}`;
+    const signature = `${dataset}|${variable}|${polarity}|${hexSize}|${areaOutlines}|${yearMin}-${yearMax}|${years.length}`;
     const resume = Boolean(this.cache) && signature === this.targetSignature;
     this.targetSignature = signature;
 

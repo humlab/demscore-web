@@ -35,6 +35,12 @@ const TOOLTIP_HOVER_DELAY_MS = 170;
 const TOOLTIP_GAP_PX = 14;
 const TOOLTIP_VIEWPORT_MARGIN_PX = 10;
 const TOOLTIP_ARROW_INSET_PX = 18;
+// Coverage strip geometry, in the SVG's own units: one unit per bucket across,
+// and a short track down that CSS stretches to whatever height the row gives it.
+const COVERAGE_TRACK_H = 10;
+const COVERAGE_BAR_MIN_H = 2.5;
+// Bars are slightly narrower than their bucket, so neighbours stay countable.
+const COVERAGE_BAR_W = 0.78;
 const VARIANT_MENU_GAP_PX = 4;
 const VARIANT_MENU_MARGIN_PX = 10;
 // Most V-Dem descriptions are the codebook's field block scraped verbatim
@@ -87,11 +93,13 @@ function buildVariableHierarchy(variables) {
 }
 
 export class MetadataController extends BaseController {
-  constructor({ meta, polarityMeta, state, backendClient }) {
+  constructor({ meta, polarityMeta, coverageMeta, state, backendClient }) {
     super();
     this.meta = meta;
     this.state = state;
     this.backendClient = backendClient;
+    this.coverageMeta =
+      coverageMeta?.datasets && typeof coverageMeta.datasets === "object" ? coverageMeta.datasets : {};
 
     this.varMetaByDataset = {};
     this.fullVarMetaByDataset = {};
@@ -489,15 +497,13 @@ export class MetadataController extends BaseController {
       const variantLabel = document.createElement("span");
       variantLabel.className = "variable-option-variant";
       label.appendChild(variantLabel);
-    } else if (title !== variable && this.sharedTitles?.has(title)) {
-      // Except where the title alone cannot identify the row: QoG and RepDem
-      // carry the same indicator once per sample (qog_std_ts_* / qog_oecd_ts_*,
-      // repdem_basic_* / repdem_wecee_*), so those rows still need their key.
-      const key = document.createElement("span");
-      key.className = "variable-option-key";
-      key.textContent = variable;
-      label.appendChild(key);
     }
+
+    // Last line: where this variable has data, on the axis its whole dataset
+    // shares, so two rows can be compared by eye without reading any numbers.
+    const coverage = document.createElement("span");
+    coverage.className = "variable-option-coverage";
+    label.appendChild(coverage);
 
     option.appendChild(label);
 
@@ -514,16 +520,8 @@ export class MetadataController extends BaseController {
     }
 
     this.renderVariantLabel(datasetKey, option, variable);
+    this.renderCoverageStrip(datasetKey, option, variable);
     return option;
-  }
-
-  collectSharedTitles(datasetKey, mainVariables) {
-    const counts = new Map();
-    for (const variable of mainVariables) {
-      const title = this.getVariableTitle(datasetKey, variable);
-      counts.set(title, (counts.get(title) || 0) + 1);
-    }
-    return new Set([...counts].filter(([, count]) => count > 1).map(([title]) => title));
   }
 
   getVariantsFor(datasetKey, mainVariable) {
@@ -626,6 +624,66 @@ export class MetadataController extends BaseController {
     const selected = this.getSelectedVariant(datasetKey, mainVariable);
     target.textContent = this.getVariantLabel(datasetKey, mainVariable, selected);
     option.classList.toggle("has-variant-selected", selected !== mainVariable);
+  }
+
+  // ---- Variable coverage strip ----
+  // A sparkline of where a variable has data, drawn on the axis its dataset
+  // shares. Bar height folds together how often the variable is sampled and how
+  // many countries it reaches, both baked into scripts/build_variable_coverage.sh
+  // — the list shows every row at once, so nothing here may hit the database.
+
+  getCoverageStripData(datasetKey, variableKey) {
+    const dataset = this.coverageMeta?.[datasetKey];
+    const entry = dataset?.variables?.[variableKey];
+    if (!dataset || !entry || typeof entry.levels !== "string" || entry.levels.length === 0) return null;
+    return { dataset, entry };
+  }
+
+  renderCoverageStrip(datasetKey, option, mainVariable) {
+    const target = option.querySelector(".variable-option-coverage");
+    if (!target) return;
+
+    const variable = this.getSelectedVariant(datasetKey, mainVariable);
+    const data = this.getCoverageStripData(datasetKey, variable);
+    if (!data) {
+      // A variable the precompute never saw gets no strip rather than an empty
+      // track, which would read as "this variable has no data anywhere".
+      target.innerHTML = "";
+      target.hidden = true;
+      return;
+    }
+
+    const { dataset, entry } = data;
+    target.hidden = false;
+    target.innerHTML = this.buildCoverageStripSvg(entry.levels);
+    target.title =
+      `Data ${entry.yearMin}\u2013${entry.yearMax}` +
+      `, up to ${entry.maxCountries} countries` +
+      ` (axis: ${dataset.yearMin}\u2013${dataset.yearMax})`;
+  }
+
+  // One <svg> holding one <path>, for the row strip and the hover card alike:
+  // a bar per element would put tens of thousands of nodes in a V-Dem list, and
+  // the list is rebuilt from scratch on every dataset switch.
+  buildCoverageStripSvg(levels, className = "variable-option-coverage-svg") {
+    const buckets = levels.length;
+    const bars = [];
+    for (let i = 0; i < buckets; i += 1) {
+      const level = Number(levels[i]);
+      if (!Number.isFinite(level) || level <= 0) continue;
+      // Level 1 is "present but thin". Sitting it at a quarter of the track
+      // keeps a 32-country sample visibly above the baseline instead of merging
+      // into it, while still ranking below a 165-country one.
+      const height = COVERAGE_BAR_MIN_H + ((level - 1) / 8) * (COVERAGE_TRACK_H - COVERAGE_BAR_MIN_H);
+      const y = (COVERAGE_TRACK_H - height).toFixed(2);
+      bars.push(`M${i} ${y}h${COVERAGE_BAR_W}v${height.toFixed(2)}h-${COVERAGE_BAR_W}z`);
+    }
+    if (bars.length === 0) return "";
+    return (
+      `<svg class="${className}" viewBox="0 0 ${buckets} ${COVERAGE_TRACK_H}"` +
+      ` preserveAspectRatio="none" aria-hidden="true" focusable="false">` +
+      `<path d="${bars.join("")}" /></svg>`
+    );
   }
 
   // ---- Variable hover card ----
@@ -731,6 +789,54 @@ export class MetadataController extends BaseController {
     this.variableTooltipBody.appendChild(paragraph);
 
     this.appendVariableTooltipItem("Scale", metaForVariable.scale);
+    this.appendVariableTooltipCoverage(datasetKey, variable);
+  }
+
+  // The same strip the row carries, but with room to say what it means: the row
+  // has to be read at a glance, so the years it is plotted against and the reason
+  // one bar is taller than the next can only be spelled out here.
+  appendVariableTooltipCoverage(datasetKey, variable) {
+    const data = this.getCoverageStripData(datasetKey, variable);
+    if (!data) return;
+    const { dataset, entry } = data;
+
+    const section = document.createElement("div");
+    section.className = "variable-tooltip-coverage";
+
+    const label = document.createElement("span");
+    label.className = "variable-tooltip-item-label";
+    label.textContent = "Coverage";
+    section.appendChild(label);
+
+    const track = document.createElement("span");
+    track.className = "variable-tooltip-coverage-track";
+    track.innerHTML = this.buildCoverageStripSvg(entry.levels, "variable-tooltip-coverage-svg");
+    section.appendChild(track);
+
+    // The endpoints belong to the dataset's axis, not the variable's own range —
+    // they are what makes a strip that starts halfway along legible as "this one
+    // starts in 1900", which is the whole point of sharing the axis.
+    const axis = document.createElement("span");
+    axis.className = "variable-tooltip-coverage-axis";
+    for (const year of [dataset.yearMin, dataset.yearMax]) {
+      const tick = document.createElement("span");
+      tick.textContent = String(year);
+      axis.appendChild(tick);
+    }
+    section.appendChild(axis);
+
+    const note = document.createElement("p");
+    note.className = "variable-tooltip-coverage-note";
+    const range =
+      entry.yearMin === entry.yearMax
+        ? `${entry.yearMin} only`
+        : `${entry.yearMin}–${entry.yearMax}`;
+    note.textContent =
+      `Data ${range}, up to ${entry.maxCountries} ${entry.maxCountries === 1 ? "country" : "countries"}. ` +
+      `Bar height combines how many countries reported and how many of the years in that step carry data.`;
+    section.appendChild(note);
+
+    this.variableTooltipBody.appendChild(section);
   }
 
   appendVariableTooltipItem(label, value) {
@@ -777,7 +883,12 @@ export class MetadataController extends BaseController {
     this.rememberVariableChoice(this.state.dataset, variable);
     this.markSelectedVariableOption(mainVariable);
     const option = this.variableList.querySelector(`.variable-option[data-variable="${CSS.escape(mainVariable)}"]`);
-    if (option) this.renderVariantLabel(this.state.dataset, option, mainVariable);
+    if (option) {
+      this.renderVariantLabel(this.state.dataset, option, mainVariable);
+      // Versions can cover different years (a `_mean` that starts later than its
+      // base), so the strip follows the row's version like the label does.
+      this.renderCoverageStrip(this.state.dataset, option, mainVariable);
+    }
     this.refreshVariableMetadataPanel();
     if (typeof onVariableChange === "function") {
       onVariableChange();
@@ -969,7 +1080,6 @@ export class MetadataController extends BaseController {
     this.hideVariableTooltip();
     this.closeVariantMenu();
     const mainVariables = this.getSortedMainVariables(datasetKey);
-    this.sharedTitles = this.collectSharedTitles(datasetKey, mainVariables);
 
     // A dataset the reader has already picked a variable in opens on that
     // variable again; one they have not opens on the first row of the list.

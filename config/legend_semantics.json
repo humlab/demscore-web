@@ -18,38 +18,42 @@
     {
       "dataset": "v_dem",
       "match": "^v2meharjrn(?:_|$)",
-      "low": "Less / no harassment",
-      "high": "More harassment",
-      "note": "Interpreted as intensity of harassment: higher values are shown as more severe.",
-      "direction": "good-to-bad"
+      "low": "More harassment",
+      "high": "Less / no harassment",
+      "note": "V-Dem codes 0 as journalists never daring to offend powerful actors and 4 as journalists never being harassed, so higher values mean less harassment.",
+      "direction": "low-to-high"
     },
     {
       "dataset": "v_dem",
       "match": "^v2mecenefm(?:_|$)",
-      "low": "Less censorship",
-      "high": "More censorship",
-      "direction": "good-to-bad"
+      "low": "More censorship",
+      "high": "Less censorship",
+      "note": "V-Dem codes 0 as direct and routine censorship and 4 as the government rarely attempting to censor, so higher values mean less censorship.",
+      "direction": "low-to-high"
     },
     {
       "dataset": "v_dem",
       "match": "^v2jupoatck(?:_|$)",
-      "low": "Fewer / no attacks",
-      "high": "More attacks",
-      "direction": "good-to-bad"
+      "low": "More attacks",
+      "high": "Fewer / no attacks",
+      "note": "V-Dem codes 0 as attacks on the judiciary's integrity carried out daily or weekly and 4 as no attacks at all, so higher values mean fewer attacks.",
+      "direction": "low-to-high"
     },
     {
       "dataset": "v_dem",
       "match": "^v2smgovdom(?:_|$)",
-      "low": "Less false information",
-      "high": "More false information",
-      "direction": "good-to-bad"
+      "low": "More false information",
+      "high": "Less false information",
+      "note": "V-Dem codes 0 as the government disseminating false information extremely often and 4 as never or almost never, so higher values mean less false information.",
+      "direction": "low-to-high"
     },
     {
       "dataset": "v_dem",
       "match": "^v2exbribe(?:_|$)",
-      "low": "Less bribery",
-      "high": "More bribery",
-      "direction": "good-to-bad"
+      "low": "More bribery",
+      "high": "Less bribery",
+      "note": "V-Dem codes 0 as bribery being routine and expected and 4 as it never or hardly ever happening, so higher values mean less bribery.",
+      "direction": "low-to-high"
     }
   ]
 }
