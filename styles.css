@@ -270,9 +270,11 @@ body {
   scrollbar-color: rgba(0, 0, 0, 0.28) transparent;
 }
 
-/* A row is a split control: the label picks the variable, the caret opens the
-   version menu. Reset the generic `#controls label` styling on the inner label:
-   these are list items, not field captions. */
+/* A row is a label wrapping a hidden radio. Reset the generic `#controls label`
+   styling on the inner label: these are list items, not field captions.
+   The row itself is neutral — only its badge carries the dataset colour. Tinting
+   the whole row meant selection had to be read in three different colours, and
+   whichever dataset had the most saturated palette dominated the list. */
 #controls .variable-option {
   display: flex;
   position: relative;
@@ -281,9 +283,7 @@ body {
   border-radius: 5px;
   font-size: 1rem;
   font-weight: 400;
-  /* Tinted with its own dataset's shades, which is what says which dataset a
-     row belongs to now that the list mixes all of them. */
-  background: color-mix(in srgb, var(--ds-4) 55%, #fff);
+  background: #fff;
   color: var(--text);
 }
 
@@ -303,17 +303,6 @@ body {
   margin-top: 2px;
 }
 
-/* The text keeps clear of the caret; the coverage strip deliberately does not.
-   Every strip in a list has to span the same pixels or the shared year axis is
-   lying about which rows start early, so it runs the row's full width. */
-#controls .variable-option:has(.variable-option-variants) .variable-option-pick {
-  padding-right: 39px;
-}
-
-#controls .variable-option:has(.variable-option-variants) .variable-option-coverage {
-  margin-right: -30px;
-}
-
 .variable-option input {
   position: absolute;
   width: 1px;
@@ -323,72 +312,12 @@ body {
 }
 
 .variable-option:hover {
-  background: var(--ds-4);
+  background: #eef1f6;
 }
 
 .variable-option:has(input:focus-visible) {
-  outline: 2px solid var(--ds-1);
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
-}
-
-/* The caret shares the row's background and only shows its own edge on hover,
-   so a row still reads as one object until you reach for the menu. */
-#controls .variable-option-variants {
-  /* Taken out of the flex row so the label — and with it the coverage strip —
-     measures the same on a row that has versions as on one that does not. */
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  margin-top: 0;
-  padding: 0;
-  border: none;
-  border-radius: 0 5px 5px 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-#controls .variable-option-variants svg {
-  width: 12px;
-  height: 12px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  opacity: 0.75;
-}
-
-#controls .variable-option-variants:hover,
-#controls .variable-option.is-menu-open .variable-option-variants {
-  background: color-mix(in srgb, var(--ds-1) 22%, transparent);
-}
-
-#controls .variable-option.is-selected .variable-option-variants:hover,
-#controls .variable-option.is-selected.is-menu-open .variable-option-variants {
-  background: rgba(17, 75, 132, 0.12);
-}
-
-#controls .variable-option-variants:focus-visible {
-  outline: 2px solid #fff;
-  outline-offset: -2px;
-}
-
-#controls .variable-option.is-selected .variable-option-variants:focus-visible {
-  outline-color: var(--accent);
-}
-
-#controls .variable-option-variants svg {
-  transition: transform 0.12s ease;
-}
-
-#controls .variable-option.is-menu-open .variable-option-variants svg {
-  transform: rotate(180deg);
 }
 
 /* Selection has to survive rows that are already coloured, so it is not colour
@@ -396,11 +325,12 @@ body {
    dataset's darkest shade. REPDEM's palette is light enough that a dark fill
    with white text is not available across all three datasets, which is why the
    text stays dark throughout. */
+/* One selection colour for every row, whichever dataset it came from: the same
+   thing looking the same everywhere is what makes the selected row findable. */
 #controls .variable-option.is-selected,
 #controls .variable-option.is-selected:hover {
-  background: var(--ds-3);
-  box-shadow: inset 3px 0 0 var(--ds-1);
-  color: var(--text);
+  background: var(--accent);
+  color: #fff;
 }
 
 #controls .variable-option.is-selected .variable-option-name {
@@ -426,18 +356,19 @@ body {
   gap: 6px;
 }
 
-/* The badge replaces what the dataset tabs used to say for free. It rides on the
-   title line, shrinking last so a long title wraps before the badge does. */
+/* The badge is now the only thing carrying the dataset's colour, so it takes the
+   palette at full strength rather than a wash of it. It rides on the title line,
+   shrinking last so a long title wraps before the badge does. */
 .variable-option-badge {
   flex: 0 0 auto;
   align-self: flex-start;
   padding: 1px 6px;
   border-radius: 999px;
-  background: color-mix(in srgb, #fff 62%, transparent);
-  /* Fixed ink, not a tint of the dataset's own darkest shade: REPDEM's darkest
-     is a light orange, and darkening it enough to read on a pale badge left the
-     other two nearly black anyway. The row's fill already says which dataset
-     this is. */
+  border: 1px solid var(--ds-2);
+  background: var(--ds-4);
+  /* Fixed dark ink, not a tint of `--ds-1`: REPDEM's darkest shade is a light
+     orange, so there is no one text colour derived from the palette that reads
+     on all three badges. */
   color: var(--text);
   font-size: 0.64rem;
   font-weight: 700;
@@ -446,9 +377,10 @@ body {
   white-space: nowrap;
 }
 
-/* A selected row is a shade darker, so the badge lightens to keep its edge. */
+/* The selected row goes dark, so its badge keeps its own light fill and gains a
+   white edge to separate it from the accent behind. */
 .variable-option.is-selected .variable-option-badge {
-  background: color-mix(in srgb, #fff 78%, transparent);
+  border-color: #fff;
 }
 
 .variable-option-coverage {
@@ -503,37 +435,15 @@ body {
   opacity: 0.9;
 }
 
-/* A selected row flips to a white background, where the inherited dark text
-   colour is already the right ink for both the bars and the baseline. */
+/* A selected row flips to the dark accent, where the inherited white text is
+   already the right ink for both the bars and the baseline. The bars keep a
+   little transparency so they read as a strip rather than as solid blocks. */
 .variable-option.is-selected .variable-option-coverage-svg {
-  opacity: 0.85;
+  opacity: 0.9;
 }
 
 .variable-option.is-selected .variable-option-coverage::before {
-  opacity: 0.22;
-}
-
-.variable-option-variant {
-  display: block;
-  margin-top: 1px;
-  font-size: 0.72rem;
-  font-weight: 500;
-  line-height: 1.2;
-  letter-spacing: 0.01em;
-  opacity: 0.86;
-}
-
-.variable-option.is-selected .variable-option-variant {
-  opacity: 1;
-}
-
-/* A row set to something other than Main says so in the row's own accent. */
-.variable-option.has-variant-selected .variable-option-variant {
-  font-weight: 700;
-}
-
-.variable-option.is-selected.has-variant-selected .variable-option-variant {
-  color: var(--accent);
+  opacity: 0.45;
 }
 
 /* Direct children only: the filter chips and the per-row version carets are
@@ -559,82 +469,6 @@ body {
 
 #datasetCitation {
   margin-top: auto;
-}
-
-/* Version menu: body-level and fixed, like the hover card, because the sidebar
-   and the variable list both scroll and would clip a menu parented in the row. */
-.variant-menu {
-  position: fixed;
-  z-index: 1300;
-  box-sizing: border-box;
-  width: 268px;
-  max-width: calc(100vw - 24px);
-  max-height: min(340px, calc(100vh - 24px));
-  overflow-y: auto;
-  padding: 6px;
-  border: 1px solid var(--panel-border);
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.24);
-  color: var(--text);
-}
-
-.variant-menu-title {
-  margin: 2px 6px 6px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-#controls .variant-menu-item,
-.variant-menu-item {
-  display: block;
-  width: 100%;
-  margin: 0;
-  padding: 6px 8px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.variant-menu-item:hover {
-  background: color-mix(in srgb, var(--accent) 10%, #fff);
-}
-
-.variant-menu-item:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.variant-menu-item[aria-checked="true"] {
-  background: var(--accent);
-  color: #fff;
-}
-
-.variant-menu-item-label {
-  display: block;
-  font-size: 0.85rem;
-  font-weight: 600;
-  line-height: 1.25;
-}
-
-.variant-menu-item-key {
-  display: block;
-  margin-top: 1px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.7rem;
-  line-height: 1.2;
-  color: var(--muted);
-}
-
-.variant-menu-item[aria-checked="true"] .variant-menu-item-key {
-  color: rgba(255, 255, 255, 0.82);
 }
 
 /* Variable hover card: sits on <body> and is placed in viewport coordinates by
