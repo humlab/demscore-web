@@ -224,15 +224,34 @@ export class MetadataController extends BaseController {
     this.variableMetaCloseBtn = this.getEl("variableMetaCloseBtn");
     this.variableMetaContent = this.getEl("variableMetaContent");
     this.variableList = this.getEl("variableList");
+    this.mobileControls = this.getEl("mobileControls");
+    this.mobileVariablePickerBtn = this.getEl("mobileVariablePickerBtn");
+    this.mobileSelectedDataset = this.getEl("mobileSelectedDataset");
+    this.mobileSelectedTitle = this.getEl("mobileSelectedTitle");
+    this.mobileSelectedMeta = this.getEl("mobileSelectedMeta");
+    this.mobileVariableInfoBtn = this.getEl("mobileVariableInfoBtn");
+    this.mobileSourceBtn = this.getEl("mobileSourceBtn");
+    this.mobileCodebookLink = this.getEl("mobileCodebookLink");
+    this.mobileVariablePickerDialog = this.getEl("mobileVariablePickerDialog");
+    this.mobileVariablePickerCloseBtn = this.getEl("mobileVariablePickerCloseBtn");
+    this.mobileVariableSearch = this.getEl("mobileVariableSearch");
+    this.mobileTopicChips = this.getEl("mobileTopicChips");
+    this.mobileVariablePickerList = this.getEl("mobileVariablePickerList");
+    this.mobileSourceDialog = this.getEl("mobileSourceDialog");
+    this.mobileSourceCloseBtn = this.getEl("mobileSourceCloseBtn");
+    this.mobileSourceContent = this.getEl("mobileSourceContent");
     this.variableTooltip = this.getEl("variableTooltip");
     this.variableTooltipTitle = this.getEl("variableTooltipTitle");
     this.variableTooltipKey = this.getEl("variableTooltipKey");
     this.variableTooltipBody = this.getEl("variableTooltipBody");
+    this.mobilePickerTopics = new Set();
+    this.mobilePickerQuery = "";
   }
 
   async initialize() {
     this.renderDatasetChips();
     this.renderTopicChips();
+    this.renderMobileTopicChips();
     this.applyDatasetChrome(this.state.dataset);
     // One list now holds every dataset's rows, and a row is titled by its
     // dataset's metadata, so all of it has to be in before the first render —
@@ -243,6 +262,8 @@ export class MetadataController extends BaseController {
     this.refreshCitation(this.state.dataset);
     this.refreshCodebookLink(this.state.dataset);
     this.refreshVariableMetadataPanel();
+    this.refreshMobileSelectionSummary();
+    this.refreshMobilePicker();
   }
 
   getDatasetTitle(ds, fallbackKey) {
@@ -317,6 +338,44 @@ export class MetadataController extends BaseController {
     this.syncFilterChipState();
   }
 
+  renderMobileTopicChips() {
+    this.mobileTopicChips.innerHTML = "";
+
+    const allChip = document.createElement("button");
+    allChip.type = "button";
+    allChip.className = "mobile-topic-chip is-active";
+    allChip.dataset.topic = "";
+    allChip.setAttribute("aria-pressed", "true");
+    allChip.textContent = "All";
+    this.mobileTopicChips.appendChild(allChip);
+
+    for (const id of this.topicsConfig.order) {
+      const topic = this.topicsConfig.topics.get(id);
+      if (!topic) continue;
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "mobile-topic-chip";
+      chip.dataset.topic = id;
+      chip.setAttribute("aria-pressed", "false");
+      if (topic.description) chip.title = topic.description;
+      chip.textContent = topic.label;
+      this.mobileTopicChips.appendChild(chip);
+    }
+
+    this.mobileTopicChips.hidden = this.topicsConfig.order.length === 0;
+    this.syncMobileTopicChipState();
+  }
+
+  syncMobileTopicChipState() {
+    const allActive = this.mobilePickerTopics.size === 0;
+    for (const chip of this.mobileTopicChips.querySelectorAll(".mobile-topic-chip")) {
+      const topic = chip.dataset.topic || "";
+      const on = topic ? this.mobilePickerTopics.has(topic) : allActive;
+      chip.classList.toggle("is-active", on);
+      chip.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
+
   syncFilterChipState() {
     for (const [key, chip] of this.datasetTabButtons) {
       const on = this.activeDatasets.has(key);
@@ -361,33 +420,103 @@ export class MetadataController extends BaseController {
       void this.selectVariable(datasetKey, variable, { onBeforeDatasetChange, onVariableChange });
     });
 
-    this.variableMetaBtn.addEventListener("click", async () => {
-      if (this.variableMetaBtn.disabled) return;
-      const currentDataset = this.state.dataset;
-      const currentVariable = this.state.variable;
-
-      this.variableMetaBtn.disabled = true;
-      await this.ensureVariableFullMetadata(currentDataset, currentVariable);
-      if (this.state.dataset !== currentDataset || this.state.variable !== currentVariable) {
-        this.refreshVariableMetadataPanel();
-        return;
-      }
-
-      this.refreshVariableMetadataPanel();
-      if (this.variableMetaBtn.disabled) return;
-
-      if (typeof this.variableMetaDialog.showModal === "function") {
-        this.variableMetaDialog.showModal();
-      } else {
-        this.variableMetaDialog.setAttribute("open", "");
-      }
+    this.variableMetaBtn.addEventListener("click", () => {
+      void this.openVariableMetadataDialog();
     });
 
     this.variableMetaCloseBtn.addEventListener("click", () => {
       this.closeVariableMetadataDialog();
     });
 
+    this.mobileVariableInfoBtn.addEventListener("click", () => {
+      void this.openVariableMetadataDialog();
+    });
+
+    this.mobileVariablePickerBtn.addEventListener("click", () => {
+      this.openDialog(this.mobileVariablePickerDialog);
+      this.refreshMobilePicker();
+      window.setTimeout(() => this.mobileVariableSearch.focus(), 0);
+    });
+
+    this.mobileVariablePickerCloseBtn.addEventListener("click", () => {
+      this.closeDialog(this.mobileVariablePickerDialog);
+    });
+
+    this.mobileVariableSearch.addEventListener("input", () => {
+      this.mobilePickerQuery = this.mobileVariableSearch.value.trim().toLowerCase();
+      this.refreshMobilePicker();
+    });
+
+    this.mobileTopicChips.addEventListener("click", (event) => {
+      const chip = event.target.closest(".mobile-topic-chip");
+      if (!chip || !this.mobileTopicChips.contains(chip)) return;
+      const topic = chip.dataset.topic || "";
+      if (!topic) {
+        this.mobilePickerTopics.clear();
+      } else if (this.mobilePickerTopics.has(topic)) {
+        this.mobilePickerTopics.delete(topic);
+      } else {
+        this.mobilePickerTopics.add(topic);
+      }
+      this.syncMobileTopicChipState();
+      this.refreshMobilePicker();
+    });
+
+    this.mobileVariablePickerList.addEventListener("click", (event) => {
+      const option = event.target.closest(".mobile-picker-option");
+      if (!option || !this.mobileVariablePickerList.contains(option)) return;
+      const datasetKey = option.dataset.dataset;
+      const variable = option.dataset.variable;
+      if (!datasetKey || !variable) return;
+      this.closeDialog(this.mobileVariablePickerDialog);
+      void this.selectVariable(datasetKey, variable, { onBeforeDatasetChange, onVariableChange });
+    });
+
+    this.mobileSourceBtn.addEventListener("click", () => {
+      this.refreshMobileSourceDialog();
+      if (this.mobileSourceBtn.disabled) return;
+      this.openDialog(this.mobileSourceDialog);
+    });
+
+    this.mobileSourceCloseBtn.addEventListener("click", () => {
+      this.closeDialog(this.mobileSourceDialog);
+    });
+
     this.bindVariableTooltip();
+  }
+
+  openDialog(dialog) {
+    if (typeof dialog.showModal === "function") {
+      dialog.showModal();
+    } else {
+      dialog.setAttribute("open", "");
+    }
+  }
+
+  closeDialog(dialog) {
+    if (typeof dialog.close === "function") {
+      dialog.close();
+      return;
+    }
+    dialog.removeAttribute("open");
+  }
+
+  async openVariableMetadataDialog() {
+    if (this.variableMetaBtn.disabled) return;
+    const currentDataset = this.state.dataset;
+    const currentVariable = this.state.variable;
+
+    this.variableMetaBtn.disabled = true;
+    this.mobileVariableInfoBtn.disabled = true;
+    await this.ensureVariableFullMetadata(currentDataset, currentVariable);
+    if (this.state.dataset !== currentDataset || this.state.variable !== currentVariable) {
+      this.refreshVariableMetadataPanel();
+      return;
+    }
+
+    this.refreshVariableMetadataPanel();
+    if (this.variableMetaBtn.disabled) return;
+    this.openDialog(this.variableMetaDialog);
   }
 
   async changeDataset(datasetKey, { onBeforeDatasetChange, onDatasetChange } = {}) {
@@ -408,6 +537,8 @@ export class MetadataController extends BaseController {
     this.refreshCitation(datasetKey);
     this.refreshCodebookLink(datasetKey);
     this.refreshVariableMetadataPanel();
+    this.refreshMobileSelectionSummary();
+    this.refreshMobilePicker();
     if (typeof onDatasetChange === "function") {
       await onDatasetChange(datasetKey);
     }
@@ -974,6 +1105,8 @@ export class MetadataController extends BaseController {
     this.rememberVariableChoice(datasetKey, variable);
     this.markSelectedVariableOption(datasetKey, variable);
     this.refreshVariableMetadataPanel();
+    this.refreshMobileSelectionSummary();
+    this.refreshMobilePicker();
     if (typeof onVariableChange === "function") {
       onVariableChange();
     }
@@ -1023,6 +1156,7 @@ export class MetadataController extends BaseController {
     this.renderFilterSummary(rows.length);
     this.markSelectedVariableOption(this.state.dataset, this.state.variable);
     this.scrollSelectedVariableIntoView();
+    this.refreshMobileSelectionSummary();
   }
 
   // Every dataset's main variables in one list, ordered by the title the reader
@@ -1064,6 +1198,133 @@ export class MetadataController extends BaseController {
     });
   }
 
+  getMobilePickerRows() {
+    const query = this.mobilePickerQuery;
+    return this.getAllVariableRows().filter((row) => {
+      if (this.mobilePickerTopics.size > 0 && !row.topics.some((id) => this.mobilePickerTopics.has(id))) {
+        return false;
+      }
+      if (!query) return true;
+      const dataset = this.meta.datasets[row.datasetKey];
+      const topicText = row.topics
+        .map((id) => this.topicsConfig.topics.get(id)?.label || "")
+        .filter(Boolean)
+        .join(" ");
+      return [
+        row.title,
+        row.mainVariable,
+        row.datasetKey,
+        this.getDatasetLabel(dataset, row.datasetKey),
+        this.getDatasetTitle(dataset, row.datasetKey),
+        topicText,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    });
+  }
+
+  getPrimaryTopic(row) {
+    const topicId = row.topics.find((id) => this.topicsConfig.topics.has(id));
+    if (!topicId) return { id: "", label: "Other variables", sort: Number.MAX_SAFE_INTEGER };
+    const orderIndex = this.topicsConfig.order.indexOf(topicId);
+    return {
+      id: topicId,
+      label: this.topicsConfig.topics.get(topicId)?.label || topicId,
+      sort: orderIndex === -1 ? Number.MAX_SAFE_INTEGER - 1 : orderIndex,
+    };
+  }
+
+  getVariableCoverageRange(datasetKey, variable) {
+    const data = this.getCoverageStripData(datasetKey, variable);
+    if (!data) return "";
+    const { entry } = data;
+    if (!Number.isFinite(entry.yearMin) || !Number.isFinite(entry.yearMax)) return "";
+    return entry.yearMin === entry.yearMax ? String(entry.yearMin) : `${entry.yearMin}-${entry.yearMax}`;
+  }
+
+  buildMobilePickerOption(row) {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "mobile-picker-option";
+    option.dataset.dataset = row.datasetKey;
+    option.dataset.variable = row.mainVariable;
+    option.setAttribute("role", "option");
+    this.applyDatasetPalette(option, row.datasetKey);
+
+    const selected = row.datasetKey === this.state.dataset && row.mainVariable === this.state.variable;
+    option.classList.toggle("is-selected", selected);
+    option.setAttribute("aria-selected", selected ? "true" : "false");
+
+    const titleRow = document.createElement("span");
+    titleRow.className = "mobile-picker-option-title-row";
+
+    const title = document.createElement("span");
+    title.className = "mobile-picker-option-title";
+    title.textContent = row.title;
+    titleRow.appendChild(title);
+
+    const badge = document.createElement("span");
+    badge.className = "variable-option-badge";
+    badge.textContent = this.getDatasetLabel(this.meta.datasets[row.datasetKey], row.datasetKey);
+    titleRow.appendChild(badge);
+    option.appendChild(titleRow);
+
+    const meta = document.createElement("span");
+    meta.className = "mobile-picker-option-meta";
+    const range = this.getVariableCoverageRange(row.datasetKey, row.mainVariable);
+    meta.textContent = range ? `${row.mainVariable} / ${range}` : row.mainVariable;
+    option.appendChild(meta);
+
+    const coverage = document.createElement("span");
+    coverage.className = "variable-option-coverage mobile-picker-option-coverage";
+    option.appendChild(coverage);
+    this.renderCoverageStrip(row.datasetKey, option, row.mainVariable);
+
+    return option;
+  }
+
+  refreshMobilePicker() {
+    const rows = this.getMobilePickerRows();
+    this.mobileVariablePickerList.innerHTML = "";
+
+    if (rows.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "mobile-picker-empty";
+      empty.textContent = "No variables match this search.";
+      this.mobileVariablePickerList.appendChild(empty);
+      return;
+    }
+
+    const groups = new Map();
+    for (const row of rows) {
+      const topic = this.getPrimaryTopic(row);
+      if (!groups.has(topic.id)) {
+        groups.set(topic.id, { ...topic, rows: [] });
+      }
+      groups.get(topic.id).rows.push(row);
+    }
+
+    const sortedGroups = [...groups.values()].sort(
+      (a, b) => a.sort - b.sort || VARIABLE_COLLATOR.compare(a.label, b.label),
+    );
+
+    for (const group of sortedGroups) {
+      const section = document.createElement("section");
+      section.className = "mobile-picker-group";
+
+      const heading = document.createElement("h3");
+      heading.className = "mobile-picker-group-title";
+      heading.textContent = group.label;
+      section.appendChild(heading);
+
+      for (const row of group.rows) {
+        section.appendChild(this.buildMobilePickerOption(row));
+      }
+      this.mobileVariablePickerList.appendChild(section);
+    }
+  }
+
   getTopicsFor(datasetKey, mainVariable) {
     return this.topicsConfig.byVariable.get(`${datasetKey}:${mainVariable}`) || [];
   }
@@ -1086,6 +1347,33 @@ export class MetadataController extends BaseController {
     this.filterSummary.hidden = false;
   }
 
+  refreshMobileSelectionSummary() {
+    const datasetKey = this.state.dataset;
+    const variable = this.state.variable;
+    const dataset = this.meta.datasets[datasetKey];
+    const title = this.getVariableTitle(datasetKey, variable);
+    const topics = this.getTopicsFor(datasetKey, variable);
+    const topicLabel = this.topicsConfig.topics.get(topics[0])?.label || "";
+    const range = this.getVariableCoverageRange(datasetKey, variable);
+
+    this.applyDatasetPalette(this.mobileSelectedDataset, datasetKey);
+    this.mobileSelectedDataset.textContent = this.getDatasetLabel(dataset, datasetKey);
+    this.mobileSelectedTitle.textContent = title;
+    this.mobileSelectedMeta.textContent = [topicLabel, range].filter(Boolean).join(" / ") || variable;
+  }
+
+  refreshMobileSourceDialog() {
+    const citation = this.varMetaByDataset[this.state.dataset]?.citation;
+    const datasetTitle = this.getDatasetTitle(this.meta.datasets[this.state.dataset], this.state.dataset);
+    if (citation) {
+      this.mobileSourceContent.textContent = `${datasetTitle}: ${citation}`;
+      this.mobileSourceBtn.disabled = false;
+    } else {
+      this.mobileSourceContent.textContent = "No dataset source is available for the selected variable.";
+      this.mobileSourceBtn.disabled = true;
+    }
+  }
+
   refreshCitation(datasetKey) {
     const citation = this.varMetaByDataset[datasetKey]?.citation;
     if (citation) {
@@ -1094,6 +1382,7 @@ export class MetadataController extends BaseController {
     } else {
       this.datasetCitation.hidden = true;
     }
+    this.refreshMobileSourceDialog();
   }
 
   refreshCodebookLink(datasetKey) {
@@ -1101,9 +1390,15 @@ export class MetadataController extends BaseController {
     if (typeof codebookUrl === "string" && codebookUrl.length > 0) {
       this.datasetCodebookLink.href = codebookUrl;
       this.datasetCodebookWrap.hidden = false;
+      this.mobileCodebookLink.href = codebookUrl;
+      this.mobileCodebookLink.removeAttribute("aria-disabled");
+      this.mobileCodebookLink.hidden = false;
     } else {
       this.datasetCodebookLink.removeAttribute("href");
       this.datasetCodebookWrap.hidden = true;
+      this.mobileCodebookLink.removeAttribute("href");
+      this.mobileCodebookLink.setAttribute("aria-disabled", "true");
+      this.mobileCodebookLink.hidden = true;
     }
   }
 
@@ -1153,6 +1448,7 @@ export class MetadataController extends BaseController {
 
     if (!hasSummary) {
       this.variableMetaBtn.disabled = true;
+      this.mobileVariableInfoBtn.disabled = true;
       if (this.variableMetaDialog.open || this.variableMetaDialog.hasAttribute("open")) {
         this.closeVariableMetadataDialog();
       }
@@ -1162,6 +1458,7 @@ export class MetadataController extends BaseController {
     const metaForVariable = this.getCachedFullVariableMetadata(this.state.dataset, this.state.variable);
     if (metaForVariable === null) {
       this.variableMetaBtn.disabled = true;
+      this.mobileVariableInfoBtn.disabled = true;
       if (this.variableMetaDialog.open || this.variableMetaDialog.hasAttribute("open")) {
         this.closeVariableMetadataDialog();
       }
@@ -1170,6 +1467,7 @@ export class MetadataController extends BaseController {
 
     if (metaForVariable === undefined) {
       this.variableMetaBtn.disabled = false;
+      this.mobileVariableInfoBtn.disabled = false;
       return;
     }
 
@@ -1208,6 +1506,7 @@ export class MetadataController extends BaseController {
 
     const hasContent = this.variableMetaContent.children.length > 0;
     this.variableMetaBtn.disabled = !hasContent;
+    this.mobileVariableInfoBtn.disabled = !hasContent;
     if (!hasContent && (this.variableMetaDialog.open || this.variableMetaDialog.hasAttribute("open"))) {
       this.closeVariableMetadataDialog();
     }

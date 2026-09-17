@@ -13,6 +13,20 @@ const HEX_OUTLINE_LAYER = "hex_outline";
 // Adjacent quantile classes can be a shade apart, which is the whole reason the
 // outlines exist, so they start on and the toggle is there to take them off.
 const AREA_OUTLINES_DEFAULT = true;
+// ntile(7) in demscore.country_scores() is what both the map and the legend are
+// built on, so the swatch count is not a styling choice.
+const LEGEND_CLASS_COUNT = 7;
+// Shorter than the variable list's 170ms: the swatches are small and next to
+// each other, so a pointer crossing the bar is usually on its way somewhere,
+// but the card it opens is one line of numbers rather than a whole record.
+const LEGEND_TIP_HOVER_DELAY_MS = 90;
+const LEGEND_TIP_GAP_PX = 12;
+const LEGEND_TIP_VIEWPORT_MARGIN_PX = 10;
+const LEGEND_TIP_ARROW_INSET_PX = 14;
+// Hovering the bar during a scrub can collect a class-break response per year;
+// the cache keeps the hovered ones, not the whole timeline.
+const CLASS_BREAKS_CACHE_LIMIT = 120;
+
 const LEGEND_COLORS_NEGATIVE = ["#313695", "#4575b4", "#74add1", "#abd9e9", "#fdae61", "#f46d43", "#d73027"];
 const LEGEND_COLORS_NEUTRAL = ["#d1fae5", "#a7f3d0", "#6ee7b7", "#34d399", "#10b981", "#059669", "#047857"];
 // The map reads as one world, so it never zooms out past the point where that
@@ -43,6 +57,32 @@ const HEX_RESOLUTION_STOPS = [
 // reading anyone wants.
 function formatZoom(zoom) {
   return String(Math.round(zoom * 100) / 100);
+}
+
+// Variables range from shares in [0, 1] to GDP figures in the millions, and the
+// legend has one narrow line to say where a class starts and ends, so the
+// magnitude picks the form rather than a single fixed precision.
+function formatLegendValue(value) {
+  if (!Number.isFinite(value)) return "n/a";
+  const magnitude = Math.abs(value);
+  if (magnitude >= 1e6) {
+    return value.toLocaleString(undefined, { notation: "compact", maximumSignificantDigits: 3 });
+  }
+  if (magnitude > 0 && magnitude < 1e-3) {
+    return value.toExponential(1);
+  }
+  const decimals = magnitude >= 100 ? 0 : magnitude >= 1 ? 2 : 3;
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+function formatLegendRange(classBreak) {
+  const low = formatLegendValue(classBreak?.min);
+  const high = formatLegendValue(classBreak?.max);
+  // A class can hold a single country, or several that share a value.
+  return low === high ? low : `${low} \u2013 ${high}`;
 }
 
 function compileLegendMeaning(legendMeta) {
@@ -93,12 +133,17 @@ export class MapController extends BaseController {
 
     this.loadingIndicator = this.getEl("loading-indicator");
     this.legendDock = this.getEl("mapLegendDock");
+    this.legendTip = this.getEl("legendTooltip");
+    this.legendTipClassEl = this.getEl("legendTooltipClass");
+    this.legendTipRangeEl = this.getEl("legendTooltipRange");
+    this.legendTipCountEl = this.getEl("legendTooltipCount");
 
     this.map = null;
     this.layerControl = null;
     this.hexLayerGroup = null;
     this.activeWmsLayer = null;
     this.pendingWmsLayer = null;
+    this.pendingLayerOnReady = null;
 
     this.legend = null;
     this.legendTitleEl = null;
@@ -107,6 +152,14 @@ export class MapController extends BaseController {
     this.legendLowEl = null;
     this.legendHighEl = null;
     this.legendNoteEl = null;
+    this.legendSwatchEls = [];
+
+    // Keyed dataset|variable|year. A value of null is a remembered failure, so a
+    // pointer resting on the bar does not retry the same request per swatch.
+    this.classBreaksCache = new Map();
+    this.classBreaksRequests = new Map();
+    this.legendTipTimer = null;
+    this.legendTipKey = null;
 
     this.loadingRevealTimer = null;
     this.demscoreBasemapPaneName = "demscoreBasemapPane";
@@ -230,8 +283,13 @@ export class MapController extends BaseController {
 
   updateHexLayerForZoom() {
     const nextHexSize = String(this.hexSizeFromZoom());
-    const activeHexSize = String(this.activeWmsLayer.wmsParams?.hex_size ?? "");
-    if (activeHexSize === nextHexSize) return;
+    // A pending layer is what the map is about to show, so it -- not the layer
+    // still on screen -- is what the new zoom has to agree with. Measuring
+    // against the active layer restarted swaps that already carried the right
+    // mesh, which during autoplay cost a frame every time.
+    const incomingLayer = this.pendingWmsLayer || this.activeWmsLayer;
+    const incomingHexSize = String(incomingLayer?.wmsParams?.hex_size ?? "");
+    if (incomingHexSize === nextHexSize) return;
 
     this.loadNextLayer();
   }
@@ -300,6 +358,10 @@ export class MapController extends BaseController {
   }
 
   stopPendingLayerSwap() {
+    // Whatever was waiting on this swap is cancelled along with it. A reload that
+    // means to keep the wait alive carries the continuation over itself first --
+    // see loadNextLayer.
+    this.pendingLayerOnReady = null;
     if (!this.pendingWmsLayer) return;
     this.pendingWmsLayer.off("load");
     this.hexLayerGroup.removeLayer(this.pendingWmsLayer);
@@ -404,12 +466,20 @@ export class MapController extends BaseController {
   }
 
   loadNextLayer(onReady) {
+    // A reload can land while a swap is still in flight -- a zoom crossing a hex
+    // resolution stop mid-autoplay is the usual way. The superseded layer's
+    // continuation moves onto the new layer instead of dying with it: autoplay
+    // schedules its next year from that callback, so dropping it froze the
+    // timeline while the button still read "Pause".
+    const carriedOnReady = this.pendingLayerOnReady;
     this.stopPendingLayerSwap();
+    const readyCallback = typeof onReady === "function" ? onReady : carriedOnReady;
 
     const nextLayer = this.createWmsLayer();
     this.hexLayerGroup.addLayer(nextLayer);
     nextLayer.setOpacity(0);
     this.pendingWmsLayer = nextLayer;
+    this.pendingLayerOnReady = readyCallback;
 
     this.showLoadingIndicator();
     nextLayer.once("load", () => {
@@ -418,8 +488,9 @@ export class MapController extends BaseController {
       this.hexLayerGroup.removeLayer(this.activeWmsLayer);
       this.activeWmsLayer = nextLayer;
       this.pendingWmsLayer = null;
+      this.pendingLayerOnReady = null;
       this.hideLoadingIndicator();
-      if (onReady) onReady();
+      if (readyCallback) readyCallback();
     });
   }
 
@@ -459,6 +530,175 @@ export class MapController extends BaseController {
     this.legendNoteEl = div.querySelector(".legend-note");
     this.legendDock.append(div);
     this.legend = div;
+
+    // The swatches are built once and only recoloured afterwards: rebuilding the
+    // bar per refresh would drop the focus and the hover the tooltip hangs off.
+    this.legendBarEl.innerHTML = Array.from({ length: LEGEND_CLASS_COUNT }, (_, index) =>
+      `<span class="legend-swatch" data-class-index="${index + 1}" role="img" tabindex="0"></span>`)
+      .join("");
+    this.legendSwatchEls = Array.from(this.legendBarEl.querySelectorAll(".legend-swatch"));
+    this.bindLegendTooltip();
+  }
+
+  bindLegendTooltip() {
+    this.legendBarEl.addEventListener("pointerover", (event) => {
+      // Touch and pen have no hover to rest on, and the bar is not a control.
+      if (event.pointerType && event.pointerType !== "mouse") return;
+      const swatch = event.target.closest(".legend-swatch");
+      if (!swatch) return;
+      this.scheduleLegendTip(swatch);
+    });
+    this.legendBarEl.addEventListener("pointerleave", () => this.hideLegendTip());
+
+    // Keyboard reaches the same numbers: each swatch is a tab stop.
+    this.legendBarEl.addEventListener("focusin", (event) => {
+      const swatch = event.target.closest(".legend-swatch");
+      if (swatch) void this.showLegendTip(swatch);
+    });
+    this.legendBarEl.addEventListener("focusout", () => this.hideLegendTip());
+
+    // The card is placed in viewport coordinates, so anything that moves the bar
+    // under it drops it rather than leaving it pointing at nothing.
+    window.addEventListener("resize", () => this.hideLegendTip());
+    document.addEventListener("scroll", () => this.hideLegendTip(), true);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") this.hideLegendTip();
+    });
+  }
+
+  scheduleLegendTip(swatch) {
+    const key = `${this.classBreaksKey()}#${swatch.dataset.classIndex}`;
+    if (key === this.legendTipKey) return;
+    this.hideLegendTip();
+    this.legendTipKey = key;
+    this.legendTipTimer = window.setTimeout(() => {
+      void this.showLegendTip(swatch);
+    }, LEGEND_TIP_HOVER_DELAY_MS);
+  }
+
+  async showLegendTip(swatch) {
+    const breaksKey = this.classBreaksKey();
+    const classIndex = Number.parseInt(swatch.dataset.classIndex, 10);
+    if (!Number.isInteger(classIndex)) return;
+
+    const tipKey = `${breaksKey}#${classIndex}`;
+    this.legendTipKey = tipKey;
+
+    let classes = this.classBreaksCache.get(breaksKey);
+    if (classes === undefined) {
+      // Show the class straight away and let the numbers arrive; the first hover
+      // on a year is the only one that waits, the rest are served from cache.
+      this.renderLegendTip(classIndex, undefined);
+      this.placeLegendTip(swatch);
+      classes = await this.ensureClassBreaks(breaksKey);
+      // The pointer may have left the bar, or the year moved on, while we waited.
+      if (this.legendTipKey !== tipKey) return;
+    }
+
+    this.renderLegendTip(classIndex, classes);
+    this.placeLegendTip(swatch);
+  }
+
+  hideLegendTip() {
+    window.clearTimeout(this.legendTipTimer);
+    this.legendTipTimer = null;
+    this.legendTipKey = null;
+    this.legendTip.hidden = true;
+  }
+
+  renderLegendTip(classIndex, classes) {
+    const classBreak = this.findClassBreak(classes, classIndex);
+    this.legendTipClassEl.textContent = `Class ${classIndex} of ${LEGEND_CLASS_COUNT}`;
+
+    if (classes === undefined) {
+      this.legendTipRangeEl.textContent = "Loading\u2026";
+      this.legendTipCountEl.hidden = true;
+    } else if (!classBreak) {
+      // Either the lookup failed or the year holds no country values to class.
+      this.legendTipRangeEl.textContent = "Value span unavailable";
+      this.legendTipCountEl.hidden = true;
+    } else {
+      this.legendTipRangeEl.textContent = formatLegendRange(classBreak);
+      const count = classBreak.countryCount;
+      this.legendTipCountEl.textContent = count === 1 ? "1 country" : `${count} countries`;
+      this.legendTipCountEl.hidden = !Number.isFinite(count);
+    }
+
+    this.legendTip.hidden = false;
+  }
+
+  placeLegendTip(swatch) {
+    const anchor = swatch.getBoundingClientRect();
+    const card = this.legendTip;
+    const { offsetWidth: width, offsetHeight: height } = card;
+
+    // The legend sits at the foot of the map, so the card goes above the bar and
+    // only flips below when the dock has been pushed up against the top.
+    const spaceAbove = anchor.top - LEGEND_TIP_GAP_PX - LEGEND_TIP_VIEWPORT_MARGIN_PX;
+    const placeBelow = spaceAbove < height;
+    card.classList.toggle("is-below", placeBelow);
+
+    const top = placeBelow ? anchor.bottom + LEGEND_TIP_GAP_PX : anchor.top - LEGEND_TIP_GAP_PX - height;
+    const anchorCenter = anchor.left + anchor.width / 2;
+    const maxLeft = window.innerWidth - width - LEGEND_TIP_VIEWPORT_MARGIN_PX;
+    const left = Math.min(
+      Math.max(anchorCenter - width / 2, LEGEND_TIP_VIEWPORT_MARGIN_PX),
+      Math.max(maxLeft, LEGEND_TIP_VIEWPORT_MARGIN_PX),
+    );
+
+    card.style.left = `${left}px`;
+    card.style.top = `${Math.max(top, LEGEND_TIP_VIEWPORT_MARGIN_PX)}px`;
+    // Keep the arrow on the hovered swatch even where the card is clamped.
+    const arrowLeft = Math.min(Math.max(anchorCenter - left, LEGEND_TIP_ARROW_INSET_PX), width - LEGEND_TIP_ARROW_INSET_PX);
+    card.style.setProperty("--arrow-left", `${arrowLeft}px`);
+  }
+
+  classBreaksKey(dataset = this.state.dataset, variable = this.state.variable, year = this.state.year) {
+    return `${dataset}|${variable}|${year}`;
+  }
+
+  findClassBreak(classes, classIndex) {
+    if (!Array.isArray(classes)) return null;
+    return classes.find((entry) => entry.classIndex === classIndex) || null;
+  }
+
+  // The map colours by quantile, which says nothing about where a class starts
+  // and ends; these are those edges, from the same country_scores() call the WMS
+  // layer classes on.
+  ensureClassBreaks(key) {
+    if (this.classBreaksCache.has(key)) return Promise.resolve(this.classBreaksCache.get(key));
+    const inFlight = this.classBreaksRequests.get(key);
+    if (inFlight) return inFlight;
+
+    const [dataset, variable, year] = key.split("|");
+    const query = new URLSearchParams({ dataset, variable, year });
+    const request = fetch(`/api/class-breaks?${query}`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Could not load class breaks: ${response.status}`);
+        return response.json();
+      })
+      .then((payload) => (Array.isArray(payload?.classes) ? payload.classes : []))
+      .catch((error) => {
+        console.error(error);
+        return null;
+      })
+      .then((classes) => {
+        this.rememberClassBreaks(key, classes);
+        return classes;
+      })
+      .finally(() => this.classBreaksRequests.delete(key));
+
+    this.classBreaksRequests.set(key, request);
+    return request;
+  }
+
+  rememberClassBreaks(key, classes) {
+    this.classBreaksCache.set(key, classes);
+    // Map iterates in insertion order, so the oldest entry is the first one out.
+    while (this.classBreaksCache.size > CLASS_BREAKS_CACHE_LIMIT) {
+      const oldestKey = this.classBreaksCache.keys().next().value;
+      this.classBreaksCache.delete(oldestKey);
+    }
   }
 
   refreshLegend() {
@@ -473,16 +713,26 @@ export class MapController extends BaseController {
     if (this.legendSubtitleEl) {
       this.legendSubtitleEl.textContent = `${variableTitle} (${this.state.variable}) - ${datasetTitle}, ${this.state.year}`;
     }
-    if (this.legendBarEl) {
-      this.legendBarEl.innerHTML = legendColors
-        .map((color) => `<span class="legend-swatch" style="background:${color}"></span>`)
-        .join("");
-    }
+    // Swatch i always stands for quantile class i + 1, low to high: the mapfile
+    // reorders the classes per polarity, and reversing the colours here is what
+    // keeps the bar reading left-to-right low-to-high whichever way it does.
+    this.legendSwatchEls.forEach((swatch, index) => {
+      swatch.style.background = legendColors[index];
+      swatch.setAttribute("aria-label", `Quantile class ${index + 1} of ${LEGEND_CLASS_COUNT}`);
+    });
     if (this.legendLowEl) this.legendLowEl.textContent = text.low;
     if (this.legendHighEl) this.legendHighEl.textContent = text.high;
     if (this.legendNoteEl) {
       const directionHint = this.legendDirectionHint(polarity);
       this.legendNoteEl.textContent = `${text.note} ${directionHint}`;
+    }
+
+    // The card on screen belongs to the variable-year that just left.
+    this.hideLegendTip();
+    // Autoplay walks a year per frame-ish; its breaks would be stale before
+    // anyone could hover them, so those are fetched on hover instead.
+    if (!this.state.isAutoPlaying) {
+      void this.ensureClassBreaks(this.classBreaksKey());
     }
 
     window.requestAnimationFrame(() => this.rebalanceLegendPosition());

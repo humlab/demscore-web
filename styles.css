@@ -82,6 +82,14 @@ body {
   height: auto;
 }
 
+.mobile-controls {
+  display: none;
+}
+
+.mobile-action-link[hidden] {
+  display: none;
+}
+
 .citation,
 .codebook-link {
   margin: 8px 0 10px;
@@ -701,6 +709,183 @@ body {
   padding: 14px 16px 18px;
 }
 
+.mobile-picker-dialog,
+.mobile-source-dialog {
+  width: min(720px, calc(100vw - 24px));
+  max-height: calc(100vh - 40px);
+  border: 1px solid #c4ccd8;
+  border-radius: 10px;
+  padding: 0;
+  background: #fff;
+  color: var(--text);
+}
+
+.mobile-picker-dialog::backdrop,
+.mobile-source-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.mobile-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.mobile-dialog-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.mobile-dialog-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #c4ccd8;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+}
+
+.mobile-dialog-close-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mobile-variable-search {
+  box-sizing: border-box;
+  display: block;
+  width: calc(100% - 28px);
+  margin: 12px 14px 8px;
+  padding: 9px 10px;
+  border: 1px solid #c4ccd8;
+  border-radius: 7px;
+  font: inherit;
+}
+
+.mobile-topic-chips {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding: 0 14px 10px;
+  scrollbar-width: thin;
+}
+
+.mobile-topic-chip {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.mobile-topic-chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.mobile-picker-list {
+  max-height: min(62vh, 620px);
+  overflow: auto;
+  padding: 0 10px 12px;
+}
+
+.mobile-picker-group + .mobile-picker-group {
+  margin-top: 8px;
+}
+
+.mobile-picker-group-title {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0 -2px 4px;
+  padding: 8px 6px 5px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.mobile-picker-option {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  padding: 8px 9px 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--ds-5) 24%, #fff);
+  color: var(--text);
+  text-align: left;
+}
+
+.mobile-picker-option + .mobile-picker-option {
+  margin-top: 4px;
+}
+
+.mobile-picker-option.is-selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, #fff);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.mobile-picker-option-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mobile-picker-option-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.9rem;
+  font-weight: 750;
+  line-height: 1.18;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.mobile-picker-option-meta {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-picker-option-coverage {
+  --coverage-track-height: 4px;
+  margin-top: 5px;
+  color: var(--ds-1);
+}
+
+.mobile-picker-empty,
+.mobile-source-content {
+  margin: 0;
+  padding: 14px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
 #controls label {
   display: block;
   margin: 10px 0 6px;
@@ -758,6 +943,19 @@ body {
   position: relative;
   height: var(--timeline-size);
   min-width: 0;
+}
+
+.timeline-slider-wrap::before {
+  position: absolute;
+  top: calc(var(--axis-y) - 24px);
+  left: -10px;
+  right: -10px;
+  height: 54px;
+  content: "";
+  z-index: 0;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.74);
+  pointer-events: none;
 }
 
 .timeline-preload-track {
@@ -1148,6 +1346,94 @@ body {
 .legend-swatch {
   flex: 1;
   height: 100%;
+  cursor: help;
+}
+
+/* The bar is one solid ramp, so the focus ring has to sit inside the swatch to
+   be visible at all; on the dark dock white reads better than the accent. */
+.legend-swatch:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: -3px;
+}
+
+/* Legend swatch hover card: like `.variable-tooltip` it sits on <body> and is
+   placed in viewport coordinates by `MapController.placeLegendTip()`, because
+   the legend dock clips anything that leaves it. It points down at the bar,
+   and flips to `.is-below` only where there is no room above. */
+.legend-tip {
+  position: fixed;
+  z-index: 1200;
+  box-sizing: border-box;
+  max-width: min(260px, calc(100vw - 24px));
+  padding: 8px 12px 9px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.24);
+  color: var(--text);
+  /* The card only ever follows the pointer's swatch; it must never eat the hover. */
+  pointer-events: none;
+}
+
+/* Two stacked triangles, the border one showing as a hairline behind the white
+   one -- same trick as the variable card, which points into the same photo. */
+.legend-tip::before,
+.legend-tip::after {
+  content: "";
+  position: absolute;
+  left: var(--arrow-left, 24px);
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+}
+
+.legend-tip::before {
+  bottom: -9px;
+  border: 8px solid transparent;
+  border-top-color: var(--panel-border);
+}
+
+.legend-tip::after {
+  bottom: -7px;
+  border: 7px solid transparent;
+  border-top-color: #ffffff;
+}
+
+.legend-tip.is-below::before {
+  bottom: auto;
+  top: -9px;
+  border-top-color: transparent;
+  border-bottom-color: var(--panel-border);
+}
+
+.legend-tip.is-below::after {
+  bottom: auto;
+  top: -7px;
+  border-top-color: transparent;
+  border-bottom-color: #ffffff;
+}
+
+.legend-tip-class {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.legend-tip-range {
+  margin: 2px 0 0;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  /* Digits line up as the pointer moves from class to class. */
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.legend-tip-count {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.2;
 }
 
 .legend-labels {
@@ -1241,7 +1527,7 @@ body {
 
 @media (max-width: 900px) {
   :root {
-    --map-legend-height: 132px;
+    --map-legend-height: 94px;
   }
 
   #app {
@@ -1252,7 +1538,139 @@ body {
   #controls {
     border-right: 0;
     border-bottom: 1px solid var(--panel-border);
-    max-height: 45vh;
+    max-height: none;
+    overflow: visible;
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 10px 9px;
+  }
+
+  #controls .app-title {
+    margin: 0 0 8px;
+  }
+
+  #controls .app-title img {
+    max-width: 148px;
+  }
+
+  #datasetSection,
+  #datasetCitation {
+    display: none;
+  }
+
+  .mobile-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  #controls .mobile-picker-trigger {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    margin: 0;
+    padding: 8px 9px;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--text);
+    text-align: left;
+  }
+
+  .mobile-picker-trigger svg {
+    width: 18px;
+    height: 18px;
+    color: var(--muted);
+  }
+
+  .mobile-selected-dataset {
+    flex: 0 0 auto;
+    max-width: 74px;
+    overflow: hidden;
+    padding: 4px 7px;
+    border: 1px solid color-mix(in srgb, var(--ds-2, var(--accent)) 60%, #fff);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ds-4, var(--accent)) 42%, #fff);
+    color: color-mix(in srgb, var(--ds-1, var(--accent)) 72%, #000);
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-selected-copy {
+    min-width: 0;
+  }
+
+  .mobile-selected-title,
+  .mobile-selected-meta {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-selected-title {
+    font-size: 0.94rem;
+    font-weight: 800;
+    line-height: 1.2;
+  }
+
+  .mobile-selected-meta {
+    margin-top: 1px;
+    color: var(--muted);
+    font-size: 0.72rem;
+    line-height: 1.2;
+  }
+
+  .mobile-action-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  #controls .mobile-action-button,
+  #controls .mobile-action-link {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-height: 34px;
+    width: 100%;
+    margin: 0;
+    padding: 7px 8px;
+    border: 1px solid var(--panel-border);
+    border-radius: 7px;
+    background: #fff;
+    color: var(--text);
+    font-size: 0.82rem;
+    font-weight: 750;
+    line-height: 1;
+    text-decoration: none;
+  }
+
+  #controls .mobile-action-button:hover,
+  #controls .mobile-action-link:hover {
+    border-color: var(--muted);
+    background: #f1f4f8;
+  }
+
+  #controls .mobile-action-button:disabled {
+    color: #8b96a6;
+    cursor: not-allowed;
+    background: #eef2f6;
+  }
+
+  #controls .mobile-action-link[hidden] {
+    display: none;
+  }
+
+  .mobile-action-button svg,
+  .mobile-action-link svg {
+    width: 15px;
+    height: 15px;
   }
 
   #map {
@@ -1261,17 +1679,55 @@ body {
   }
 
   .map-legend-dock {
-    padding: 18px 18px 20px;
-    border-top-width: 9px;
+    align-items: stretch;
+    padding: 9px 12px 10px;
+    border-top-width: 6px;
   }
 
   .map-legend {
     grid-template-columns: 1fr;
-    gap: 10px;
+    gap: 6px;
   }
 
   .legend-title {
-    margin-bottom: 3px;
+    margin-bottom: 1px;
+    font-size: 1rem;
+  }
+
+  .legend-subtitle {
+    overflow: hidden;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .legend-bar {
+    height: 12px;
+  }
+
+  .legend-labels {
+    margin-top: 4px;
+    font-size: 0.7rem;
+  }
+
+  .legend-note {
+    display: none;
+  }
+
+  .mobile-picker-dialog,
+  .mobile-source-dialog {
+    inset: auto 0 0;
+    width: 100%;
+    max-width: none;
+    max-height: calc(100dvh - 18px);
+    margin: auto 0 0;
+    border-width: 1px 0 0;
+    border-radius: 14px 14px 0 0;
+  }
+
+  .mobile-picker-list {
+    max-height: min(58vh, 560px);
   }
 
   #timeline-overlay {

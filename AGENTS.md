@@ -37,6 +37,7 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - Leaflet map setup, baselayers, zoom display
   - WMS layer lifecycle (active layer + pending layer for smooth swaps)
   - legend rendering and overlap rebalancing
+  - legend swatch hover card (which value span each colour stands for)
 - `src/DemscoreApp.js`
   - orchestrates app startup and shared state
   - timeline rendering/scrubbing
@@ -73,6 +74,10 @@ Runtime endpoints:
 - `GET /api/config/variable-topics`
 - `GET /api/config/variable-metadata/:dataset`
 - `GET /api/config/variable-metadata/:dataset/:variable`
+- `GET /api/class-breaks?dataset=&variable=&year=` — the seven quantile class spans behind the
+  legend bar, from the same `demscore.country_scores()` call the WMS layer classes on. Not a
+  config file: it is per year, so it is queried live and cached per dataset|variable|year in
+  `MapController`
 
 WMS source:
 - MapServer on `:8088` (or cache path if enabled in surrounding stack)
@@ -133,6 +138,19 @@ Common tasks and where to work:
   - the filter chips are `button`s inside the panel, so the panel's own button styling is
     scoped to `#controls .dataset-panel > button` (direct children). Widening that selector
     repaints the chips
+
+- Change what a legend swatch says on hover:
+  - `MapController.renderLegendTip()` for the wording, `formatLegendValue()` for how a number
+    reads (shares, index points and GDP figures share one narrow line, so magnitude picks the
+    precision), `placeLegendTip()` for placement, `.legend-tip*` in `styles.css`
+  - the spans come from `GET /api/class-breaks`; swatch *i* is always quantile class *i + 1*,
+    low to high. The mapfile reorders its classes per polarity and `legendColorsForPolarity()`
+    reverses the colours to match, so the bar always reads low-to-high left to right — do not
+    reorder the swatches themselves
+  - the swatches are built once in `initializeLegend()` and only recoloured afterwards; a
+    refresh that rebuilt the bar would drop the focus and hover the card hangs off
+  - during autoplay the breaks are fetched on hover only: prefetching per year would be stale
+    before anyone could read it
 
 - Change variable title/metadata dialog behavior:
   - `MetadataController.refreshVariableMetadataPanel()`
@@ -212,6 +230,15 @@ Common tasks and where to work:
 
 - Change map baselayers or WMS swap behavior:
   - `MapController.initialize()` and `MapController.loadNextLayer()`
+  - a swap can be superseded before it lands — a zoom crossing a hex resolution stop
+    reloads the layer while autoplay is still waiting on the previous one. The waiting
+    callback (`pendingLayerOnReady`) moves onto the replacement rather than dying with
+    the layer it was attached to: autoplay schedules its next year from that callback,
+    so dropping it froze the timeline with the button still reading "Pause". An explicit
+    `stopPendingLayerSwap()` — pause, or a scrub — still drops it, which is why that
+    method clears it and `loadNextLayer()` rescues it first
+  - `updateHexLayerForZoom()` compares the new mesh against the *pending* layer when
+    there is one, since that is what the map is about to show
 
 - Change the equal-colour area outlines (the black perimeter around each run of
   same-shaded hexagons, toggled by `#areaOutlineToggle` bottom-left):

@@ -24,6 +24,45 @@
           />
         </h1>
 
+        <section id="mobileControls" class="mobile-controls" aria-label="Mobile map controls">
+          <button
+            id="mobileVariablePickerBtn"
+            type="button"
+            class="mobile-picker-trigger"
+            aria-haspopup="dialog"
+            aria-controls="mobileVariablePickerDialog"
+          >
+            <span id="mobileSelectedDataset" class="mobile-selected-dataset"></span>
+            <span class="mobile-selected-copy">
+              <span id="mobileSelectedTitle" class="mobile-selected-title"></span>
+              <span id="mobileSelectedMeta" class="mobile-selected-meta"></span>
+            </span>
+            <i data-lucide="chevron-down" aria-hidden="true"></i>
+          </button>
+
+          <div class="mobile-action-row" aria-label="Variable actions">
+            <button id="mobileVariableInfoBtn" type="button" class="mobile-action-button">
+              <i data-lucide="info" aria-hidden="true"></i>
+              <span>Info</span>
+            </button>
+            <button id="mobileSourceBtn" type="button" class="mobile-action-button">
+              <i data-lucide="quote" aria-hidden="true"></i>
+              <span>Source</span>
+            </button>
+            <a
+              id="mobileCodebookLink"
+              class="mobile-action-button mobile-action-link"
+              href="#"
+              target="_blank"
+              rel="noopener noreferrer"
+              hidden
+            >
+              <i data-lucide="file-text" aria-hidden="true"></i>
+              <span>PDF</span>
+            </a>
+          </div>
+        </section>
+
         <div id="datasetSection" class="dataset-section">
           <section id="datasetPanel" class="dataset-panel" tabindex="0">
             <div class="filter-bar">
@@ -86,6 +125,12 @@
       </div>
     </div>
 
+    <div id="legendTooltip" class="legend-tip" role="tooltip" hidden>
+      <p id="legendTooltipClass" class="legend-tip-class"></p>
+      <p id="legendTooltipRange" class="legend-tip-range"></p>
+      <p id="legendTooltipCount" class="legend-tip-count"></p>
+    </div>
+
     <div id="variableTooltip" class="variable-tooltip" role="tooltip" hidden>
       <p id="variableTooltipTitle" class="variable-tooltip-title"></p>
       <p id="variableTooltipKey" class="variable-tooltip-key"></p>
@@ -98,6 +143,35 @@
         <button id="variableMetaCloseBtn" type="button" class="variable-meta-close-btn">Close</button>
       </div>
       <div id="variableMetaContent" class="variable-meta-content"></div>
+    </dialog>
+
+    <dialog id="mobileVariablePickerDialog" class="mobile-picker-dialog">
+      <div class="mobile-dialog-header">
+        <h2>Choose variable</h2>
+        <button id="mobileVariablePickerCloseBtn" type="button" class="mobile-dialog-close-btn" aria-label="Close">
+          <i data-lucide="x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <input
+        id="mobileVariableSearch"
+        class="mobile-variable-search"
+        type="search"
+        autocomplete="off"
+        placeholder="Search variables"
+        aria-label="Search variables"
+      />
+      <div id="mobileTopicChips" class="mobile-topic-chips" aria-label="Filter variables by topic"></div>
+      <div id="mobileVariablePickerList" class="mobile-picker-list" role="listbox" aria-label="Variables"></div>
+    </dialog>
+
+    <dialog id="mobileSourceDialog" class="mobile-source-dialog">
+      <div class="mobile-dialog-header">
+        <h2>Dataset source</h2>
+        <button id="mobileSourceCloseBtn" type="button" class="mobile-dialog-close-btn" aria-label="Close">
+          <i data-lucide="x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <p id="mobileSourceContent" class="mobile-source-content"></p>
     </dialog>
 
     <script
