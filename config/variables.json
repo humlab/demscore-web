@@ -13,6 +13,14 @@
       "defaultVariable": "qog_std_ts_ti_cpi",
       "yearMin": 1946,
       "yearMax": 2025,
+      "palette": [
+        "#5E708F",
+        "#8593AC",
+        "#ADB6C9",
+        "#D2D7E4",
+        "#F6F9FF"
+      ],
+      "color": "#5E708F",
       "variables": [
         "qog_std_ts_icrg_qog",
         "qog_std_ts_ti_cpi",
@@ -32,11 +40,18 @@
     "repdem": {
       "label": "REPDEM",
       "title": "Representative Democracy",
-      "color": "#a76510",
+      "color": "#F8C982",
       "codebook": "./assets/codebooks/repdem-codebook.pdf",
       "defaultVariable": "repdem_basic_enpp",
       "yearMin": 1943,
       "yearMax": 2025,
+      "palette": [
+        "#F8C982",
+        "#FAD5A0",
+        "#FCE1B5",
+        "#FDEBCF",
+        "#FFF7E7"
+      ],
       "variables": [
         "repdem_basic_cab_num_parties",
         "repdem_basic_cab_composition2",
@@ -58,6 +73,14 @@
       "defaultVariable": "v2x_polyarchy",
       "yearMin": 1789,
       "yearMax": 2025,
+      "palette": [
+        "#B6245F",
+        "#D14686",
+        "#E87DB0",
+        "#FFB7D9",
+        "#FEBFDD"
+      ],
+      "color": "#B6245F",
       "variables": [
         "v2x_polyarchy",
         "v2x_polyarchy_codelow",

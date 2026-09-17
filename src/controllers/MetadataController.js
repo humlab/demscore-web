@@ -25,7 +25,9 @@ const VARIANT_MAIN_LABEL = "Main variant";
 // config happens to list the keys in.
 const VARIABLE_COLLATOR = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
 const DATASET_ACCENTS = ["#114b84", "#0f766e", "#9a3412", "#5b21b6", "#155e75", "#166534"];
-const DATASET_IMAGE_DIR = "./assets/images";
+// Darkest to lightest. `--ds-1` marks (badge, selected edge), `--ds-3` fills a
+// selected row, `--ds-4` tints an unselected one; the panel itself stays white.
+const DATASET_PALETTE_STEPS = 5;
 const POLARITY_POSITIVE = "positive";
 const POLARITY_NEGATIVE = "negative";
 const POLARITY_NEUTRAL = "neutral";
@@ -204,12 +206,27 @@ export class MetadataController extends BaseController {
     }
 
     this.datasetAccents = {};
+    this.datasetPalettes = {};
     Object.keys(this.meta.datasets).forEach((datasetKey, index) => {
-      const configured = this.meta.datasets[datasetKey]?.color;
-      this.datasetAccents[datasetKey] =
+      const ds = this.meta.datasets[datasetKey];
+      const palette = Array.isArray(ds?.palette)
+        ? ds.palette.filter((shade) => typeof shade === "string" && shade.trim()).map((shade) => shade.trim())
+        : [];
+      const configured = ds?.color;
+      const accent =
         typeof configured === "string" && configured.trim()
           ? configured.trim()
-          : DATASET_ACCENTS[index % DATASET_ACCENTS.length];
+          : palette[0] || DATASET_ACCENTS[index % DATASET_ACCENTS.length];
+      this.datasetAccents[datasetKey] = accent;
+      // Datasets are told apart by tinting their rows, so a dataset without a
+      // palette still needs five usable shades: they are mixed from its accent,
+      // which keeps a new dataset legible before anyone picks colours for it.
+      this.datasetPalettes[datasetKey] =
+        palette.length >= DATASET_PALETTE_STEPS
+          ? palette.slice(0, DATASET_PALETTE_STEPS)
+          : Array.from({ length: DATASET_PALETTE_STEPS }, (_, step) =>
+              `color-mix(in srgb, ${accent} ${100 - step * 22}%, #fff)`,
+            );
     });
     this.datasetTabButtons = new Map();
     this.topicChipButtons = new Map();
@@ -258,7 +275,6 @@ export class MetadataController extends BaseController {
   async initialize() {
     this.renderDatasetChips();
     this.renderTopicChips();
-    this.preloadDatasetImages();
     this.applyDatasetChrome(this.state.dataset);
     // One list now holds every dataset's rows, and a row is titled by its
     // dataset's metadata, so all of it has to be in before the first render —
@@ -289,17 +305,12 @@ export class MetadataController extends BaseController {
     return this.datasetAccents[datasetKey] || DATASET_ACCENTS[0];
   }
 
-  getDatasetImageUrl(datasetKey) {
-    const configured = this.meta.datasets[datasetKey]?.image;
-    if (typeof configured === "string" && configured.trim()) return configured.trim();
-    return `${DATASET_IMAGE_DIR}/${datasetKey.replace(/_/g, "-")}.jpg`;
-  }
-
-  preloadDatasetImages() {
-    for (const datasetKey of Object.keys(this.meta.datasets)) {
-      const image = new Image();
-      image.src = this.getDatasetImageUrl(datasetKey);
-    }
+  // Dataset colour now lives on the things that belong to one dataset — a row,
+  // a chip, the citation — rather than on the whole panel, which is neutral.
+  applyDatasetPalette(el, datasetKey) {
+    const palette = this.datasetPalettes[datasetKey] || [];
+    el.style.setProperty("--ds-accent", this.getDatasetAccent(datasetKey));
+    palette.forEach((shade, index) => el.style.setProperty(`--ds-${index + 1}`, shade));
   }
 
   // Datasets are filters now, not tabs: the list spans all of them at once, so
@@ -317,7 +328,7 @@ export class MetadataController extends BaseController {
       chip.dataset.dataset = key;
       chip.setAttribute("aria-pressed", "false");
       chip.title = `${this.getDatasetTitle(ds, key)} (${key})`;
-      chip.style.setProperty("--ds-accent", this.getDatasetAccent(key));
+      this.applyDatasetPalette(chip, key);
       chip.textContent = this.getDatasetLabel(ds, key);
       this.datasetTabs.appendChild(chip);
       this.datasetTabButtons.set(key, chip);
@@ -361,13 +372,12 @@ export class MetadataController extends BaseController {
     }
   }
 
-  // The panel's accent, photo and citation follow the *selected* variable's
-  // dataset now that no tab declares one.
+  // The panel itself is neutral: a dataset photo and scrim behind every control
+  // claimed the whole sidebar for whichever dataset happened to be selected,
+  // which is not what the colour means. Only the citation — which really is
+  // about one dataset — still takes its colour.
   applyDatasetChrome(datasetKey) {
-    const accent = this.getDatasetAccent(datasetKey);
-    this.datasetSection.style.setProperty("--ds-accent", accent);
-    this.datasetSection.style.setProperty("--ds-image", `url("${this.getDatasetImageUrl(datasetKey)}")`);
-    this.datasetCitation.style.setProperty("--ds-accent", accent);
+    this.applyDatasetPalette(this.datasetCitation, datasetKey);
     this.datasetSection.dataset.dataset = datasetKey;
   }
 
@@ -639,6 +649,8 @@ export class MetadataController extends BaseController {
     // to key on the variable alone is now qualified by its dataset.
     option.dataset.variable = variable;
     option.dataset.dataset = datasetKey;
+    // Everything inside the row reads its dataset's shades from here.
+    this.applyDatasetPalette(option, datasetKey);
 
     const label = document.createElement("label");
     label.className = "variable-option-pick";
@@ -666,7 +678,6 @@ export class MetadataController extends BaseController {
     // that the tabs used to say for free.
     const badge = document.createElement("span");
     badge.className = "variable-option-badge";
-    badge.style.setProperty("--ds-accent", this.getDatasetAccent(datasetKey));
     badge.textContent = this.getDatasetLabel(this.meta.datasets[datasetKey], datasetKey);
     titleRow.appendChild(badge);
 

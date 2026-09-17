@@ -94,11 +94,20 @@ body {
   text-decoration: underline;
 }
 
-/* ---- Dataset tabs + contextual panel ---- */
+/* ---- Filter chips + variable panel ---- */
+/* The panel is neutral. Dataset colour belongs to the individual things that
+   are of one dataset — a variable row, a dataset chip, the citation — not to
+   the sidebar as a whole, which only ever showed whichever dataset happened to
+   be selected. Palette shades arrive per element as --ds-1 (darkest, used for
+   marks) through --ds-5 (lightest); defaults here keep anything unstamped
+   readable. */
 .dataset-section {
   --ds-accent: var(--accent);
-  --ds-image: none;
-  --ds-scrim: color-mix(in srgb, var(--ds-accent) 60%, #000);
+  --ds-1: var(--accent);
+  --ds-2: color-mix(in srgb, var(--accent) 78%, #fff);
+  --ds-3: color-mix(in srgb, var(--accent) 56%, #fff);
+  --ds-4: color-mix(in srgb, var(--accent) 34%, #fff);
+  --ds-5: color-mix(in srgb, var(--accent) 12%, #fff);
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -132,14 +141,14 @@ body {
   gap: 4px;
 }
 
-#controls .chip {
+#controls .dataset-panel .chip {
   width: auto;
   margin-top: 0;
   padding: 3px 9px;
-  border: 1px solid color-mix(in srgb, #fff 34%, transparent);
+  border: 1px solid var(--panel-border);
   border-radius: 999px;
-  background: color-mix(in srgb, #fff 12%, transparent);
-  color: #fff;
+  background: #fff;
+  color: var(--text);
   font-size: 0.74rem;
   font-weight: 600;
   line-height: 1.35;
@@ -148,28 +157,54 @@ body {
   transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
-#controls .chip:hover {
-  border-color: #fff;
-  background: color-mix(in srgb, #fff 24%, transparent);
+#controls .dataset-panel .chip:hover {
+  border-color: var(--muted);
+  background: #f1f4f8;
 }
 
-#controls .chip:focus-visible {
-  outline: 2px solid #fff;
+#controls .dataset-panel .chip:focus-visible {
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
-/* An active chip inverts to solid white so "on" survives the panel photo
-   underneath it, which a tint alone does not. */
-#controls .chip.is-active,
-#controls .chip.is-active:hover {
-  border-color: #fff;
-  background: #fff;
-  color: var(--ds-accent);
+/* An active topic chip is the app accent; an active dataset chip is that
+   dataset's own darkest shade, so the chip and the rows it leaves on screen
+   are recognisably the same colour. */
+#controls .dataset-panel .chip.is-active,
+#controls .dataset-panel .chip.is-active:hover {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+/* A dataset chip carries its palette at rest too, so the three are
+   distinguishable before any is switched on — mixed toward white for the same
+   reason the rows are, or V-Dem's lightest shade alone reads as switched on
+   next to QoG's. */
+#controls .dataset-panel .chip-dataset {
+  border-color: color-mix(in srgb, var(--ds-3) 60%, #fff);
+  background: color-mix(in srgb, var(--ds-5) 45%, #fff);
+}
+
+#controls .dataset-panel .chip-dataset:hover {
+  border-color: var(--ds-3);
+  background: color-mix(in srgb, var(--ds-4) 60%, #fff);
+}
+
+/* REPDEM's darkest shade is a light orange, so white-on-accent is not safe for
+   every dataset; an active dataset chip keeps dark text over its own mid shade
+   and marks itself with a heavier border instead. */
+#controls .dataset-panel .chip-dataset.is-active,
+#controls .dataset-panel .chip-dataset.is-active:hover {
+  border-color: var(--ds-1);
+  box-shadow: inset 0 0 0 1px var(--ds-1);
+  background: var(--ds-3);
+  color: color-mix(in srgb, var(--ds-1) 72%, #000);
 }
 
 .filter-summary {
   margin: 0;
-  color: color-mix(in srgb, #fff 78%, transparent);
+  color: var(--muted);
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
 }
@@ -183,39 +218,29 @@ body {
   flex-direction: column;
   min-height: 0;
   padding: 10px 12px 14px;
-  border: 1px solid var(--ds-accent);
+  border: 1px solid var(--panel-border);
   border-radius: 10px;
-  background-color: var(--ds-scrim);
-  background-image:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ds-scrim) 74%, transparent),
-      color-mix(in srgb, var(--ds-scrim) 82%, transparent)
-    ),
-    var(--ds-image);
-  background-position: center;
-  background-size: cover;
-  background-repeat: no-repeat;
-  color: #fff;
+  background: #fff;
+  color: var(--text);
 }
 
 .dataset-panel:focus-visible {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--accent);
   outline-offset: -3px;
 }
 
 .dataset-panel .codebook-link {
   margin: 10px 0 0;
   text-align: center;
-  color: #eef2f7;
+  color: var(--muted);
 }
 
 .dataset-panel .codebook-link a {
-  color: #fff;
+  color: var(--accent);
 }
 
 .dataset-panel select:focus-visible {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
@@ -224,7 +249,7 @@ body {
   margin: 10px 0 6px;
   font-weight: 600;
   font-size: 0.92rem;
-  color: #eef2f7;
+  color: var(--muted);
 }
 
 /* Radio group styled as a list: every variable stays visible, and the list
@@ -236,17 +261,13 @@ body {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.32);
+  border: 1px solid var(--panel-border);
   border-radius: 6px;
-  /* Dark inset well: darkening (rather than lightening) the photo behind the
-     list is what keeps the small key line above 4.5:1 on every image. The blur
-     softens the photo's detail behind the text; where it is unsupported the
-     wash alone still carries the contrast. */
-  background: rgba(0, 0, 0, 0.22);
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
+  /* A faint grey well, so rows tinted with their dataset's palest shades still
+     read as sitting on something rather than floating on the white panel. */
+  background: #f4f6f9;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.45) transparent;
+  scrollbar-color: rgba(0, 0, 0, 0.28) transparent;
 }
 
 /* A row is a split control: the label picks the variable, the caret opens the
@@ -260,7 +281,10 @@ body {
   border-radius: 5px;
   font-size: 1rem;
   font-weight: 400;
-  color: #fff;
+  /* Tinted with its own dataset's shades, which is what says which dataset a
+     row belongs to now that the list mixes all of them. */
+  background: color-mix(in srgb, var(--ds-4) 55%, #fff);
+  color: var(--text);
 }
 
 #controls .variable-option-pick {
@@ -299,11 +323,11 @@ body {
 }
 
 .variable-option:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--ds-4);
 }
 
 .variable-option:has(input:focus-visible) {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--ds-1);
   outline-offset: -2px;
 }
 
@@ -342,7 +366,7 @@ body {
 
 #controls .variable-option-variants:hover,
 #controls .variable-option.is-menu-open .variable-option-variants {
-  background: rgba(255, 255, 255, 0.22);
+  background: color-mix(in srgb, var(--ds-1) 22%, transparent);
 }
 
 #controls .variable-option.is-selected .variable-option-variants:hover,
@@ -367,10 +391,20 @@ body {
   transform: rotate(180deg);
 }
 
+/* Selection has to survive rows that are already coloured, so it is not colour
+   alone: the fill steps up one shade and the row gains a solid edge in the
+   dataset's darkest shade. REPDEM's palette is light enough that a dark fill
+   with white text is not available across all three datasets, which is why the
+   text stays dark throughout. */
 #controls .variable-option.is-selected,
 #controls .variable-option.is-selected:hover {
-  background: #fff;
+  background: var(--ds-3);
+  box-shadow: inset 3px 0 0 var(--ds-1);
   color: var(--text);
+}
+
+#controls .variable-option.is-selected .variable-option-name {
+  font-weight: 700;
 }
 
 .variable-option-name {
@@ -399,8 +433,12 @@ body {
   align-self: flex-start;
   padding: 1px 6px;
   border-radius: 999px;
-  background: color-mix(in srgb, #fff 20%, transparent);
-  color: #fff;
+  background: color-mix(in srgb, #fff 62%, transparent);
+  /* Fixed ink, not a tint of the dataset's own darkest shade: REPDEM's darkest
+     is a light orange, and darkening it enough to read on a pale badge left the
+     other two nearly black anyway. The row's fill already says which dataset
+     this is. */
+  color: var(--text);
   font-size: 0.64rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -408,11 +446,9 @@ body {
   white-space: nowrap;
 }
 
-/* A selected row flips to a white background, so the badge has to flip with it
-   or it disappears into the fill. */
+/* A selected row is a shade darker, so the badge lightens to keep its edge. */
 .variable-option.is-selected .variable-option-badge {
-  background: var(--ds-accent);
-  color: #fff;
+  background: color-mix(in srgb, #fff 78%, transparent);
 }
 
 .variable-option-coverage {
@@ -488,7 +524,6 @@ body {
 }
 
 .variable-option.is-selected .variable-option-variant {
-  color: var(--muted);
   opacity: 1;
 }
 
@@ -501,22 +536,24 @@ body {
   color: var(--accent);
 }
 
-/* Ghost button: reads cleanly over the photo without competing with it. */
-#controls .dataset-panel button {
-  border-color: rgba(255, 255, 255, 0.65);
-  background: rgba(255, 255, 255, 0.16);
-  color: #fff;
+/* Direct children only: the filter chips and the per-row version carets are
+   also buttons inside this panel, but both carry their row's or their own
+   dataset's colour and must not be repainted here. */
+#controls .dataset-panel > button {
+  border-color: var(--panel-border);
+  background: #fff;
+  color: var(--text);
   font-weight: 600;
 }
 
-#controls .dataset-panel button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.28);
+#controls .dataset-panel > button:hover:not(:disabled) {
+  background: #f1f4f8;
 }
 
-#controls .dataset-panel button:disabled {
-  border-color: rgba(255, 255, 255, 0.28);
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.55);
+#controls .dataset-panel > button:disabled {
+  border-color: var(--panel-border);
+  background: #f7f8fa;
+  color: var(--muted);
   cursor: not-allowed;
 }
 

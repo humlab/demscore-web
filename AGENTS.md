@@ -27,7 +27,8 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - fetches JSON config payloads with unified error handling
 - `src/controllers/MetadataController.js`
   - topic/dataset filter chips (render, pressed state) and the flat cross-dataset variable list
-  - per-dataset accent colour and panel photo, which follow the *selected* variable's dataset
+  - per-dataset palette, stamped as `--ds-1`..`--ds-5` onto each row, dataset chip and the
+    citation — the panel itself is neutral
   - variable hover card (lazy per-variable metadata fetch, placement, arrow)
   - dataset/variable/variant UI wiring (variant menu per row, not a separate picker)
   - variable list rendering (a `role="radiogroup"` of hidden radios in two-line rows: name over key)
@@ -116,16 +117,28 @@ Common tasks and where to work:
   - topic labels are short because the chips share a row; the longer sense goes in `description`,
     which becomes the chip's tooltip
 
-- Change dataset chip labels, colours or panel photos:
-  - per-dataset `title` (falls back to `label`), `color` and `image` keys in the `variables` payload
+- Change dataset colours:
+  - per-dataset `palette` (five shades, darkest first) and `title`/`label` in the `variables`
+    payload, which comes from `webapp/config/variables.json` — see the deployment repo's
+    `overlayDatasetPresentation()` note; a dataset without a palette gets five shades mixed
+    from its `color`, so it stays legible before anyone picks any
+  - `MetadataController.applyDatasetPalette()` stamps `--ds-accent` and `--ds-1`..`--ds-5` on
+    each variable row, each dataset chip and the citation. **The panel is neutral**: a dataset
+    photo and scrim behind every control coloured the whole sidebar for whichever dataset
+    happened to be selected, which is not what the colour means
+  - a row is `--ds-4` mixed 55% toward white, hover is `--ds-4` raw, selection is `--ds-3` plus
+    an inset edge in `--ds-1`. The mixing is not decoration: V-Dem's shades are far more
+    saturated than QoG's or REPDEM's at the same step, so the raw shade made every V-Dem row
+    shout while the other two whispered
+  - text stays dark on every state. REPDEM's darkest shade is a light orange, so "dark fill,
+    white text" is not available across all three palettes — that is also why the row badge
+    uses `var(--text)` rather than a tint of `--ds-1`. Worst measured small-text contrast is
+    5.6:1; re-check with a calculator if you change a palette
   - chips and row badges use the *short* `label` ("V-Dem"), via `getDatasetLabel()`, because both
-    share a line — the full `title` rides along as the chip's tooltip. Using the full name made
-    badges wider than the variable titles they sat beside
-  - fallbacks in `MetadataController.getDatasetTitle()` / `getDatasetImageUrl()` / `DATASET_ACCENTS`
-  - photos live in `assets/images/<dataset key with _ as ->.jpg` (e.g. `v_dem` -> `v-dem.jpg`)
-  - panel theming via the `--ds-accent`, `--ds-image` and `--ds-scrim` custom properties in `styles.css`
-  - the panel scrim opacity is tuned to keep white text at >= 5:1 contrast over every photo;
-    re-check it if you swap an image for a lighter one
+    share a line — the full `title` rides along as the chip's tooltip
+  - the filter chips and the per-row version carets are both `button`s inside the panel, so the
+    panel's own button styling is scoped to `#controls .dataset-panel > button` (direct children).
+    Widening that selector repaints the chips and carets white
 
 - Change the variant menu:
   - `MetadataController.bindVariantMenu()` (caret click, Alt+Down / Right from the row,
@@ -265,6 +278,8 @@ After edits, run at minimum:
 - `node --check src/core/BackendClient.js`
 
 Then do a manual smoke test in browser:
+- panel is white and the rows carry the dataset colour, not the sidebar; a dataset chip, the
+  rows it matches and the citation are recognisably the same colour
 - filter chips: a topic chip narrows the list across datasets, a dataset chip narrows it further
   (the two groups AND), clicking a lit chip clears it, and an impossible pair such as
   Gender + V-Dem reports "No variables match these filters" without disturbing the map
