@@ -10,7 +10,32 @@
   "variable_overrides": {
     "qog": {
       "qog_std_ts_bicc_gmi": "negative",
-      "qog_std_ts_wdi_gini": "negative"
+      "qog_std_ts_wdi_gini": "negative",
+      "qog_std_ts_wdi_gers": "neutral",
+      "qog_std_ts_wdi_gersf": "neutral",
+      "qog_std_ts_wdi_gersm": "neutral",
+      "qog_std_ts_wdi_taxrev": "neutral",
+      "qog_std_ts_cbi_cbiw": "neutral"
+    },
+    "repdem": {
+      "repdem_basic_cab_num_parties": "neutral",
+      "repdem_basic_cab_composition2": "neutral",
+      "repdem_basic_govtype": "neutral",
+      "repdem_basic_form_duration_alt": "neutral",
+      "repdem_basic_cab_duration_days": "neutral",
+      "repdem_basic_cab_seatshare": "neutral",
+      "repdem_basic_seats_total": "neutral",
+      "repdem_basic_upper_seats_total": "neutral",
+      "repdem_basic_num_parties": "neutral",
+      "repdem_basic_enpp": "neutral",
+      "parl_polar_ches": "neutral"
     }
-  }
+  },
+  "rules": [
+    {
+      "dataset": "v_dem",
+      "match": "(?:_sd|_osp_sd|_nr)$",
+      "polarity": "neutral"
+    }
+  ]
 }

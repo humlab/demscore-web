@@ -17,6 +17,14 @@
   "rules": [
     {
       "dataset": "v_dem",
+      "match": "(?:_sd|_osp_sd|_nr)$",
+      "low": "Lower value",
+      "high": "Higher value",
+      "note": "These V-Dem variants describe model uncertainty or respondent diagnostics, not democratic performance.",
+      "direction": "low-to-high"
+    },
+    {
+      "dataset": "v_dem",
       "match": "^v2meharjrn(?:_|$)",
       "low": "More harassment",
       "high": "Less / no harassment",

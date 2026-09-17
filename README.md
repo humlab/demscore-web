@@ -11,11 +11,11 @@ Simple Leaflet frontend for the Demscore MapServer WMS layer.
 - Switch between multiple baselayers
 - Overlay dynamic WMS hex layer from MapServer
 - Read UI config from `web-backend` API endpoints
-- Configure variable polarity (`positive`/`negative`) in `config/variable_polarity.json` (served through `web-backend`)
+- Configure variable polarity (`positive`/`negative`/`neutral`) in `config/variable_polarity.json` (served through `web-backend`)
 
 ## Polarity Configuration
 
-`config/variable_polarity.json` is served by `web-backend` and controls whether higher values map to blue (`positive`) or red (`negative`).
+`config/variable_polarity.json` is served by `web-backend` and controls whether higher values map to blue (`positive`), red (`negative`), or a single-hue green scale (`neutral`).
 
 - `defaults.polarity`: global fallback
 - `dataset_defaults`: fallback per dataset

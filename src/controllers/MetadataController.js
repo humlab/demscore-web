@@ -28,7 +28,8 @@ const DATASET_ACCENTS = ["#114b84", "#0f766e", "#9a3412", "#5b21b6", "#155e75", 
 const DATASET_IMAGE_DIR = "./assets/images";
 const POLARITY_POSITIVE = "positive";
 const POLARITY_NEGATIVE = "negative";
-const POLARITY_VALUES = new Set([POLARITY_POSITIVE, POLARITY_NEGATIVE]);
+const POLARITY_NEUTRAL = "neutral";
+const POLARITY_VALUES = new Set([POLARITY_POSITIVE, POLARITY_NEGATIVE, POLARITY_NEUTRAL]);
 // Hover card: wait out a pointer that is only passing over the row, then park the
 // card beside it with a small gap for the arrow.
 const TOOLTIP_HOVER_DELAY_MS = 170;
@@ -553,8 +554,7 @@ export class MetadataController extends BaseController {
   }
 
   getActivePolarity() {
-    const majorVariable = this.state.mainVariable || stripVariantSuffixChain(this.state.variable || "");
-    return this.resolvePolarityForMajorVariable(this.state.dataset, majorVariable);
+    return this.resolvePolarityForVariable(this.state.dataset, this.state.variable || "");
   }
 
   async ensureDatasetMetadata(datasetKey) {
@@ -596,16 +596,16 @@ export class MetadataController extends BaseController {
     return this.fullVarMetaByDataset[datasetKey][variableKey];
   }
 
-  resolveConfiguredPolarity(datasetKey, majorVariable) {
+  resolveConfiguredPolarity(datasetKey, variable) {
     const datasetOverrides = this.polarityConfig.variableOverrides?.[datasetKey];
-    const overridePolarity = datasetOverrides?.[majorVariable];
+    const overridePolarity = datasetOverrides?.[variable];
     if (POLARITY_VALUES.has(overridePolarity)) {
       return overridePolarity;
     }
 
     const matchingRule = this.polarityConfig.rules.find((rule) => {
       const datasetMatch = !rule.dataset || rule.dataset === datasetKey;
-      return datasetMatch && rule._regex && rule._regex.test(majorVariable);
+      return datasetMatch && rule._regex && rule._regex.test(variable);
     });
     if (matchingRule && POLARITY_VALUES.has(matchingRule.polarity)) {
       return matchingRule.polarity;
@@ -619,12 +619,12 @@ export class MetadataController extends BaseController {
     return this.polarityConfig.defaultPolarity;
   }
 
-  resolvePolarityForMajorVariable(datasetKey, majorVariable) {
-    const cacheKey = `${datasetKey}:${majorVariable}`;
+  resolvePolarityForVariable(datasetKey, variable) {
+    const cacheKey = `${datasetKey}:${variable}`;
     if (this.polarityByMajorCache.has(cacheKey)) {
       return this.polarityByMajorCache.get(cacheKey);
     }
-    const polarity = this.resolveConfiguredPolarity(datasetKey, majorVariable);
+    const polarity = this.resolveConfiguredPolarity(datasetKey, variable);
     this.polarityByMajorCache.set(cacheKey, polarity);
     return polarity;
   }

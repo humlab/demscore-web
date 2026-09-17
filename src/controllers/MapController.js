@@ -2,6 +2,7 @@ import { BaseController } from "../core/BaseController.js";
 import { readAreaOutlinesEnabled, writeAreaOutlinesEnabled } from "../core/preferences.js";
 
 const POLARITY_POSITIVE = "positive";
+const POLARITY_NEUTRAL = "neutral";
 const LAND_BASEMAP_COLOR = "#fffaf0";
 const HEX_FILL_LAYER = "hex_variable";
 // Drawn by MapServer over the fills, from the precomputed edge table; see
@@ -13,6 +14,7 @@ const HEX_OUTLINE_LAYER = "hex_outline";
 // outlines exist, so they start on and the toggle is there to take them off.
 const AREA_OUTLINES_DEFAULT = true;
 const LEGEND_COLORS_NEGATIVE = ["#313695", "#4575b4", "#74add1", "#abd9e9", "#fdae61", "#f46d43", "#d73027"];
+const LEGEND_COLORS_NEUTRAL = ["#d1fae5", "#a7f3d0", "#6ee7b7", "#34d399", "#10b981", "#059669", "#047857"];
 // The map reads as one world, so it never zooms out past the point where that
 // world fills the window — the real floor is measured per window size in
 // applyWorldFitMinZoom, and this is only the absolute limit that measurement is
@@ -465,8 +467,7 @@ export class MapController extends BaseController {
     const datasetMeta = this.meta.datasets[this.state.dataset];
     const datasetTitle = datasetMeta?.title || datasetMeta?.label || this.state.dataset;
     const polarity = this.metadataController.getActivePolarity();
-    const legendColors =
-      polarity === POLARITY_POSITIVE ? LEGEND_COLORS_NEGATIVE.slice().reverse() : LEGEND_COLORS_NEGATIVE;
+    const legendColors = this.legendColorsForPolarity(polarity);
 
     if (this.legendTitleEl) this.legendTitleEl.textContent = text.title;
     if (this.legendSubtitleEl) {
@@ -480,14 +481,23 @@ export class MapController extends BaseController {
     if (this.legendLowEl) this.legendLowEl.textContent = text.low;
     if (this.legendHighEl) this.legendHighEl.textContent = text.high;
     if (this.legendNoteEl) {
-      const directionHint =
-        polarity === POLARITY_POSITIVE
-          ? "Higher values are mapped to blue tones."
-          : "Higher values are mapped to red tones.";
+      const directionHint = this.legendDirectionHint(polarity);
       this.legendNoteEl.textContent = `${text.note} ${directionHint}`;
     }
 
     window.requestAnimationFrame(() => this.rebalanceLegendPosition());
+  }
+
+  legendColorsForPolarity(polarity) {
+    if (polarity === POLARITY_NEUTRAL) return LEGEND_COLORS_NEUTRAL;
+    return polarity === POLARITY_POSITIVE ? LEGEND_COLORS_NEGATIVE.slice().reverse() : LEGEND_COLORS_NEGATIVE;
+  }
+
+  legendDirectionHint(polarity) {
+    if (polarity === POLARITY_NEUTRAL) return "Higher values are mapped to darker green tones.";
+    return polarity === POLARITY_POSITIVE
+      ? "Higher values are mapped to blue tones."
+      : "Higher values are mapped to red tones.";
   }
 
   rebalanceLegendPosition() {
