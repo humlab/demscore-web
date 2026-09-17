@@ -179,6 +179,21 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
+    <!-- The map is drawn in Equal Earth (EPSG:8857), which Leaflet cannot
+         project on its own; see src/core/projection.js. proj4leaflet is pinned
+         at its last release, 1.0.2 from 2017 -- the project is finished rather
+         than merely stale, and at 8KB behind an integrity hash there is nothing
+         to track. -->
+    <script
+      src="https://unpkg.com/proj4@2.22.0/dist/proj4.js"
+      integrity="sha256-r332U9kepZHzPSb7lYmQu9MHGy22RKTtq6RBzJhhpHQ="
+      crossorigin=""
+    ></script>
+    <script
+      src="https://unpkg.com/proj4leaflet@1.0.2/src/proj4leaflet.js"
+      integrity="sha256-/bf+R9zVlOfIMNDuNpTviLQDJTcmjcLztY9JodcWHBI="
+      crossorigin=""
+    ></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script type="module" src="./app.js"></script>
     <script>lucide.createIcons();</script>

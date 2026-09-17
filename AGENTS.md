@@ -33,6 +33,9 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - metadata caching and dialog content
   - variable hierarchy building (which variables are base ones, so derived versions stay out)
   - polarity resolution (`default` -> `dataset_default` -> `rules` -> `override` precedence as implemented)
+- `src/core/projection.js`
+  - the Equal Earth (EPSG:8857) CRS the whole map is drawn in, and the two things
+    Leaflet gets wrong about a projection that is not a rectangle
 - `src/controllers/MapController.js`
   - Leaflet map setup, baselayers, zoom display
   - WMS layer lifecycle (active layer + pending layer for smooth swaps)
@@ -227,6 +230,37 @@ Common tasks and where to work:
   - `.timeline-scale` sits above the marker on purpose, and tick labels use an opaque
     halo instead of `opacity`, so the marker line breaks around a label instead of
     striking through it
+
+- Change anything about the projection, panning limits or world fit:
+  - `src/core/projection.js`. The map is drawn in Equal Earth (EPSG:8857), not Web
+    Mercator, and so is every hexagon MapServer serves; there is no projection
+    toggle and no Mercator path left anywhere in the stack
+  - two traps live there, both from the same fact — Equal Earth fills a lens, not
+    the rectangle that bounds it:
+    1. no LatLngBounds can describe the world. The projection is widest on the
+       equator (x = +/-17243959) and narrowest at the poles (+/-10216474), and
+       Leaflet projects only the two corners of a bounds. A `maxBounds` of
+       `[[-90,-180],[90,180]]` therefore limits panning to the *pole* width and
+       puts Indonesia, Australia, Japan and New Zealand permanently out of reach;
+       the same box handed to `getBoundsZoom` or to a tile layer's `bounds` option
+       would measure the world 41% too narrow and mark those tiles invalid. The
+       limit comes from the CRS's projected bounds instead, via
+       `limitPanningToProjectedWorld`
+    2. the projection is extended past the globe so it can never return NaN.
+       Whenever the world does not exactly fill the window, Leaflet unprojects the
+       corners of the letterboxed viewport, which are off the globe; proj4 answers
+       NaN there and `GridLayer._updateLevels` takes the whole map down on first
+       paint. `unproject` also never takes proj4's longitude, which wraps past
+       +/-180 and would return a point half a world away
+  - the CRS deliberately reuses Web Mercator's resolution ladder, so a zoom level
+    still means the metres per pixel it always did and the hex resolution stops,
+    `MAX_ZOOM` and the zoom readout all carry over unchanged
+  - the land basemap is *not* densified before projecting. Equal Earth curves the
+    meridians, so a long straight lat/lon edge is drawn as a chord of the curve it
+    should follow, but measured against Natural Earth 110m the worst segment in the
+    world (the 141W Alaska/Yukon border) is off by 6.3km — 0.2px at the world view
+    and 2.6px at `MAX_ZOOM`, with 8 segments of 10360 over 1px even there. Not worth
+    a densify step; re-measure before adding one
 
 - Change map baselayers or WMS swap behavior:
   - `MapController.initialize()` and `MapController.loadNextLayer()`

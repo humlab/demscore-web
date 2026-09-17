@@ -1,5 +1,10 @@
 import { BaseController } from "../core/BaseController.js";
 import { readAreaOutlinesEnabled, writeAreaOutlinesEnabled } from "../core/preferences.js";
+import {
+  createEqualEarthCrs,
+  equalEarthProjectedBounds,
+  limitPanningToProjectedWorld,
+} from "../core/projection.js";
 
 const POLARITY_POSITIVE = "positive";
 const POLARITY_NEUTRAL = "neutral";
@@ -29,13 +34,14 @@ const CLASS_BREAKS_CACHE_LIMIT = 120;
 
 const LEGEND_COLORS_NEGATIVE = ["#313695", "#4575b4", "#74add1", "#abd9e9", "#fdae61", "#f46d43", "#d73027"];
 const LEGEND_COLORS_NEUTRAL = ["#d1fae5", "#a7f3d0", "#6ee7b7", "#34d399", "#10b981", "#059669", "#047857"];
-// The map reads as one world, so it never zooms out past the point where that
-// world fills the window — the real floor is measured per window size in
-// applyWorldFitMinZoom, and this is only the absolute limit that measurement is
-// allowed to return.
+// Leaflet only consults maxBounds when one is set, and this is that switch --
+// the rectangle that actually limits panning is the CRS's projected world box,
+// applied in limitPanningToProjectedWorld. The latitudes run to the poles now
+// rather than stopping at +/-85: that cut was Web Mercator's limit, not the
+// world's, and Equal Earth draws Greenland and Antarctica whole.
 const WORLD_BOUNDS = [
-  [-85, -180],
-  [85, 180],
+  [-90, -180],
+  [90, 180],
 ];
 const MIN_ZOOM_FLOOR = 0;
 const MAX_ZOOM = 6;
@@ -45,12 +51,20 @@ const MAX_ZOOM = 6;
 const ZOOM_DELTA = 0.25;
 // Keep the hex layer generalized at world scale, then step into denser meshes
 // as the user settles on regional views. Values match demscore.hex_mesh's
-// precomputed 10km grid increments.
+// precomputed 5km grid increments.
+//
+// Each size is half what it was under Web Mercator, which is what keeps the map
+// at the density it had. A Mercator hexagon covered ground area proportional to
+// cos^2(latitude), so the old mesh carried a surplus of hexagons towards the
+// poles that the sizes were implicitly counting on; an Equal Earth hexagon
+// covers the same area everywhere, and reaching the same count takes one about
+// half the nominal size. The zoom thresholds are untouched because the CRS
+// reuses Web Mercator's resolution ladder -- a zoom still means the same scale.
 const HEX_RESOLUTION_STOPS = [
-  { minZoom: 0, hexSizeM: 200000 },
-  { minZoom: 2.75, hexSizeM: 120000 },
-  { minZoom: 3.75, hexSizeM: 80000 },
-  { minZoom: 4.75, hexSizeM: 50000 },
+  { minZoom: 0, hexSizeM: 100000 },
+  { minZoom: 2.75, hexSizeM: 60000 },
+  { minZoom: 3.75, hexSizeM: 40000 },
+  { minZoom: 4.75, hexSizeM: 25000 },
 ];
 
 // Leaflet reports fractional zoom now, and "Zoom: 3.2500000000000004" is not a
@@ -172,10 +186,12 @@ export class MapController extends BaseController {
     });
 
     this.map = L.map("mapCanvas", {
+      crs: createEqualEarthCrs(),
       center: [20, 10],
       zoom: 2,
-      // The floor is replaced by the measured world-fit zoom below; it starts
-      // open because getBoundsZoom clamps its answer to the map's current min.
+      // The floor is replaced by the measured world-fit zoom in
+      // applyWorldFitMinZoom; this is only the limit that measurement may
+      // return.
       minZoom: MIN_ZOOM_FLOOR,
       maxZoom: MAX_ZOOM,
       zoomSnap: 0,
@@ -185,6 +201,8 @@ export class MapController extends BaseController {
       maxBoundsViscosity: 1.0,
       worldCopyJump: false,
     });
+
+    limitPanningToProjectedWorld(this.map);
 
     this.map.createPane(this.demscoreBasemapPaneName);
     const demscoreBasemapPane = this.map.getPane(this.demscoreBasemapPaneName);
@@ -227,15 +245,19 @@ export class MapController extends BaseController {
     window.addEventListener("resize", () => this.rebalanceLegendPosition());
   }
 
-  // The zoom at which the whole world fits the window. Leaflet clamps
-  // getBoundsZoom to the map's current minimum, so the floor comes off for the
-  // measurement — otherwise a window that shrinks could never zoom back out far
-  // enough to see the world it was showing a moment ago.
+  // The zoom at which the whole world fits the window. Measured in projected
+  // metres rather than through getBoundsZoom, which takes a LatLngBounds and so
+  // would measure the world 41% too narrow -- the same trap
+  // limitPanningToProjectedWorld exists to avoid. The coarsest resolution that
+  // still fits the world in the window is handed back to the CRS's own ladder,
+  // so the answer agrees with fractional zoom.
   applyWorldFitMinZoom() {
-    const previousMin = this.map.options.minZoom;
-    this.map.options.minZoom = MIN_ZOOM_FLOOR;
-    const worldFit = this.map.getBoundsZoom(L.latLngBounds(WORLD_BOUNDS), false);
-    this.map.options.minZoom = previousMin;
+    const size = this.map.getSize();
+    if (!size.x || !size.y) return;
+
+    const world = equalEarthProjectedBounds().getSize();
+    const fitResolution = Math.max(world.x / size.x, world.y / size.y);
+    const worldFit = this.map.options.crs.zoom(1 / fitResolution);
 
     const nextMin = Math.min(Math.max(worldFit, MIN_ZOOM_FLOOR), MAX_ZOOM);
     if (!Number.isFinite(nextMin) || nextMin === this.map.getMinZoom()) return;
@@ -388,7 +410,11 @@ export class MapController extends BaseController {
       pane: this.demscoreHexPaneName,
       zIndex: 2,
       noWrap: true,
-      bounds: L.latLngBounds(WORLD_BOUNDS),
+      // No bounds option: a LatLngBounds cannot describe the Equal Earth world,
+      // and one built from the corners would mark every tile east of about 106E
+      // invalid so the map would simply never request them. The CRS carries the
+      // projected world box instead, which is what Leaflet builds its global
+      // tile range from.
     });
   }
 

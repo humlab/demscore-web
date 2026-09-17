@@ -1,4 +1,8 @@
-const WMS_TILE_CACHE = "demscore-wms-tile-cache-v1";
+// v2: the tiles are Equal Earth now. Every tile cached by v1 was requested with
+// SRS=EPSG:3857 and a Web Mercator BBOX, so none of those URLs can ever be asked
+// for again -- left alone they would sit in returning users' browsers forever,
+// matching nothing. The version is part of the name so activate can drop them.
+const WMS_TILE_CACHE = "demscore-wms-tile-cache-v2";
 
 // The fills may be asked for alone or together with the outline layer that rides
 // along in the same GetMap (see MapController.wmsLayerNames), and the two spell
@@ -36,7 +40,13 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil((async () => {
+    const stale = (await caches.keys()).filter(
+      (name) => name.startsWith("demscore-wms-tile-cache-") && name !== WMS_TILE_CACHE,
+    );
+    await Promise.all(stale.map((name) => caches.delete(name)));
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener("fetch", (event) => {
