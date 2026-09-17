@@ -2,8 +2,8 @@ import { BaseController } from "../core/BaseController.js";
 import { readAreaOutlinesEnabled, writeAreaOutlinesEnabled } from "../core/preferences.js";
 import {
   createEqualEarthCrs,
+  equalEarthPanBounds,
   equalEarthProjectedBounds,
-  limitPanningToProjectedWorld,
 } from "../core/projection.js";
 
 const POLARITY_POSITIVE = "positive";
@@ -34,15 +34,6 @@ const CLASS_BREAKS_CACHE_LIMIT = 120;
 
 const LEGEND_COLORS_NEGATIVE = ["#313695", "#4575b4", "#74add1", "#abd9e9", "#fdae61", "#f46d43", "#d73027"];
 const LEGEND_COLORS_NEUTRAL = ["#d1fae5", "#a7f3d0", "#6ee7b7", "#34d399", "#10b981", "#059669", "#047857"];
-// Leaflet only consults maxBounds when one is set, and this is that switch --
-// the rectangle that actually limits panning is the CRS's projected world box,
-// applied in limitPanningToProjectedWorld. The latitudes run to the poles now
-// rather than stopping at +/-85: that cut was Web Mercator's limit, not the
-// world's, and Equal Earth draws Greenland and Antarctica whole.
-const WORLD_BOUNDS = [
-  [-90, -180],
-  [90, 180],
-];
 const MIN_ZOOM_FLOOR = 0;
 const MAX_ZOOM = 6;
 // Zoom is continuous (zoomSnap 0) so the wheel and pinch land wherever they
@@ -185,8 +176,10 @@ export class MapController extends BaseController {
       attribution: '<a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener noreferrer">Natural Earth</a>',
     });
 
+    const crs = createEqualEarthCrs();
+
     this.map = L.map("mapCanvas", {
-      crs: createEqualEarthCrs(),
+      crs,
       center: [20, 10],
       zoom: 2,
       // The floor is replaced by the measured world-fit zoom in
@@ -197,12 +190,12 @@ export class MapController extends BaseController {
       zoomSnap: 0,
       zoomDelta: ZOOM_DELTA,
       layers: [landmassBase],
-      maxBounds: WORLD_BOUNDS,
+      // maxBounds is set in applyPanBounds once the map has a size to measure;
+      // it depends on both that and the zoom. Viscosity stays here because
+      // Map.Drag reads the two together.
       maxBoundsViscosity: 1.0,
       worldCopyJump: false,
     });
-
-    limitPanningToProjectedWorld(this.map);
 
     this.map.createPane(this.demscoreBasemapPaneName);
     const demscoreBasemapPane = this.map.getPane(this.demscoreBasemapPaneName);
@@ -234,23 +227,31 @@ export class MapController extends BaseController {
     this.installAreaOutlineToggle();
     this.installZoomIndicator();
     this.applyWorldFitMinZoom();
+    this.applyPanBounds();
     this.loadLandmassBaseLayer(landmassBase);
 
     this.map.on("resize", () => {
       // A taller or wider window fits the world at a different zoom, so the
       // floor is re-measured rather than fixed once at startup.
       this.applyWorldFitMinZoom();
+      this.applyPanBounds();
       this.rebalanceLegendPosition();
     });
+    // How much ground half a window covers is what the pan limit is made of, so
+    // it is remeasured whenever the zoom settles. Only on zoomend, not during:
+    // setMaxBounds can pull the view back inside, and doing that mid-animation
+    // fights the zoom.
+    this.map.on("zoomend", () => this.applyPanBounds());
     window.addEventListener("resize", () => this.rebalanceLegendPosition());
   }
 
-  // The zoom at which the whole world fits the window. Measured in projected
-  // metres rather than through getBoundsZoom, which takes a LatLngBounds and so
-  // would measure the world 41% too narrow -- the same trap
-  // limitPanningToProjectedWorld exists to avoid. The coarsest resolution that
-  // still fits the world in the window is handed back to the CRS's own ladder,
-  // so the answer agrees with fractional zoom.
+  // The zoom at which the whole world fits the window. Measured straight in
+  // projected metres: getBoundsZoom would do it through a LatLngBounds, which
+  // only describes this world when its corners are pushed past +/-180 (see
+  // equalEarthPanBounds), and it clamps its answer to the map's current minimum
+  // -- which is the value being computed. The coarsest resolution that still
+  // fits the world in the window is handed back to the CRS's own ladder, so the
+  // answer agrees with fractional zoom.
   applyWorldFitMinZoom() {
     const size = this.map.getSize();
     if (!size.x || !size.y) return;
@@ -262,6 +263,22 @@ export class MapController extends BaseController {
     const nextMin = Math.min(Math.max(worldFit, MIN_ZOOM_FLOOR), MAX_ZOOM);
     if (!Number.isFinite(nextMin) || nextMin === this.map.getMinZoom()) return;
     this.map.setMinZoom(nextMin);
+  }
+
+  // Any point on the globe can be brought to the middle of the window, and no
+  // further -- see equalEarthPanBounds, which also explains why the box cannot
+  // be a plain lat/lon one. Leaflet keeps the whole viewport inside maxBounds,
+  // so the box is the world grown by half a window, and half a window is worth
+  // a different number of metres at every zoom and every window size. Setting
+  // the option is enough to move every limit at once: Map.Drag rebuilds its own
+  // from it at each dragstart, and _limitCenter reads it at each setView.
+  applyPanBounds() {
+    const size = this.map.getSize();
+    if (!size.x || !size.y) return;
+
+    this.map.setMaxBounds(
+      equalEarthPanBounds(this.map.options.crs, size, this.map.getZoom()),
+    );
   }
 
   getMap() {

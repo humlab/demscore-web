@@ -132,27 +132,45 @@ export function createEqualEarthCrs() {
   return crs;
 }
 
-// Leaflet limits panning by projecting the two corners of a LatLngBounds, and
-// no lat/lon box can describe the Equal Earth world: its widest point is on the
-// equator while a box's corners are at the poles, and proj4 wraps longitudes
-// past +/-180 rather than letting the box be widened past them. Left alone,
-// maxBounds would confine the viewport to x +/-10216474 and put Indonesia,
-// Australia and Japan permanently out of reach.
+// How far the map may be panned, as a Leaflet maxBounds.
 //
-// So the limit is taken from the CRS's own projected bounds -- the same
-// rectangle MapServer renders -- and Leaflet's own rebound easing is reused so
-// maxBoundsViscosity still behaves. The map keeps a maxBounds only because
-// Leaflet skips this check entirely when it is absent.
-export function limitPanningToProjectedWorld(map) {
-  map._getBoundsOffset = (pixelBounds, _maxBounds, zoom) => {
-    const world = map.options.crs.getProjectedBounds(
-      zoom === undefined ? map.getZoom() : zoom,
-    );
-    if (!world) return L.point(0, 0);
+// The rule is that the world must cover the centre of the screen: any point on
+// the globe can be brought to the middle of the window, at any zoom, and no
+// further. Leaflet's own reading of maxBounds is stricter than that -- it keeps
+// the whole viewport inside the box -- so the box handed to it is the world
+// grown by half a window, which comes to the same thing.
+//
+// Leaflet's reading alone would mean the world's edge can never come inside the
+// window, and that is too tight to use: at zoom 3.73 in a 740px-tall map the
+// world stands 1484px high, so the centre cannot pass y=4207890 and nothing
+// north of about 35N -- the whole of Europe -- can be centred. The only way to
+// look straight at Europe would be to zoom in until it happens to sit in the
+// middle, which is not a thing a map should make anyone do.
+//
+// The box also cannot be an honest lat/lon one. Leaflet asks a LatLngBounds for
+// two corners and projects them, and a box's corners are at the poles -- where
+// Equal Earth is at its narrowest, +/-10216474 against the +/-17243959 it
+// reaches on the equator. `[[-90,-180],[90,180]]` therefore describes the world
+// 41% too narrow and stops panning at about 107E, as though the world ended in
+// western Indonesia with Australia and Japan beyond its edge. Widening it is
+// what proj4 refuses to allow, since it wraps a longitude past +/-180 back into
+// range -- but this projection no longer wraps, so the corners can be pushed out
+// to wherever they need to be. Those longitudes are not real ones; they are
+// whatever the arithmetic asks for, and they are derived rather than written
+// down so they stay right.
+//
+// This belongs in maxBounds rather than in any later clamp because Leaflet reads
+// maxBounds in places that do not share code: Map.Drag builds its own limit from
+// the corners in _onDragStart, so a fix applied to _getBoundsOffset alone leaves
+// dragging still stopping at the pole width long after setView has stopped.
+export function equalEarthPanBounds(crs, viewportSize, zoom) {
+  const halfWidth = (viewportSize.x / 2) / crs.scale(zoom);
+  const halfHeight = (viewportSize.y / 2) / crs.scale(zoom);
 
-    return L.point(
-      map._rebound(world.min.x - pixelBounds.min.x, -(world.max.x - pixelBounds.max.x)),
-      map._rebound(world.min.y - pixelBounds.min.y, -(world.max.y - pixelBounds.max.y)),
-    );
-  };
+  const corner = (x, y) => crs.projection.unproject(L.point(x, y));
+
+  return L.latLngBounds(
+    corner(-EQUAL_EARTH_HALF_X - halfWidth, -EQUAL_EARTH_HALF_Y - halfHeight),
+    corner(EQUAL_EARTH_HALF_X + halfWidth, EQUAL_EARTH_HALF_Y + halfHeight),
+  );
 }
