@@ -7,8 +7,7 @@ Primary user flows:
 - narrow the variable list with the topic and dataset filter chips above it; both groups are
   toggles, several may be on at once, and all-off (the opening state) means no filter
 - choose variable from the always-visible variable list, which spans *every* dataset at once;
-  each row carries a dataset badge, and picking a row is also what switches the dataset. Rows that
-  have versions are split buttons whose caret opens a variant menu
+  each row carries a dataset badge, and picking a row is also what switches the dataset
 - scrub or animate year timeline
 - compare at a glance which variables cover which years, from the coverage strip under
   each row — the one part of a row that works on touch, where the hover card does not
@@ -30,10 +29,9 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - per-dataset palette, stamped as `--ds-1`..`--ds-5` onto each row, dataset chip and the
     citation — the panel itself is neutral
   - variable hover card (lazy per-variable metadata fetch, placement, arrow)
-  - dataset/variable/variant UI wiring (variant menu per row, not a separate picker)
-  - variable list rendering (a `role="radiogroup"` of hidden radios in two-line rows: name over key)
+  - variable list rendering (a `role="radiogroup"` of hidden radios)
   - metadata caching and dialog content
-  - variable hierarchy building (main variable vs suffix variants)
+  - variable hierarchy building (which variables are base ones, so derived versions stay out)
   - polarity resolution (`default` -> `dataset_default` -> `rules` -> `override` precedence as implemented)
 - `src/controllers/MapController.js`
   - Leaflet map setup, baselayers, zoom display
@@ -88,17 +86,13 @@ Common tasks and where to work:
 
 - Change how a variable row looks or reads:
   - `MetadataController.buildVariableOption()` (row markup: a `div` holding the picking
-    `label` plus, for variables with versions, a caret `button`. The button must stay
-    *outside* the label or clicking it would also toggle the label's radio)
-  - the second line is the row's selected version ("Main", "Code low"), not the variable
-    key; only rows that have versions have one
-  - the last line is `.variable-option-coverage`, the coverage strip, on every row. It
+    `label`). Every row is the same shape — a title row over a coverage strip. It used to
+    be a split button with a caret opening a menu of the variable's other versions; only
+    the base version is offered now, which is also why the strip alignment needs no
+    padding tricks any more
+  - the second line is `.variable-option-coverage`, the coverage strip, on every row. It
     replaced the variable key that used to sit there: the key is still one hover away in
     the card, and the strip says something the title does not
-  - because the strip is a *shared* axis, every strip in a list must span the same
-    pixels. That is why the version caret is `position: absolute` rather than a flex
-    item, why `.variable-option-pick` pads right only when a caret exists, and why the
-    strip cancels that padding with a negative margin and runs under the caret
   - `.variable-list` / `.variable-option*` in `styles.css`; the list is a flex child
     that absorbs leftover panel height, so it grows with the viewport before scrolling
   - note `#controls label` styles all labels: option rows reset margin/font explicitly
@@ -136,29 +130,9 @@ Common tasks and where to work:
     5.6:1; re-check with a calculator if you change a palette
   - chips and row badges use the *short* `label` ("V-Dem"), via `getDatasetLabel()`, because both
     share a line — the full `title` rides along as the chip's tooltip
-  - the filter chips and the per-row version carets are both `button`s inside the panel, so the
-    panel's own button styling is scoped to `#controls .dataset-panel > button` (direct children).
-    Widening that selector repaints the chips and carets white
-
-- Change the variant menu:
-  - `MetadataController.bindVariantMenu()` (caret click, Alt+Down / Right from the row,
-    menu key handling, dismissal) -> `openVariantMenu()` -> `positionVariantMenu()`
-  - `#variantMenu` lives on `<body>` and is `position: fixed` for the same reason the hover
-    card is: `#controls` and `.variable-list` both scroll and would clip it. It drops from the
-    row, flips above when the row sits too low, and *tracks* its row on scroll rather than
-    closing — opening it can itself scroll the list (focus pulls the caret into view), and a
-    menu that closed on that scroll would never stay up. It closes once its row scrolls out
-    of the list, on outside pointerdown, Escape, Tab, resize and dataset switch
-  - variant names come from the variant's own metadata title — the parenthetical the load
-    added to the base title ("… (Code low)") — so a row, the legend and the metadata dialog
-    always agree; `VARIANT_SUFFIX_LABELS` only covers variants the load did not name, and is
-    worded to match `scripts/load_variable_metadata.sh`
-  - `VARIANT_SUFFIX_ORDER` sorts the menu (scale variants, then bounds, then spread); the raw
-    hierarchy order is alphabetical, which reads wrong ("Code high" above "Code low")
-  - each row remembers its choice in `variantByMain` (`${dataset}:${main}`), so leaving a row
-    and coming back restores the version it was set to
-  - only the *selected* row's caret is in the tab order, so the panel still costs one tab stop
-    per control rather than one per row
+  - the filter chips are `button`s inside the panel, so the panel's own button styling is
+    scoped to `#controls .dataset-panel > button` (direct children). Widening that selector
+    repaints the chips
 
 - Change variable title/metadata dialog behavior:
   - `MetadataController.refreshVariableMetadataPanel()`
@@ -167,13 +141,9 @@ Common tasks and where to work:
   - the numbers are not computed here. `scripts/build_variable_coverage.sh` in the
     deployment repo writes `config/variable_coverage.json` during setup; the list draws
     a strip for every row at once, so nothing in this path may hit the backend
-  - `MetadataController.renderCoverageStrip()` picks the row's *selected version* and
-    `buildCoverageStripSvg()` turns its digit string into one `<path>`. One path per row
-    is deliberate: 60 bars as elements across a V-Dem list would be thousands of nodes,
-    rebuilt on every dataset switch
-  - `renderCoverageStrip()` is called from `buildVariableOption()` and again from
-    `selectVariable()`, so a row that changes version redraws its strip. V-Dem's variants
-    happen to share their main's coverage today, so this is insurance, not decoration
+  - `MetadataController.renderCoverageStrip()` turns the variable's digit string into one
+    `<path>` via `buildCoverageStripSvg()`. One path per row is deliberate: 60 bars as
+    elements across the list would be thousands of nodes, rebuilt on every filter change
   - the axis is per dataset, not per variable: a row's bars sit where its years fall in
     the whole dataset's span, and the `::before` baseline draws that span even where the
     variable has none of it. Without the baseline a late-starting variable would read as
@@ -287,15 +257,11 @@ Then do a manual smoke test in browser:
   accent, citation, codebook link, legend and map all follow it
 - variable list: click a row, arrow-key through the list (which crosses dataset boundaries),
   and Tab out in one stop — including while a filter hides the selected row
-- coverage strips: every row has one, they all start and end at the same x, and rows with
-  a version caret line up with rows without; a late-starting variable visibly starts later
-  than its neighbours; hovering a strip reports its real year range and country count.
+- coverage strips: every row has one and they all start and end at the same x; a
+  late-starting variable visibly starts later than its neighbours; hovering a strip reports its real year range and country count.
   The axis is shared by *all* datasets and clipped at 1900, so a REPDEM row and a V-Dem row
   put the same year at the same x, and a series reaching back further than 1900 shows the
   clipped chevron at the left edge rather than appearing to start in 1900
-- variant menu: caret opens it, arrow keys and Enter pick a version, Escape returns focus to
-  the caret, the row's second line and the legend then name the same version, and the choice
-  survives leaving the row and coming back
 - year scrub + autoplay
 - variable hover card: description appears beside the hovered row, follows arrow-key focus,
   and disappears on scroll, Escape and dataset switch; its COVERAGE strip matches the one

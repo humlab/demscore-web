@@ -1,26 +1,12 @@
 import { BaseController } from "../core/BaseController.js";
 import { readVariableChoices, writeVariableChoices } from "../core/preferences.js";
 
+// V-Dem publishes each indicator several times over — `_codelow`, `_sd`, `_osp`
+// and so on. Only the base variable is offered, so these suffixes are used for
+// one thing now: recognising a derived variable so it can be kept out of the
+// list. The rows stay in the database and a direct WMS request still renders
+// them.
 const VARIANT_SUFFIXES = new Set(["codelow", "codehigh", "sd", "mean", "nr", "ord", "osp"]);
-// Fallback names for V-Dem's version suffixes, worded as the metadata pipeline
-// words them (scripts/load_variable_metadata.sh) so a row, the legend and the
-// metadata dialog never call the same variant different things — minus the
-// trailing "variant", which the menu's own context already supplies. The
-// variant's own title is preferred over this map wherever the load produced one.
-const VARIANT_SUFFIX_LABELS = {
-  codelow: "Code low",
-  codehigh: "Code high",
-  sd: "Standard deviation",
-  osp: "OSP",
-  ord: "ORD",
-  mean: "Mean",
-  nr: "NR",
-};
-// Reading order for the menu: scale variants first, then bounds, then spread.
-// The raw list is alphabetical, which puts "Code high" above "Code low".
-const VARIANT_SUFFIX_ORDER = ["ord", "osp", "mean", "codelow", "codehigh", "sd", "nr"];
-// The base variable is the one whose name does not say what it is, so it says it.
-const VARIANT_MAIN_LABEL = "Main variant";
 // The variable list is ordered by the label the reader sees, not by the order the
 // config happens to list the keys in.
 const VARIABLE_COLLATOR = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
@@ -52,8 +38,6 @@ const COVERAGE_BAR_W = 0.78;
 // the sake of a handful of historical V-Dem series. Anything earlier is marked
 // as continuing off the left edge rather than dropped silently.
 const COVERAGE_AXIS_MIN_YEAR = 1900;
-const VARIANT_MENU_GAP_PX = 4;
-const VARIANT_MENU_MARGIN_PX = 10;
 // Most V-Dem descriptions are the codebook's field block scraped verbatim
 // ("VARIABLE TYPE: D PROJECT MANAGER(S): ... QUESTION: ..."), which reads as
 // noise in a card. Those entries carry the same prose in `question`.
@@ -84,29 +68,10 @@ function buildVariableHierarchy(variables) {
     }
   }
 
-  const variantsByMain = {};
-  for (const main of mainVariables) {
-    variantsByMain[main] = [];
-  }
-
-  for (const variable of variables) {
-    const candidateBase = stripVariantSuffixChain(variable);
-    if (candidateBase !== variable && variableSet.has(candidateBase)) {
-      variantsByMain[candidateBase].push(variable);
-    }
-  }
-
   return {
     mainVariables,
     mainVariableSet: new Set(mainVariables),
-    variantsByMain,
   };
-}
-
-// Rows are identified by dataset *and* variable everywhere now, including the
-// "is this row's menu already open" check.
-function variantMenuKey(option) {
-  return `${option.dataset.dataset}:${option.dataset.variable}`;
 }
 
 // The topics file is curated by hand and served straight through, so nothing
@@ -237,9 +202,6 @@ export class MetadataController extends BaseController {
     this.activeDatasets = new Set();
     this.tooltipTimer = null;
     this.tooltipVariable = null;
-    // Which variant each row is set to, so a row keeps its choice while the
-    // reader browses other rows. Keyed `${dataset}:${mainVariable}`.
-    this.variantByMain = new Map();
     // The whole list, every dataset's rows in title order, cached once every
     // dataset's titles are in. Filtering reads from it rather than rebuilding.
     this.allVariableRows = null;
@@ -247,7 +209,6 @@ export class MetadataController extends BaseController {
     this.coverageAxis = null;
     // Which variable each dataset was last left on, restored from the cookie.
     this.variableChoices = readVariableChoices();
-    this.openVariantMenuFor = null;
 
     this.datasetSection = this.getEl("datasetSection");
     this.datasetTabs = this.getEl("datasetTabs");
@@ -267,9 +228,6 @@ export class MetadataController extends BaseController {
     this.variableTooltipTitle = this.getEl("variableTooltipTitle");
     this.variableTooltipKey = this.getEl("variableTooltipKey");
     this.variableTooltipBody = this.getEl("variableTooltipBody");
-    this.variantMenu = this.getEl("variantMenu");
-    this.variantMenuTitle = this.getEl("variantMenuTitle");
-    this.variantMenuItems = this.getEl("variantMenuItems");
   }
 
   async initialize() {
@@ -398,16 +356,10 @@ export class MetadataController extends BaseController {
       const input = event.target;
       if (!input || input.type !== "radio") return;
       const datasetKey = input.dataset.dataset;
-      const mainVariable = input.dataset.variable;
-      if (!datasetKey || !mainVariable) return;
-      // Picking a row restores whichever version that row was last set to.
-      void this.selectVariable(datasetKey, mainVariable, this.getSelectedVariant(datasetKey, mainVariable), {
-        onBeforeDatasetChange,
-        onVariableChange,
-      });
+      const variable = input.dataset.variable;
+      if (!datasetKey || !variable) return;
+      void this.selectVariable(datasetKey, variable, { onBeforeDatasetChange, onVariableChange });
     });
-
-    this.bindVariantMenu({ onBeforeDatasetChange, onVariableChange });
 
     this.variableMetaBtn.addEventListener("click", async () => {
       if (this.variableMetaBtn.disabled) return;
@@ -461,40 +413,30 @@ export class MetadataController extends BaseController {
     }
   }
 
-  // Startup arrives with a dataset and a variable key but no main/variant split:
-  // the cookie may name a variant, the config default names a main, and either
-  // may have been dropped from the config since. The list used to work this out
-  // per dataset as it rendered; it spans every dataset now, so it is resolved
-  // once, for the dataset the map opens on.
+  // Startup arrives with a dataset and a variable key that may not match:
+  // the cookie or the config default may name a variable this config no longer
+  // offers — a derived one from when those were listed, or one since dropped.
+  // The list used to work this out per dataset as it rendered; it spans every
+  // dataset now, so it is resolved once, for the dataset the map opens on.
   applyInitialSelection() {
     const datasetKey = this.state.dataset;
     const hierarchy = this.datasetHierarchies[datasetKey];
 
-    const remembered = this.getRememberedSelection(datasetKey);
-    if (remembered) {
-      this.variantByMain.set(this.variantMemoryKey(datasetKey, remembered.mainVariable), remembered.variable);
-      this.state.mainVariable = remembered.mainVariable;
-      this.state.variable = remembered.variable;
-      return;
-    }
+    let variable = this.getRememberedSelection(datasetKey) || "";
 
-    const configured = this.state.variable;
-    let mainVariable = "";
-    if (configured && hierarchy?.mainVariableSet.has(configured)) {
-      mainVariable = configured;
-    } else if (configured) {
-      const base = stripVariantSuffixChain(configured);
-      if (hierarchy?.variantsByMain?.[base]?.includes(configured)) {
-        mainVariable = base;
-        this.variantByMain.set(this.variantMemoryKey(datasetKey, base), configured);
+    if (!variable) {
+      const configured = this.state.variable;
+      if (configured && hierarchy?.mainVariableSet.has(configured)) {
+        variable = configured;
+      } else if (configured && hierarchy?.mainVariableSet.has(stripVariantSuffixChain(configured))) {
+        variable = stripVariantSuffixChain(configured);
       }
     }
-    if (!mainVariable) {
-      mainVariable = this.getAllVariableRows().find((row) => row.datasetKey === datasetKey)?.mainVariable || "";
+    if (!variable) {
+      variable = this.getAllVariableRows().find((row) => row.datasetKey === datasetKey)?.mainVariable || "";
     }
 
-    this.state.mainVariable = mainVariable;
-    this.state.variable = this.getSelectedVariant(datasetKey, mainVariable);
+    this.state.variable = variable;
   }
 
   // A chip is a toggle, and several may be on at once: topics OR together, as do
@@ -639,9 +581,10 @@ export class MetadataController extends BaseController {
     return polarity;
   }
 
-  // A row is a split control: the label picks the variable, and — where the
-  // variable has versions — a caret button opens the variant menu. The button
-  // sits outside the label, or clicking it would also toggle the label's radio.
+  // A row is one control: a label wrapping a hidden radio. It used to be a split
+  // button, with a caret opening a menu of the variable's other versions; only
+  // the base version is offered now, so every row is the same shape and the
+  // coverage strips line up without any of the padding gymnastics that needed.
   buildVariableOption(datasetKey, variable) {
     const option = document.createElement("div");
     option.className = "variable-option";
@@ -665,7 +608,7 @@ export class MetadataController extends BaseController {
 
     const title = this.getVariableTitle(datasetKey, variable);
     // Title and badge share a line, so the badge needs a flex row of its own —
-    // the label itself is a block that stacks title, version and strip.
+    // the label itself is a block that stacks the title row over the strip.
     const titleRow = document.createElement("span");
     titleRow.className = "variable-option-title-row";
 
@@ -683,15 +626,6 @@ export class MetadataController extends BaseController {
 
     label.appendChild(titleRow);
 
-    const variants = this.getVariantsFor(datasetKey, variable);
-    if (variants.length > 0) {
-      // The second line reports which version this row is set to — the part that
-      // actually varies — rather than echoing the variable key.
-      const variantLabel = document.createElement("span");
-      variantLabel.className = "variable-option-variant";
-      label.appendChild(variantLabel);
-    }
-
     // Last line: where this variable has data, on the axis its whole dataset
     // shares, so two rows can be compared by eye without reading any numbers.
     const coverage = document.createElement("span");
@@ -700,106 +634,27 @@ export class MetadataController extends BaseController {
 
     option.appendChild(label);
 
-    if (variants.length > 0) {
-      const trigger = document.createElement("button");
-      trigger.type = "button";
-      trigger.className = "variable-option-variants";
-      trigger.tabIndex = -1;
-      trigger.setAttribute("aria-haspopup", "true");
-      trigger.setAttribute("aria-expanded", "false");
-      trigger.setAttribute("aria-label", `Versions of ${title} (${variants.length + 1})`);
-      trigger.innerHTML = '<svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M2 4.5 6 8.5 10 4.5" /></svg>';
-      option.appendChild(trigger);
-    }
-
-    this.renderVariantLabel(datasetKey, option, variable);
     this.renderCoverageStrip(datasetKey, option, variable);
     return option;
   }
 
-  getVariantsFor(datasetKey, mainVariable) {
-    const variants = this.datasetHierarchies[datasetKey]?.variantsByMain?.[mainVariable] || [];
-    return [...variants].sort((a, b) =>
-      this.variantSortKey(mainVariable, a).localeCompare(this.variantSortKey(mainVariable, b)),
-    );
-  }
-
-  variantSortKey(mainVariable, variable) {
-    return variable
-      .slice(mainVariable.length + 1)
-      .split("_")
-      .map((suffix) => {
-        const rank = VARIANT_SUFFIX_ORDER.indexOf(suffix);
-        return `${String(rank < 0 ? VARIANT_SUFFIX_ORDER.length : rank).padStart(2, "0")}${suffix}`;
-      })
-      .join("-");
-  }
-
-  // The remembered choice is a whole variable, variant included, and the config
-  // it was saved against may have moved on since — so it only counts if the
-  // dataset still has it.
+  // The cookie may still name a derived variable from when those were offered,
+  // and the config it was saved against may have moved on since — so it counts
+  // only if the dataset still has it, and a derived one resolves to its base.
   getRememberedSelection(datasetKey) {
     const variable = this.variableChoices[datasetKey];
     const hierarchy = this.datasetHierarchies[datasetKey];
     if (!variable || !hierarchy) return null;
-    if (hierarchy.mainVariableSet.has(variable)) return { mainVariable: variable, variable };
+    if (hierarchy.mainVariableSet.has(variable)) return variable;
 
     const mainVariable = stripVariantSuffixChain(variable);
-    if (hierarchy.variantsByMain[mainVariable]?.includes(variable)) return { mainVariable, variable };
-    return null;
+    return hierarchy.mainVariableSet.has(mainVariable) ? mainVariable : null;
   }
 
   rememberVariableChoice(datasetKey, variable) {
     if (!datasetKey || !variable || this.variableChoices[datasetKey] === variable) return;
     this.variableChoices[datasetKey] = variable;
     writeVariableChoices(this.variableChoices);
-  }
-
-  variantMemoryKey(datasetKey, mainVariable) {
-    return `${datasetKey}:${mainVariable}`;
-  }
-
-  getSelectedVariant(datasetKey, mainVariable) {
-    const remembered = this.variantByMain.get(this.variantMemoryKey(datasetKey, mainVariable));
-    if (remembered === mainVariable) return mainVariable;
-    return remembered && this.getVariantsFor(datasetKey, mainVariable).includes(remembered)
-      ? remembered
-      : mainVariable;
-  }
-
-  // "Main" for the base variable. For a variant, the metadata load already names
-  // it — "Electoral Democracy Index (Code low)" — so take the parenthetical it
-  // added to the base title and let the suffix map cover anything unnamed.
-  getVariantLabel(datasetKey, mainVariable, variable) {
-    if (variable === mainVariable) return VARIANT_MAIN_LABEL;
-
-    const title = this.getVariableTitle(datasetKey, variable);
-    const baseTitle = this.getVariableTitle(datasetKey, mainVariable);
-    if (title !== variable && title.startsWith(baseTitle)) {
-      const qualifier = /^\((.+)\)$/.exec(title.slice(baseTitle.length).trim());
-      if (qualifier) return this.stripVariantWord(qualifier[1]);
-    }
-
-    return variable
-      .slice(mainVariable.length + 1)
-      .split("_")
-      .map((suffix) => VARIANT_SUFFIX_LABELS[suffix] || suffix)
-      .join(" + ");
-  }
-
-  // "ORD variant" -> "ORD": every entry in the menu is a variant, so only the
-  // main entry gains from spelling it out.
-  stripVariantWord(label) {
-    const stripped = label.replace(/\s+variant$/i, "").trim();
-    return stripped.length > 0 ? stripped : label;
-  }
-
-  renderVariantLabel(datasetKey, option, mainVariable) {
-    const target = option.querySelector(".variable-option-variant");
-    if (!target) return;
-    const selected = this.getSelectedVariant(datasetKey, mainVariable);
-    target.textContent = this.getVariantLabel(datasetKey, mainVariable, selected);
-    option.classList.toggle("has-variant-selected", selected !== mainVariable);
   }
 
   // ---- Variable coverage strip ----
@@ -830,11 +685,10 @@ export class MetadataController extends BaseController {
     return this.coverageAxis;
   }
 
-  renderCoverageStrip(datasetKey, option, mainVariable) {
+  renderCoverageStrip(datasetKey, option, variable) {
     const target = option.querySelector(".variable-option-coverage");
     if (!target) return;
 
-    const variable = this.getSelectedVariant(datasetKey, mainVariable);
     const data = this.getCoverageStripData(datasetKey, variable);
     const axis = this.getCoverageAxis();
     if (!data || !axis) {
@@ -931,7 +785,6 @@ export class MetadataController extends BaseController {
   }
 
   scheduleVariableTooltip(option) {
-    if (this.openVariantMenuFor) return;
     const variable = option.dataset.variable;
     // The hovered row names its own dataset. Reading the selected one here asked
     // the backend for, say, a REPDEM variable under v_dem and 404ed.
@@ -1105,7 +958,7 @@ export class MetadataController extends BaseController {
 
   // Picking a row is now also how the dataset changes: the list spans all of
   // them, so the row carries which one it belongs to and the panel follows it.
-  async selectVariable(datasetKey, mainVariable, variable, { onBeforeDatasetChange, onVariableChange } = {}) {
+  async selectVariable(datasetKey, variable, { onBeforeDatasetChange, onVariableChange } = {}) {
     const datasetChanged = datasetKey !== this.state.dataset;
     if (datasetChanged) {
       if (typeof onBeforeDatasetChange === "function") onBeforeDatasetChange(datasetKey);
@@ -1117,182 +970,13 @@ export class MetadataController extends BaseController {
       this.refreshCodebookLink(datasetKey);
     }
 
-    this.state.mainVariable = mainVariable;
     this.state.variable = variable;
-    this.variantByMain.set(this.variantMemoryKey(datasetKey, mainVariable), variable);
     this.rememberVariableChoice(datasetKey, variable);
-    this.markSelectedVariableOption(datasetKey, mainVariable);
-    const option = this.variableList.querySelector(
-      `.variable-option[data-dataset="${CSS.escape(datasetKey)}"][data-variable="${CSS.escape(mainVariable)}"]`,
-    );
-    if (option) {
-      this.renderVariantLabel(datasetKey, option, mainVariable);
-      // Versions can cover different years (a `_mean` that starts later than its
-      // base), so the strip follows the row's version like the label does.
-      this.renderCoverageStrip(datasetKey, option, mainVariable);
-    }
+    this.markSelectedVariableOption(datasetKey, variable);
     this.refreshVariableMetadataPanel();
     if (typeof onVariableChange === "function") {
       onVariableChange();
     }
-  }
-
-  // ---- Variant menu ----
-  // Body-level like the hover card, for the same reason: the variable list and
-  // the sidebar both scroll, and either would clip a menu parented inside them.
-  bindVariantMenu(callbacks) {
-    this.variableList.addEventListener("click", (event) => {
-      const trigger = event.target.closest(".variable-option-variants");
-      if (!trigger || !this.variableList.contains(trigger)) return;
-      // The trigger lives beside the label, so this click is not a row pick.
-      event.preventDefault();
-      const option = trigger.closest(".variable-option");
-      if (this.openVariantMenuFor === variantMenuKey(option)) {
-        this.closeVariantMenu();
-        return;
-      }
-      this.openVariantMenu(option, callbacks);
-    });
-
-    // Alt+Down / Right opens the menu from the focused row, as a split button does.
-    this.variableList.addEventListener("keydown", (event) => {
-      const option = event.target.closest(".variable-option");
-      if (!option) return;
-      const opensMenu = (event.altKey && event.key === "ArrowDown") || event.key === "ArrowRight";
-      if (!opensMenu || !option.querySelector(".variable-option-variants")) return;
-      event.preventDefault();
-      this.openVariantMenu(option, callbacks);
-    });
-
-    this.variantMenu.addEventListener("keydown", (event) => {
-      const items = [...this.variantMenu.querySelectorAll(".variant-menu-item")];
-      const currentIndex = items.indexOf(document.activeElement);
-      let nextIndex = null;
-      if (event.key === "ArrowDown") nextIndex = (currentIndex + 1) % items.length;
-      else if (event.key === "ArrowUp") nextIndex = (currentIndex - 1 + items.length) % items.length;
-      else if (event.key === "Home") nextIndex = 0;
-      else if (event.key === "End") nextIndex = items.length - 1;
-      else if (event.key === "Escape" || event.key === "Tab") {
-        this.closeVariantMenu({ restoreFocus: true });
-        if (event.key === "Escape") event.preventDefault();
-        return;
-      }
-      if (nextIndex === null) return;
-      event.preventDefault();
-      items[nextIndex]?.focus();
-    });
-
-    document.addEventListener("pointerdown", (event) => {
-      if (!this.openVariantMenuFor) return;
-      if (this.variantMenu.contains(event.target) || event.target.closest?.(".variable-option-variants")) return;
-      this.closeVariantMenu();
-    });
-
-    // The menu tracks its row rather than closing on any scroll: opening it can
-    // itself scroll the list (focus pulls the caret fully into view), and a menu
-    // that vanished on its own opening scroll would never stay up. It closes
-    // only once the row it belongs to has scrolled out of the list.
-    document.addEventListener(
-      "scroll",
-      (event) => {
-        if (!this.openVariantMenuFor) return;
-        if (event.target === this.variantMenu || this.variantMenu.contains(event.target)) return;
-        const option = this.variableList.querySelector(".variable-option.is-menu-open");
-        if (!option) {
-          this.closeVariantMenu();
-          return;
-        }
-        const row = option.getBoundingClientRect();
-        const list = this.variableList.getBoundingClientRect();
-        if (row.bottom <= list.top || row.top >= list.bottom) {
-          this.closeVariantMenu();
-          return;
-        }
-        this.positionVariantMenu(option);
-      },
-      true,
-    );
-    window.addEventListener("resize", () => this.closeVariantMenu());
-  }
-
-  openVariantMenu(option, callbacks) {
-    // The row says which dataset it belongs to; the map's current one may be a
-    // different dataset entirely now that the list spans all of them.
-    const datasetKey = option.dataset.dataset;
-    const mainVariable = option.dataset.variable;
-    const variants = this.getVariantsFor(datasetKey, mainVariable);
-    if (variants.length === 0) return;
-
-    // The card and the menu would otherwise sit on top of each other.
-    this.hideVariableTooltip();
-    this.closeVariantMenu();
-
-    this.variantMenuTitle.textContent = this.getVariableTitle(datasetKey, mainVariable);
-    this.variantMenuItems.innerHTML = "";
-    const selected = this.getSelectedVariant(datasetKey, mainVariable);
-
-    for (const variable of [mainVariable, ...variants]) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "variant-menu-item";
-      item.setAttribute("role", "menuitemradio");
-      item.setAttribute("aria-checked", variable === selected ? "true" : "false");
-      item.dataset.variable = variable;
-
-      const label = document.createElement("span");
-      label.className = "variant-menu-item-label";
-      label.textContent = this.getVariantLabel(datasetKey, mainVariable, variable);
-      item.appendChild(label);
-
-      const key = document.createElement("span");
-      key.className = "variant-menu-item-key";
-      key.textContent = variable;
-      item.appendChild(key);
-
-      item.addEventListener("click", () => {
-        this.closeVariantMenu({ restoreFocus: true });
-        void this.selectVariable(datasetKey, mainVariable, variable, callbacks);
-      });
-      this.variantMenuItems.appendChild(item);
-    }
-
-    this.openVariantMenuFor = variantMenuKey(option);
-    option.classList.add("is-menu-open");
-    option.querySelector(".variable-option-variants")?.setAttribute("aria-expanded", "true");
-    this.variantMenu.hidden = false;
-    this.positionVariantMenu(option);
-    this.variantMenu.querySelector('.variant-menu-item[aria-checked="true"]')?.focus();
-  }
-
-  closeVariantMenu({ restoreFocus = false } = {}) {
-    if (!this.openVariantMenuFor) return;
-    const option = this.variableList.querySelector(".variable-option.is-menu-open");
-    if (option) {
-      option.classList.remove("is-menu-open");
-      const trigger = option.querySelector(".variable-option-variants");
-      trigger?.setAttribute("aria-expanded", "false");
-      if (restoreFocus) trigger?.focus();
-    }
-    this.variantMenu.hidden = true;
-    this.openVariantMenuFor = null;
-  }
-
-  positionVariantMenu(option) {
-    const anchor = option.getBoundingClientRect();
-    const menu = this.variantMenu;
-    const { offsetWidth: width, offsetHeight: height } = menu;
-
-    // Drops from the row like a split button's menu, flipping above it when the
-    // row sits too low for the menu to fit below.
-    const below = anchor.bottom + VARIANT_MENU_GAP_PX;
-    const flipUp = below + height > window.innerHeight - VARIANT_MENU_MARGIN_PX && anchor.top - height > 0;
-    const top = flipUp ? anchor.top - VARIANT_MENU_GAP_PX - height : below;
-    const maxLeft = window.innerWidth - width - VARIANT_MENU_MARGIN_PX;
-    const maxTop = window.innerHeight - height - VARIANT_MENU_MARGIN_PX;
-
-    menu.classList.toggle("is-above", flipUp);
-    menu.style.left = `${Math.min(Math.max(anchor.left, VARIANT_MENU_MARGIN_PX), Math.max(maxLeft, 0))}px`;
-    menu.style.top = `${Math.min(Math.max(top, VARIANT_MENU_MARGIN_PX), Math.max(maxTop, 0))}px`;
   }
 
   markSelectedVariableOption(datasetKey, variable) {
@@ -1303,10 +987,6 @@ export class MetadataController extends BaseController {
       input.checked = isSelected;
       // Roving tabindex: one stop for the whole group, as radio groups behave.
       input.tabIndex = isSelected ? 0 : -1;
-      // Only the selected row's caret joins the tab order, so tabbing through
-      // the panel still costs one stop per control rather than one per row.
-      const trigger = option.querySelector(".variable-option-variants");
-      if (trigger) trigger.tabIndex = isSelected ? 0 : -1;
     }
 
     // A filter can hide the selected row, and a radiogroup whose every stop is
@@ -1330,7 +1010,6 @@ export class MetadataController extends BaseController {
 
   refreshVariables() {
     this.hideVariableTooltip();
-    this.closeVariantMenu();
     const rows = this.getFilteredRows();
 
     this.variableList.innerHTML = "";
@@ -1342,7 +1021,7 @@ export class MetadataController extends BaseController {
     // may simply not be on screen. Hiding it would otherwise silently disagree
     // with the legend and the map.
     this.renderFilterSummary(rows.length);
-    this.markSelectedVariableOption(this.state.dataset, this.state.mainVariable);
+    this.markSelectedVariableOption(this.state.dataset, this.state.variable);
     this.scrollSelectedVariableIntoView();
   }
 

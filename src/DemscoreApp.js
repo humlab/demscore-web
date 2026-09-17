@@ -70,7 +70,6 @@ export class DemscoreApp extends BaseController {
     this.state = {
       dataset: meta.defaults.dataset,
       variable: meta.defaults.variable,
-      mainVariable: null,
       year: meta.defaults.year,
       isAutoPlaying: false,
       autoPlaySpeed: 4,
