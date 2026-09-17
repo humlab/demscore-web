@@ -1,5 +1,14 @@
 const WMS_TILE_CACHE = "demscore-wms-tile-cache-v1";
 
+// The fills may be asked for alone or together with the outline layer that rides
+// along in the same GetMap (see MapController.wmsLayerNames), and the two spell
+// different LAYERS values. Matching one exact string meant the default request,
+// "hex_variable,hex_outline", was never recognised: the preloader filled the cache
+// and nothing was ever served out of it, so every autoplay frame paid for a fresh
+// MapServer render. Hence a set, not a string -- but still a closed one, so this
+// never becomes a cache for arbitrary layers.
+const CACHEABLE_WMS_LAYERS = new Set(["hex_variable", "hex_outline"]);
+
 function isCacheableWmsTile(request) {
   if (request.method !== "GET") return false;
 
@@ -9,12 +18,16 @@ function isCacheableWmsTile(request) {
 
   const service = url.searchParams.get("SERVICE") || url.searchParams.get("service");
   const requestType = url.searchParams.get("REQUEST") || url.searchParams.get("request");
-  const layers = url.searchParams.get("LAYERS") || url.searchParams.get("layers");
+  const layers = (url.searchParams.get("LAYERS") || url.searchParams.get("layers") || "")
+    .split(",")
+    .map((layer) => layer.trim())
+    .filter(Boolean);
 
   return (
     service?.toUpperCase() === "WMS" &&
     requestType?.toUpperCase() === "GETMAP" &&
-    layers === "hex_variable"
+    layers.length > 0 &&
+    layers.every((layer) => CACHEABLE_WMS_LAYERS.has(layer))
   );
 }
 
