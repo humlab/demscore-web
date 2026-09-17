@@ -106,53 +106,72 @@ body {
   margin: 4px 0 10px;
 }
 
-.dataset-tabs {
+/* Filters, not tabs: the variable list spans every dataset at once, so nothing
+   here owns a panel. Both rows are toggles and both may be all-off, which is the
+   unfiltered state the list opens in. */
+.filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.filter-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-row[hidden] {
+  display: none;
+}
+
+.chip-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 3px;
-  border-bottom: 3px solid var(--ds-accent);
+  gap: 4px;
 }
 
-/* Tabs carry the dataset's full name, so they share the row in equal columns
-   and wrap onto as many lines as the longest name needs. */
-#controls .dataset-tab {
-  display: flex;
-  flex: 1 1 0;
-  align-items: flex-end;
-  justify-content: center;
-  min-width: 0;
+#controls .chip {
   width: auto;
   margin-top: 0;
-  padding: 7px 6px;
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
-  background: transparent;
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 700;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, #fff 34%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, #fff 12%, transparent);
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.35;
   letter-spacing: 0.01em;
-  line-height: 1.15;
   text-align: center;
-  hyphens: auto;
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
-#controls .dataset-tab:hover {
-  background: color-mix(in srgb, var(--ds-accent) 12%, #fff);
+#controls .chip:hover {
+  border-color: #fff;
+  background: color-mix(in srgb, #fff 24%, transparent);
+}
+
+#controls .chip:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+
+/* An active chip inverts to solid white so "on" survives the panel photo
+   underneath it, which a tint alone does not. */
+#controls .chip.is-active,
+#controls .chip.is-active:hover {
+  border-color: #fff;
+  background: #fff;
   color: var(--ds-accent);
 }
 
-#controls .dataset-tab:focus-visible {
-  outline: 2px solid var(--ds-accent);
-  outline-offset: -2px;
-}
-
-#controls .dataset-tab.is-active,
-#controls .dataset-tab.is-active:hover {
-  border-color: var(--ds-accent);
-  background: var(--ds-accent);
-  color: #fff;
+.filter-summary {
+  margin: 0;
+  color: color-mix(in srgb, #fff 78%, transparent);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Each dataset carries its own photo, veiled by an accent-tinted scrim tuned to
@@ -165,8 +184,7 @@ body {
   min-height: 0;
   padding: 10px 12px 14px;
   border: 1px solid var(--ds-accent);
-  border-top: none;
-  border-radius: 0 0 10px 10px;
+  border-radius: 10px;
   background-color: var(--ds-scrim);
   background-image:
     linear-gradient(
@@ -367,6 +385,36 @@ body {
    down the list and spans can be compared without reading a single number.
    Bar height carries how much data is there — sampling frequency and country
    coverage folded together by scripts/build_variable_coverage.sh. */
+.variable-option-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+/* The badge replaces what the dataset tabs used to say for free. It rides on the
+   title line, shrinking last so a long title wraps before the badge does. */
+.variable-option-badge {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #fff 20%, transparent);
+  color: #fff;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* A selected row flips to a white background, so the badge has to flip with it
+   or it disappears into the fill. */
+.variable-option.is-selected .variable-option-badge {
+  background: var(--ds-accent);
+  color: #fff;
+}
+
 .variable-option-coverage {
   --coverage-track-height: 10px;
   display: block;
@@ -375,9 +423,24 @@ body {
   height: var(--coverage-track-height);
 }
 
-/* The baseline draws the dataset's full span even where a variable has none of
-   it, which is what makes a late-starting row read as late-starting rather than
-   as a short strip floating in the row. */
+/* Data that runs off the left of the shared axis gets a chevron at the edge, so
+   a V-Dem series reaching back to 1789 does not read as starting in 1900. */
+.variable-option-coverage.is-clipped::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: -5px;
+  width: 0;
+  height: 0;
+  border-top: 3.5px solid transparent;
+  border-right: 4px solid currentColor;
+  border-bottom: 3.5px solid transparent;
+  opacity: 0.65;
+}
+
+/* The baseline draws the shared axis even where a variable has none of it, which
+   is what makes a late-starting row read as late-starting rather than as a short
+   strip floating in the row. */
 .variable-option-coverage::before {
   content: "";
   position: absolute;

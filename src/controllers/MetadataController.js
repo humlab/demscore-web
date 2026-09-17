@@ -41,6 +41,14 @@ const COVERAGE_TRACK_H = 10;
 const COVERAGE_BAR_MIN_H = 2.5;
 // Bars are slightly narrower than their bucket, so neighbours stay countable.
 const COVERAGE_BAR_W = 0.78;
+// Rows from different datasets sit next to each other in one list, so every
+// strip is drawn against a single shared axis — two adjacent bars in the same
+// place have to mean the same year. The axis is clipped at 1900 because V-Dem
+// reaches back to 1789 while QoG starts in 1963: on a true 1789 axis every
+// QoG and REPDEM strip would be squashed into the right third of the track for
+// the sake of a handful of historical V-Dem series. Anything earlier is marked
+// as continuing off the left edge rather than dropped silently.
+const COVERAGE_AXIS_MIN_YEAR = 1900;
 const VARIANT_MENU_GAP_PX = 4;
 const VARIANT_MENU_MARGIN_PX = 10;
 // Most V-Dem descriptions are the codebook's field block scraped verbatim
@@ -92,14 +100,66 @@ function buildVariableHierarchy(variables) {
   };
 }
 
+// Rows are identified by dataset *and* variable everywhere now, including the
+// "is this row's menu already open" check.
+function variantMenuKey(option) {
+  return `${option.dataset.dataset}:${option.dataset.variable}`;
+}
+
+// The topics file is curated by hand and served straight through, so nothing
+// upstream guarantees its shape. Anything malformed drops out here rather than
+// throwing halfway through a render: an untopiced variable is still listed, it
+// just answers to no chip.
+function normalizeTopicsConfig(topicsMeta) {
+  const topics = new Map();
+  const rawTopics = topicsMeta?.topics;
+  if (rawTopics && typeof rawTopics === "object") {
+    for (const [id, entry] of Object.entries(rawTopics)) {
+      const label = typeof entry?.label === "string" && entry.label.trim() ? entry.label.trim() : id;
+      const description = typeof entry?.description === "string" ? entry.description.trim() : "";
+      topics.set(id, { id, label, description });
+    }
+  }
+
+  const order = [];
+  const seen = new Set();
+  for (const id of Array.isArray(topicsMeta?.order) ? topicsMeta.order : []) {
+    if (topics.has(id) && !seen.has(id)) {
+      seen.add(id);
+      order.push(id);
+    }
+  }
+  // A topic defined but left out of `order` still belongs in the list; it goes
+  // after the ordered ones rather than vanishing.
+  for (const id of topics.keys()) {
+    if (!seen.has(id)) order.push(id);
+  }
+
+  // `${dataset}:${mainVariable}` -> topic ids, first being the primary one.
+  const byVariable = new Map();
+  const rawAssignments = topicsMeta?.assignments;
+  if (rawAssignments && typeof rawAssignments === "object") {
+    for (const [datasetKey, variables] of Object.entries(rawAssignments)) {
+      if (!variables || typeof variables !== "object") continue;
+      for (const [variableKey, ids] of Object.entries(variables)) {
+        const list = (Array.isArray(ids) ? ids : [ids]).filter((id) => topics.has(id));
+        if (list.length > 0) byVariable.set(`${datasetKey}:${variableKey}`, list);
+      }
+    }
+  }
+
+  return { topics, order, byVariable };
+}
+
 export class MetadataController extends BaseController {
-  constructor({ meta, polarityMeta, coverageMeta, state, backendClient }) {
+  constructor({ meta, polarityMeta, coverageMeta, topicsMeta, state, backendClient }) {
     super();
     this.meta = meta;
     this.state = state;
     this.backendClient = backendClient;
     this.coverageMeta =
       coverageMeta?.datasets && typeof coverageMeta.datasets === "object" ? coverageMeta.datasets : {};
+    this.topicsConfig = normalizeTopicsConfig(topicsMeta);
 
     this.varMetaByDataset = {};
     this.fullVarMetaByDataset = {};
@@ -151,19 +211,30 @@ export class MetadataController extends BaseController {
           : DATASET_ACCENTS[index % DATASET_ACCENTS.length];
     });
     this.datasetTabButtons = new Map();
+    this.topicChipButtons = new Map();
+    // Both filter sets are additive and empty means "no filter", so the list
+    // opens showing every variable rather than hiding most of them behind a
+    // choice the reader has not made yet.
+    this.activeTopics = new Set();
+    this.activeDatasets = new Set();
     this.tooltipTimer = null;
     this.tooltipVariable = null;
     // Which variant each row is set to, so a row keeps its choice while the
     // reader browses other rows. Keyed `${dataset}:${mainVariable}`.
     this.variantByMain = new Map();
-    // Alphabetical main-variable order per dataset, cached once its titles are in.
-    this.sortedMainVariables = new Map();
+    // The whole list, every dataset's rows in title order, cached once every
+    // dataset's titles are in. Filtering reads from it rather than rebuilding.
+    this.allVariableRows = null;
+    // The shared year axis the coverage strips are drawn against.
+    this.coverageAxis = null;
     // Which variable each dataset was last left on, restored from the cookie.
     this.variableChoices = readVariableChoices();
     this.openVariantMenuFor = null;
 
     this.datasetSection = this.getEl("datasetSection");
     this.datasetTabs = this.getEl("datasetTabs");
+    this.topicChips = this.getEl("topicChips");
+    this.filterSummary = this.getEl("filterSummary");
     this.datasetPanel = this.getEl("datasetPanel");
     this.datasetCitation = this.getEl("datasetCitation");
     this.datasetCodebookWrap = this.getEl("datasetCodebookWrap");
@@ -184,11 +255,16 @@ export class MetadataController extends BaseController {
   }
 
   async initialize() {
-    this.renderDatasetTabs();
+    this.renderDatasetChips();
+    this.renderTopicChips();
     this.preloadDatasetImages();
-    this.selectDatasetTab(this.state.dataset);
-    await this.ensureDatasetMetadata(this.state.dataset);
-    this.refreshVariables(this.state.dataset);
+    this.applyDatasetChrome(this.state.dataset);
+    // One list now holds every dataset's rows, and a row is titled by its
+    // dataset's metadata, so all of it has to be in before the first render —
+    // not just the dataset the map happens to be showing.
+    await Promise.all(Object.keys(this.meta.datasets).map((key) => this.ensureDatasetMetadata(key)));
+    this.applyInitialSelection();
+    this.refreshVariables();
     this.refreshCitation(this.state.dataset);
     this.refreshCodebookLink(this.state.dataset);
     this.refreshVariableMetadataPanel();
@@ -198,6 +274,14 @@ export class MetadataController extends BaseController {
     if (typeof ds?.title === "string" && ds.title.trim()) return ds.title.trim();
     if (typeof ds?.label === "string" && ds.label.trim()) return ds.label.trim();
     return fallbackKey;
+  }
+
+  // The short form ("V-Dem", not "Varieties of Democracy"). Chips share a row
+  // and badges share a line with the variable title, so both need the name that
+  // does not wrap; the full title rides along as the tooltip.
+  getDatasetLabel(ds, fallbackKey) {
+    if (typeof ds?.label === "string" && ds.label.trim()) return ds.label.trim();
+    return this.getDatasetTitle(ds, fallbackKey);
   }
 
   getDatasetAccent(datasetKey) {
@@ -217,80 +301,102 @@ export class MetadataController extends BaseController {
     }
   }
 
-  renderDatasetTabs() {
+  // Datasets are filters now, not tabs: the list spans all of them at once, so
+  // there is no one panel a tab could own. They stay in dataset order and keep
+  // their accent, which is also what the badge on each row is coloured with.
+  renderDatasetChips() {
     this.datasetTabs.innerHTML = "";
     this.datasetTabButtons.clear();
 
     for (const [key, ds] of Object.entries(this.meta.datasets)) {
-      const tab = document.createElement("button");
-      tab.type = "button";
-      tab.className = "dataset-tab";
-      tab.id = `datasetTab-${key}`;
-      tab.dataset.dataset = key;
-      tab.setAttribute("role", "tab");
-      tab.setAttribute("aria-controls", "datasetPanel");
-      tab.title = `${this.getDatasetTitle(ds, key)} (${key})`;
-      tab.style.setProperty("--ds-accent", this.getDatasetAccent(key));
-      tab.textContent = this.getDatasetTitle(ds, key);
-      this.datasetTabs.appendChild(tab);
-      this.datasetTabButtons.set(key, tab);
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip chip-dataset";
+      chip.id = `datasetChip-${key}`;
+      chip.dataset.dataset = key;
+      chip.setAttribute("aria-pressed", "false");
+      chip.title = `${this.getDatasetTitle(ds, key)} (${key})`;
+      chip.style.setProperty("--ds-accent", this.getDatasetAccent(key));
+      chip.textContent = this.getDatasetLabel(ds, key);
+      this.datasetTabs.appendChild(chip);
+      this.datasetTabButtons.set(key, chip);
+    }
+    this.syncFilterChipState();
+  }
+
+  renderTopicChips() {
+    this.topicChips.innerHTML = "";
+    this.topicChipButtons.clear();
+
+    for (const id of this.topicsConfig.order) {
+      const topic = this.topicsConfig.topics.get(id);
+      if (!topic) continue;
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip chip-topic";
+      chip.dataset.topic = id;
+      chip.setAttribute("aria-pressed", "false");
+      if (topic.description) chip.title = topic.description;
+      chip.textContent = topic.label;
+      this.topicChips.appendChild(chip);
+      this.topicChipButtons.set(id, chip);
+    }
+    // With no topics configured the row is dead weight, so it goes away rather
+    // than sitting there empty above the list.
+    this.topicChips.closest(".filter-row")?.toggleAttribute("hidden", this.topicChipButtons.size === 0);
+    this.syncFilterChipState();
+  }
+
+  syncFilterChipState() {
+    for (const [key, chip] of this.datasetTabButtons) {
+      const on = this.activeDatasets.has(key);
+      chip.classList.toggle("is-active", on);
+      chip.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+    for (const [id, chip] of this.topicChipButtons) {
+      const on = this.activeTopics.has(id);
+      chip.classList.toggle("is-active", on);
+      chip.setAttribute("aria-pressed", on ? "true" : "false");
     }
   }
 
-  selectDatasetTab(datasetKey) {
-    for (const [key, tab] of this.datasetTabButtons) {
-      const isActive = key === datasetKey;
-      tab.classList.toggle("is-active", isActive);
-      tab.setAttribute("aria-selected", isActive ? "true" : "false");
-      tab.tabIndex = isActive ? 0 : -1;
-    }
-
+  // The panel's accent, photo and citation follow the *selected* variable's
+  // dataset now that no tab declares one.
+  applyDatasetChrome(datasetKey) {
     const accent = this.getDatasetAccent(datasetKey);
     this.datasetSection.style.setProperty("--ds-accent", accent);
     this.datasetSection.style.setProperty("--ds-image", `url("${this.getDatasetImageUrl(datasetKey)}")`);
     this.datasetCitation.style.setProperty("--ds-accent", accent);
     this.datasetSection.dataset.dataset = datasetKey;
-    this.datasetPanel.setAttribute("aria-labelledby", `datasetTab-${datasetKey}`);
   }
 
   bindEvents({ onBeforeDatasetChange, onDatasetChange, onVariableChange }) {
     this.datasetTabs.addEventListener("click", (event) => {
-      const tab = event.target.closest(".dataset-tab");
-      if (!tab || !this.datasetTabs.contains(tab)) return;
-      void this.changeDataset(tab.dataset.dataset, { onBeforeDatasetChange, onDatasetChange });
+      const chip = event.target.closest(".chip-dataset");
+      if (!chip || !this.datasetTabs.contains(chip)) return;
+      this.toggleFilter(this.activeDatasets, chip.dataset.dataset);
     });
 
-    this.datasetTabs.addEventListener("keydown", (event) => {
-      const keys = [...this.datasetTabButtons.keys()];
-      const currentIndex = keys.indexOf(this.state.dataset);
-      if (currentIndex < 0) return;
-
-      let nextIndex = null;
-      if (event.key === "ArrowRight" || event.key === "ArrowDown") {
-        nextIndex = (currentIndex + 1) % keys.length;
-      } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-        nextIndex = (currentIndex - 1 + keys.length) % keys.length;
-      } else if (event.key === "Home") {
-        nextIndex = 0;
-      } else if (event.key === "End") {
-        nextIndex = keys.length - 1;
-      }
-      if (nextIndex === null) return;
-
-      event.preventDefault();
-      const nextKey = keys[nextIndex];
-      this.datasetTabButtons.get(nextKey)?.focus();
-      void this.changeDataset(nextKey, { onBeforeDatasetChange, onDatasetChange });
+    this.topicChips.addEventListener("click", (event) => {
+      const chip = event.target.closest(".chip-topic");
+      if (!chip || !this.topicChips.contains(chip)) return;
+      this.toggleFilter(this.activeTopics, chip.dataset.topic);
     });
 
     this.variableList.addEventListener("change", (event) => {
       const input = event.target;
       if (!input || input.type !== "radio") return;
+      const datasetKey = input.dataset.dataset;
+      const mainVariable = input.dataset.variable;
+      if (!datasetKey || !mainVariable) return;
       // Picking a row restores whichever version that row was last set to.
-      this.selectVariable(input.value, this.getSelectedVariant(this.state.dataset, input.value), onVariableChange);
+      void this.selectVariable(datasetKey, mainVariable, this.getSelectedVariant(datasetKey, mainVariable), {
+        onBeforeDatasetChange,
+        onVariableChange,
+      });
     });
 
-    this.bindVariantMenu(onVariableChange);
+    this.bindVariantMenu({ onBeforeDatasetChange, onVariableChange });
 
     this.variableMetaBtn.addEventListener("click", async () => {
       if (this.variableMetaBtn.disabled) return;
@@ -325,7 +431,7 @@ export class MetadataController extends BaseController {
     if (!datasetKey || datasetKey === this.state.dataset || !this.meta.datasets[datasetKey]) return;
 
     this.state.dataset = datasetKey;
-    this.selectDatasetTab(datasetKey);
+    this.applyDatasetChrome(datasetKey);
     if (typeof onBeforeDatasetChange === "function") {
       onBeforeDatasetChange(datasetKey);
     }
@@ -333,13 +439,69 @@ export class MetadataController extends BaseController {
     await this.ensureDatasetMetadata(datasetKey);
     if (this.state.dataset !== datasetKey) return;
 
-    this.refreshVariables(datasetKey);
+    // The list is not rebuilt here any more: it spans every dataset, so the
+    // dataset changing underneath it changes which row is selected, not which
+    // rows exist.
     this.refreshCitation(datasetKey);
     this.refreshCodebookLink(datasetKey);
     this.refreshVariableMetadataPanel();
     if (typeof onDatasetChange === "function") {
       await onDatasetChange(datasetKey);
     }
+  }
+
+  // Startup arrives with a dataset and a variable key but no main/variant split:
+  // the cookie may name a variant, the config default names a main, and either
+  // may have been dropped from the config since. The list used to work this out
+  // per dataset as it rendered; it spans every dataset now, so it is resolved
+  // once, for the dataset the map opens on.
+  applyInitialSelection() {
+    const datasetKey = this.state.dataset;
+    const hierarchy = this.datasetHierarchies[datasetKey];
+
+    const remembered = this.getRememberedSelection(datasetKey);
+    if (remembered) {
+      this.variantByMain.set(this.variantMemoryKey(datasetKey, remembered.mainVariable), remembered.variable);
+      this.state.mainVariable = remembered.mainVariable;
+      this.state.variable = remembered.variable;
+      return;
+    }
+
+    const configured = this.state.variable;
+    let mainVariable = "";
+    if (configured && hierarchy?.mainVariableSet.has(configured)) {
+      mainVariable = configured;
+    } else if (configured) {
+      const base = stripVariantSuffixChain(configured);
+      if (hierarchy?.variantsByMain?.[base]?.includes(configured)) {
+        mainVariable = base;
+        this.variantByMain.set(this.variantMemoryKey(datasetKey, base), configured);
+      }
+    }
+    if (!mainVariable) {
+      mainVariable = this.getAllVariableRows().find((row) => row.datasetKey === datasetKey)?.mainVariable || "";
+    }
+
+    this.state.mainVariable = mainVariable;
+    this.state.variable = this.getSelectedVariant(datasetKey, mainVariable);
+  }
+
+  // A chip is a toggle, and several may be on at once: topics OR together, as do
+  // datasets, and the two groups AND with each other.
+  toggleFilter(set, value) {
+    if (!value) return;
+    if (set.has(value)) set.delete(value);
+    else set.add(value);
+    this.syncFilterChipState();
+    this.refreshVariables();
+  }
+
+  clearFilters() {
+    if (this.activeTopics.size === 0 && this.activeDatasets.size === 0) return;
+    this.activeTopics.clear();
+    this.activeDatasets.clear();
+    this.syncFilterChipState();
+    this.refreshVariables();
   }
 
   getDatasetConfig(datasetKey = this.state.dataset) {
@@ -473,7 +635,10 @@ export class MetadataController extends BaseController {
   buildVariableOption(datasetKey, variable) {
     const option = document.createElement("div");
     option.className = "variable-option";
+    // Two datasets may name a variable the same thing, so every lookup that used
+    // to key on the variable alone is now qualified by its dataset.
     option.dataset.variable = variable;
+    option.dataset.dataset = datasetKey;
 
     const label = document.createElement("label");
     label.className = "variable-option-pick";
@@ -481,14 +646,31 @@ export class MetadataController extends BaseController {
     const input = document.createElement("input");
     input.type = "radio";
     input.name = "variableList";
-    input.value = variable;
+    input.value = `${datasetKey}:${variable}`;
+    input.dataset.dataset = datasetKey;
+    input.dataset.variable = variable;
     label.appendChild(input);
 
     const title = this.getVariableTitle(datasetKey, variable);
+    // Title and badge share a line, so the badge needs a flex row of its own —
+    // the label itself is a block that stacks title, version and strip.
+    const titleRow = document.createElement("span");
+    titleRow.className = "variable-option-title-row";
+
     const name = document.createElement("span");
     name.className = "variable-option-name";
     name.textContent = title;
-    label.appendChild(name);
+    titleRow.appendChild(name);
+
+    // Which dataset a row came from is the one thing the flat list took away
+    // that the tabs used to say for free.
+    const badge = document.createElement("span");
+    badge.className = "variable-option-badge";
+    badge.style.setProperty("--ds-accent", this.getDatasetAccent(datasetKey));
+    badge.textContent = this.getDatasetLabel(this.meta.datasets[datasetKey], datasetKey);
+    titleRow.appendChild(badge);
+
+    label.appendChild(titleRow);
 
     const variants = this.getVariantsFor(datasetKey, variable);
     if (variants.length > 0) {
@@ -540,23 +722,6 @@ export class MetadataController extends BaseController {
         return `${String(rank < 0 ? VARIANT_SUFFIX_ORDER.length : rank).padStart(2, "0")}${suffix}`;
       })
       .join("-");
-  }
-
-  // Titles arrive with the dataset's metadata, so the order is only cached once
-  // that load has landed — until then a row is titled by its key.
-  getSortedMainVariables(datasetKey) {
-    const cached = this.sortedMainVariables.get(datasetKey);
-    if (cached) return cached;
-
-    const sorted = [...(this.datasetHierarchies[datasetKey]?.mainVariables || [])].sort(
-      (a, b) =>
-        VARIABLE_COLLATOR.compare(this.getVariableTitle(datasetKey, a), this.getVariableTitle(datasetKey, b)) ||
-        VARIABLE_COLLATOR.compare(a, b),
-    );
-    if (this.varMetaByDataset[datasetKey]) {
-      this.sortedMainVariables.set(datasetKey, sorted);
-    }
-    return sorted;
   }
 
   // The remembered choice is a whole variable, variant included, and the config
@@ -639,13 +804,29 @@ export class MetadataController extends BaseController {
     return { dataset, entry };
   }
 
+  // The axis every strip shares: 1900 (or the earliest year anything actually
+  // has, if that is later) through the latest year any dataset reaches.
+  getCoverageAxis() {
+    if (this.coverageAxis) return this.coverageAxis;
+    let min = Infinity;
+    let max = -Infinity;
+    for (const dataset of Object.values(this.coverageMeta)) {
+      if (Number.isFinite(dataset?.yearMin)) min = Math.min(min, dataset.yearMin);
+      if (Number.isFinite(dataset?.yearMax)) max = Math.max(max, dataset.yearMax);
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+    this.coverageAxis = { yearMin: Math.max(min, COVERAGE_AXIS_MIN_YEAR), yearMax: max };
+    return this.coverageAxis;
+  }
+
   renderCoverageStrip(datasetKey, option, mainVariable) {
     const target = option.querySelector(".variable-option-coverage");
     if (!target) return;
 
     const variable = this.getSelectedVariant(datasetKey, mainVariable);
     const data = this.getCoverageStripData(datasetKey, variable);
-    if (!data) {
+    const axis = this.getCoverageAxis();
+    if (!data || !axis) {
       // A variable the precompute never saw gets no strip rather than an empty
       // track, which would read as "this variable has no data anywhere".
       target.innerHTML = "";
@@ -655,32 +836,56 @@ export class MetadataController extends BaseController {
 
     const { dataset, entry } = data;
     target.hidden = false;
-    target.innerHTML = this.buildCoverageStripSvg(entry.levels);
+    target.innerHTML = this.buildCoverageStripSvg(entry.levels, dataset);
+    // Data that starts before the axis does is still there; the strip just
+    // cannot show it, so the row says so instead of implying a later start.
+    target.classList.toggle("is-clipped", entry.yearMin < axis.yearMin);
     target.title =
       `Data ${entry.yearMin}\u2013${entry.yearMax}` +
       `, up to ${entry.maxCountries} countries` +
-      ` (axis: ${dataset.yearMin}\u2013${dataset.yearMax})`;
+      ` (axis: ${axis.yearMin}\u2013${axis.yearMax}` +
+      `${entry.yearMin < axis.yearMin ? `, continues before ${axis.yearMin}` : ""})`;
   }
 
   // One <svg> holding one <path>, for the row strip and the hover card alike:
   // a bar per element would put tens of thousands of nodes in a V-Dem list, and
   // the list is rebuilt from scratch on every dataset switch.
-  buildCoverageStripSvg(levels, className = "variable-option-coverage-svg") {
+  buildCoverageStripSvg(levels, dataset, className = "variable-option-coverage-svg") {
+    const axis = this.getCoverageAxis();
     const buckets = levels.length;
+    if (!axis || buckets === 0) return "";
+
+    // The bucket string is spaced across its own dataset's span, so the path is
+    // emitted in years and the viewBox is the shared axis. That way one code
+    // path puts a QoG strip and a V-Dem strip on the same scale without either
+    // knowing about the other.
+    const spanStart = Number.isFinite(dataset?.yearMin) ? dataset.yearMin : axis.yearMin;
+    const spanEnd = Number.isFinite(dataset?.yearMax) ? dataset.yearMax : axis.yearMax;
+    const bucketYears = (spanEnd - spanStart + 1) / buckets;
+    const barYears = bucketYears * COVERAGE_BAR_W;
+
     const bars = [];
     for (let i = 0; i < buckets; i += 1) {
       const level = Number(levels[i]);
       if (!Number.isFinite(level) || level <= 0) continue;
+      const x = spanStart + i * bucketYears;
+      // Buckets entirely before the axis starts are dropped; the clipped marker
+      // on the row is what reports them.
+      if (x + barYears <= axis.yearMin) continue;
       // Level 1 is "present but thin". Sitting it at a quarter of the track
       // keeps a 32-country sample visibly above the baseline instead of merging
       // into it, while still ranking below a 165-country one.
       const height = COVERAGE_BAR_MIN_H + ((level - 1) / 8) * (COVERAGE_TRACK_H - COVERAGE_BAR_MIN_H);
       const y = (COVERAGE_TRACK_H - height).toFixed(2);
-      bars.push(`M${i} ${y}h${COVERAGE_BAR_W}v${height.toFixed(2)}h-${COVERAGE_BAR_W}z`);
+      const left = Math.max(x, axis.yearMin);
+      const width = x + barYears - left;
+      if (width <= 0) continue;
+      bars.push(`M${left.toFixed(2)} ${y}h${width.toFixed(2)}v${height.toFixed(2)}h-${width.toFixed(2)}z`);
     }
     if (bars.length === 0) return "";
+    const axisSpan = axis.yearMax - axis.yearMin + 1;
     return (
-      `<svg class="${className}" viewBox="0 0 ${buckets} ${COVERAGE_TRACK_H}"` +
+      `<svg class="${className}" viewBox="${axis.yearMin} 0 ${axisSpan} ${COVERAGE_TRACK_H}"` +
       ` preserveAspectRatio="none" aria-hidden="true" focusable="false">` +
       `<path d="${bars.join("")}" /></svg>`
     );
@@ -717,11 +922,16 @@ export class MetadataController extends BaseController {
   scheduleVariableTooltip(option) {
     if (this.openVariantMenuFor) return;
     const variable = option.dataset.variable;
-    if (!variable || variable === this.tooltipVariable) return;
+    // The hovered row names its own dataset. Reading the selected one here asked
+    // the backend for, say, a REPDEM variable under v_dem and 404ed.
+    const datasetKey = option.dataset.dataset;
+    if (!variable || !datasetKey) return;
+    const key = `${datasetKey}:${variable}`;
+    if (key === this.tooltipVariable) return;
     this.hideVariableTooltip();
-    this.tooltipVariable = variable;
+    this.tooltipVariable = key;
     this.tooltipTimer = window.setTimeout(() => {
-      void this.showVariableTooltip(option, variable);
+      void this.showVariableTooltip(option, datasetKey, variable);
     }, TOOLTIP_HOVER_DELAY_MS);
   }
 
@@ -732,13 +942,13 @@ export class MetadataController extends BaseController {
     this.variableTooltip.hidden = true;
   }
 
-  async showVariableTooltip(option, variable) {
-    const datasetKey = this.state.dataset;
+  async showVariableTooltip(option, datasetKey, variable) {
+    const key = `${datasetKey}:${variable}`;
     let metaForVariable = this.getCachedFullVariableMetadata(datasetKey, variable);
     if (metaForVariable === undefined) {
       metaForVariable = await this.ensureVariableFullMetadata(datasetKey, variable);
-      // The pointer may have moved on, or the dataset changed, while we fetched.
-      if (this.tooltipVariable !== variable || this.state.dataset !== datasetKey) return;
+      // The pointer may have moved on to another row while we fetched.
+      if (this.tooltipVariable !== key) return;
     }
     if (!metaForVariable) return;
 
@@ -797,7 +1007,8 @@ export class MetadataController extends BaseController {
   // one bar is taller than the next can only be spelled out here.
   appendVariableTooltipCoverage(datasetKey, variable) {
     const data = this.getCoverageStripData(datasetKey, variable);
-    if (!data) return;
+    const axisRange = this.getCoverageAxis();
+    if (!data || !axisRange) return;
     const { dataset, entry } = data;
 
     const section = document.createElement("div");
@@ -810,15 +1021,15 @@ export class MetadataController extends BaseController {
 
     const track = document.createElement("span");
     track.className = "variable-tooltip-coverage-track";
-    track.innerHTML = this.buildCoverageStripSvg(entry.levels, "variable-tooltip-coverage-svg");
+    track.innerHTML = this.buildCoverageStripSvg(entry.levels, dataset, "variable-tooltip-coverage-svg");
     section.appendChild(track);
 
-    // The endpoints belong to the dataset's axis, not the variable's own range —
+    // The endpoints belong to the shared axis, not the variable's own range —
     // they are what makes a strip that starts halfway along legible as "this one
-    // starts in 1900", which is the whole point of sharing the axis.
+    // starts in 1960", which is the whole point of sharing the axis.
     const axis = document.createElement("span");
     axis.className = "variable-tooltip-coverage-axis";
-    for (const year of [dataset.yearMin, dataset.yearMax]) {
+    for (const year of [axisRange.yearMin, axisRange.yearMax]) {
       const tick = document.createElement("span");
       tick.textContent = String(year);
       axis.appendChild(tick);
@@ -831,9 +1042,14 @@ export class MetadataController extends BaseController {
       entry.yearMin === entry.yearMax
         ? `${entry.yearMin} only`
         : `${entry.yearMin}–${entry.yearMax}`;
+    const clipped =
+      entry.yearMin < axisRange.yearMin
+        ? ` The strip starts at ${axisRange.yearMin}, so earlier data is not drawn.`
+        : "";
     note.textContent =
       `Data ${range}, up to ${entry.maxCountries} ${entry.maxCountries === 1 ? "country" : "countries"}. ` +
-      `Bar height combines how many countries reported and how many of the years in that step carry data.`;
+      `Bar height combines how many countries reported and how many of the years in that step carry data.` +
+      clipped;
     section.appendChild(note);
 
     this.variableTooltipBody.appendChild(section);
@@ -876,18 +1092,33 @@ export class MetadataController extends BaseController {
     card.style.setProperty("--arrow-top", `${arrowTop}px`);
   }
 
-  selectVariable(mainVariable, variable, onVariableChange) {
+  // Picking a row is now also how the dataset changes: the list spans all of
+  // them, so the row carries which one it belongs to and the panel follows it.
+  async selectVariable(datasetKey, mainVariable, variable, { onBeforeDatasetChange, onVariableChange } = {}) {
+    const datasetChanged = datasetKey !== this.state.dataset;
+    if (datasetChanged) {
+      if (typeof onBeforeDatasetChange === "function") onBeforeDatasetChange(datasetKey);
+      this.state.dataset = datasetKey;
+      this.applyDatasetChrome(datasetKey);
+      await this.ensureDatasetMetadata(datasetKey);
+      if (this.state.dataset !== datasetKey) return;
+      this.refreshCitation(datasetKey);
+      this.refreshCodebookLink(datasetKey);
+    }
+
     this.state.mainVariable = mainVariable;
     this.state.variable = variable;
-    this.variantByMain.set(this.variantMemoryKey(this.state.dataset, mainVariable), variable);
-    this.rememberVariableChoice(this.state.dataset, variable);
-    this.markSelectedVariableOption(mainVariable);
-    const option = this.variableList.querySelector(`.variable-option[data-variable="${CSS.escape(mainVariable)}"]`);
+    this.variantByMain.set(this.variantMemoryKey(datasetKey, mainVariable), variable);
+    this.rememberVariableChoice(datasetKey, variable);
+    this.markSelectedVariableOption(datasetKey, mainVariable);
+    const option = this.variableList.querySelector(
+      `.variable-option[data-dataset="${CSS.escape(datasetKey)}"][data-variable="${CSS.escape(mainVariable)}"]`,
+    );
     if (option) {
-      this.renderVariantLabel(this.state.dataset, option, mainVariable);
+      this.renderVariantLabel(datasetKey, option, mainVariable);
       // Versions can cover different years (a `_mean` that starts later than its
       // base), so the strip follows the row's version like the label does.
-      this.renderCoverageStrip(this.state.dataset, option, mainVariable);
+      this.renderCoverageStrip(datasetKey, option, mainVariable);
     }
     this.refreshVariableMetadataPanel();
     if (typeof onVariableChange === "function") {
@@ -898,18 +1129,18 @@ export class MetadataController extends BaseController {
   // ---- Variant menu ----
   // Body-level like the hover card, for the same reason: the variable list and
   // the sidebar both scroll, and either would clip a menu parented inside them.
-  bindVariantMenu(onVariableChange) {
+  bindVariantMenu(callbacks) {
     this.variableList.addEventListener("click", (event) => {
       const trigger = event.target.closest(".variable-option-variants");
       if (!trigger || !this.variableList.contains(trigger)) return;
       // The trigger lives beside the label, so this click is not a row pick.
       event.preventDefault();
       const option = trigger.closest(".variable-option");
-      if (this.openVariantMenuFor === option.dataset.variable) {
+      if (this.openVariantMenuFor === variantMenuKey(option)) {
         this.closeVariantMenu();
         return;
       }
-      this.openVariantMenu(option, onVariableChange);
+      this.openVariantMenu(option, callbacks);
     });
 
     // Alt+Down / Right opens the menu from the focused row, as a split button does.
@@ -919,7 +1150,7 @@ export class MetadataController extends BaseController {
       const opensMenu = (event.altKey && event.key === "ArrowDown") || event.key === "ArrowRight";
       if (!opensMenu || !option.querySelector(".variable-option-variants")) return;
       event.preventDefault();
-      this.openVariantMenu(option, onVariableChange);
+      this.openVariantMenu(option, callbacks);
     });
 
     this.variantMenu.addEventListener("keydown", (event) => {
@@ -973,8 +1204,10 @@ export class MetadataController extends BaseController {
     window.addEventListener("resize", () => this.closeVariantMenu());
   }
 
-  openVariantMenu(option, onVariableChange) {
-    const datasetKey = this.state.dataset;
+  openVariantMenu(option, callbacks) {
+    // The row says which dataset it belongs to; the map's current one may be a
+    // different dataset entirely now that the list spans all of them.
+    const datasetKey = option.dataset.dataset;
     const mainVariable = option.dataset.variable;
     const variants = this.getVariantsFor(datasetKey, mainVariable);
     if (variants.length === 0) return;
@@ -1007,12 +1240,12 @@ export class MetadataController extends BaseController {
 
       item.addEventListener("click", () => {
         this.closeVariantMenu({ restoreFocus: true });
-        this.selectVariable(mainVariable, variable, onVariableChange);
+        void this.selectVariable(datasetKey, mainVariable, variable, callbacks);
       });
       this.variantMenuItems.appendChild(item);
     }
 
-    this.openVariantMenuFor = mainVariable;
+    this.openVariantMenuFor = variantMenuKey(option);
     option.classList.add("is-menu-open");
     option.querySelector(".variable-option-variants")?.setAttribute("aria-expanded", "true");
     this.variantMenu.hidden = false;
@@ -1051,9 +1284,9 @@ export class MetadataController extends BaseController {
     menu.style.top = `${Math.min(Math.max(top, VARIANT_MENU_MARGIN_PX), Math.max(maxTop, 0))}px`;
   }
 
-  markSelectedVariableOption(variable) {
+  markSelectedVariableOption(datasetKey, variable) {
     for (const option of this.variableList.querySelectorAll(".variable-option")) {
-      const isSelected = option.dataset.variable === variable;
+      const isSelected = option.dataset.variable === variable && option.dataset.dataset === datasetKey;
       option.classList.toggle("is-selected", isSelected);
       const input = option.querySelector("input");
       input.checked = isSelected;
@@ -1063,6 +1296,14 @@ export class MetadataController extends BaseController {
       // the panel still costs one stop per control rather than one per row.
       const trigger = option.querySelector(".variable-option-variants");
       if (trigger) trigger.tabIndex = isSelected ? 0 : -1;
+    }
+
+    // A filter can hide the selected row, and a radiogroup whose every stop is
+    // -1 cannot be tabbed into at all. The first visible row takes the stop in
+    // that case, without becoming selected.
+    if (!this.variableList.querySelector(".variable-option.is-selected")) {
+      const first = this.variableList.querySelector(".variable-option input");
+      if (first) first.tabIndex = 0;
     }
   }
 
@@ -1076,28 +1317,83 @@ export class MetadataController extends BaseController {
     this.variableList.scrollTop = top - (listHeight - selected.offsetHeight) / 2;
   }
 
-  refreshVariables(datasetKey) {
+  refreshVariables() {
     this.hideVariableTooltip();
     this.closeVariantMenu();
-    const mainVariables = this.getSortedMainVariables(datasetKey);
-
-    // A dataset the reader has already picked a variable in opens on that
-    // variable again; one they have not opens on the first row of the list.
-    const remembered = this.getRememberedSelection(datasetKey);
-    const preferredMain = remembered ? remembered.mainVariable : mainVariables[0] || "";
-    if (remembered) {
-      this.variantByMain.set(this.variantMemoryKey(datasetKey, preferredMain), remembered.variable);
-    }
+    const rows = this.getFilteredRows();
 
     this.variableList.innerHTML = "";
-    for (const v of mainVariables) {
-      this.variableList.appendChild(this.buildVariableOption(datasetKey, v));
+    for (const row of rows) {
+      this.variableList.appendChild(this.buildVariableOption(row.datasetKey, row.mainVariable));
     }
 
-    this.state.mainVariable = preferredMain;
-    this.state.variable = this.getSelectedVariant(datasetKey, preferredMain);
-    this.markSelectedVariableOption(preferredMain);
+    // Filtering never changes what the map is showing — the selected variable
+    // may simply not be on screen. Hiding it would otherwise silently disagree
+    // with the legend and the map.
+    this.renderFilterSummary(rows.length);
+    this.markSelectedVariableOption(this.state.dataset, this.state.mainVariable);
     this.scrollSelectedVariableIntoView();
+  }
+
+  // Every dataset's main variables in one list, ordered by the title the reader
+  // sees. Cached once every dataset's metadata is in, since until then the rows
+  // would sort by key and have to be rebuilt anyway.
+  getAllVariableRows() {
+    if (this.allVariableRows) return this.allVariableRows;
+
+    const rows = [];
+    for (const datasetKey of Object.keys(this.meta.datasets)) {
+      for (const mainVariable of this.datasetHierarchies[datasetKey]?.mainVariables || []) {
+        rows.push({
+          datasetKey,
+          mainVariable,
+          title: this.getVariableTitle(datasetKey, mainVariable),
+          topics: this.getTopicsFor(datasetKey, mainVariable),
+        });
+      }
+    }
+    rows.sort(
+      (a, b) =>
+        VARIABLE_COLLATOR.compare(a.title, b.title) ||
+        VARIABLE_COLLATOR.compare(a.mainVariable, b.mainVariable),
+    );
+
+    if (Object.keys(this.meta.datasets).every((key) => this.varMetaByDataset[key])) {
+      this.allVariableRows = rows;
+    }
+    return rows;
+  }
+
+  getFilteredRows() {
+    const rows = this.getAllVariableRows();
+    if (this.activeTopics.size === 0 && this.activeDatasets.size === 0) return rows;
+    return rows.filter((row) => {
+      if (this.activeDatasets.size > 0 && !this.activeDatasets.has(row.datasetKey)) return false;
+      if (this.activeTopics.size > 0 && !row.topics.some((id) => this.activeTopics.has(id))) return false;
+      return true;
+    });
+  }
+
+  getTopicsFor(datasetKey, mainVariable) {
+    return this.topicsConfig.byVariable.get(`${datasetKey}:${mainVariable}`) || [];
+  }
+
+  renderFilterSummary(shownCount) {
+    if (!this.filterSummary) return;
+    const total = this.getAllVariableRows().length;
+    const filtered = this.activeTopics.size > 0 || this.activeDatasets.size > 0;
+
+    if (!filtered) {
+      this.filterSummary.textContent = `${total} variables`;
+      this.filterSummary.hidden = false;
+      return;
+    }
+    if (shownCount === 0) {
+      this.filterSummary.textContent = "No variables match these filters";
+    } else {
+      this.filterSummary.textContent = `${shownCount} of ${total} variables`;
+    }
+    this.filterSummary.hidden = false;
   }
 
   refreshCitation(datasetKey) {

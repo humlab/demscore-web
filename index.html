@@ -25,9 +25,19 @@
         </h1>
 
         <div id="datasetSection" class="dataset-section">
-          <div id="datasetTabs" class="dataset-tabs" role="tablist" aria-label="Dataset"></div>
+          <section id="datasetPanel" class="dataset-panel" tabindex="0">
+            <div class="filter-bar">
+              <div class="filter-row">
+                <p id="topicFilterLabel" class="field-label">Topic</p>
+                <div id="topicChips" class="chip-group" role="group" aria-labelledby="topicFilterLabel"></div>
+              </div>
+              <div class="filter-row">
+                <p id="datasetFilterLabel" class="field-label">Dataset</p>
+                <div id="datasetTabs" class="chip-group" role="group" aria-labelledby="datasetFilterLabel"></div>
+              </div>
+              <p id="filterSummary" class="filter-summary" role="status" aria-live="polite"></p>
+            </div>
 
-          <section id="datasetPanel" class="dataset-panel" role="tabpanel" tabindex="0">
             <p id="variableListLabel" class="field-label">Variable</p>
             <div id="variableList" class="variable-list" role="radiogroup" aria-labelledby="variableListLabel"></div>
 

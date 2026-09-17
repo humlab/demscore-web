@@ -46,7 +46,7 @@ export class DemscoreApp extends BaseController {
   async start() {
     await this.backendClient.hydrateRuntime();
 
-    const [meta, legendMeta, polarityMeta, coverageMeta] = await Promise.all([
+    const [meta, legendMeta, polarityMeta, coverageMeta, topicsMeta] = await Promise.all([
       this.backendClient.fetchJson("/api/config/variables", "Could not load variables config"),
       this.backendClient.fetchJson("/api/config/legend-semantics", "Could not load legend semantics config"),
       this.backendClient.fetchJson("/api/config/variable-polarity", "Could not load variable polarity config"),
@@ -54,6 +54,11 @@ export class DemscoreApp extends BaseController {
       // on a list that works without them, so a missing file must not fail startup.
       this.backendClient
         .fetchJson("/api/config/variable-coverage", "Could not load variable coverage config")
+        .catch(() => null),
+      // Curated, hand-maintained, and only used to group a list that still works
+      // ungrouped — so a missing file must not fail startup either.
+      this.backendClient
+        .fetchJson("/api/config/variable-topics", "Could not load variable topics config")
         .catch(() => null),
     ]);
 
@@ -78,6 +83,7 @@ export class DemscoreApp extends BaseController {
       meta,
       polarityMeta,
       coverageMeta,
+      topicsMeta,
       state: this.state,
       backendClient: this.backendClient,
     });

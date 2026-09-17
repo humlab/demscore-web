@@ -1,0 +1,117 @@
+{
+  "_comment": [
+    "Cross-dataset topics for the variable list. Seeded from the codebook sections",
+    "parsed out of each module codebook, then curated: Demscore's own 13 published",
+    "Thematic Datasets were tested against this variable selection and fit it badly",
+    "(5 themes empty, 7 variables unplaced including four of the five V-Dem democracy",
+    "indices, and all 11 REPDEM variables collapsing into one theme). See",
+    "topic_classification.wip.md section 8 in the deployment repo.",
+    "A variable may list several topics; the first is its primary one."
+  ],
+  "order": [
+    "democracy",
+    "rule_of_law",
+    "corruption",
+    "media",
+    "civil_society",
+    "cabinets",
+    "parliament",
+    "economy",
+    "education",
+    "gender",
+    "state_capacity"
+  ],
+  "topics": {
+    "democracy": {
+      "label": "Democracy",
+      "description": "High-level indices summarising how democratic a country is."
+    },
+    "rule_of_law": {
+      "label": "Rule of Law",
+      "description": "Legal constraint on power: courts, constitutions and oversight."
+    },
+    "corruption": {
+      "label": "Corruption",
+      "description": "Bribery, perceived corruption and the quality of public administration."
+    },
+    "media": {
+      "label": "Media",
+      "description": "Press freedom, censorship, disinformation and academic freedom."
+    },
+    "civil_society": {
+      "label": "Civil Society",
+      "description": "Organised participation outside the state."
+    },
+    "cabinets": {
+      "label": "Cabinets",
+      "description": "How governments are formed, composed and how long they last."
+    },
+    "parliament": {
+      "label": "Parliament",
+      "description": "Legislature size, party systems and polarization."
+    },
+    "economy": {
+      "label": "Economy",
+      "description": "Inequality, taxation and sustainable development."
+    },
+    "education": {
+      "label": "Education",
+      "description": "School enrolment and educational attainment."
+    },
+    "gender": {
+      "label": "Gender",
+      "description": "Differences in access and opportunity between women and men."
+    },
+    "state_capacity": {
+      "label": "State Capacity",
+      "description": "Administrative effectiveness, monetary independence and militarization."
+    }
+  },
+  "assignments": {
+    "qog": {
+      "qog_std_ts_fh_rol": ["rule_of_law"],
+      "qog_std_ts_ti_cpi": ["corruption"],
+      "qog_std_ts_icrg_qog": ["corruption", "state_capacity"],
+      "qog_std_ts_wbgi_gee": ["state_capacity"],
+      "qog_std_ts_cbi_cbiw": ["state_capacity", "economy"],
+      "qog_std_ts_bicc_gmi": ["state_capacity"],
+      "qog_std_ts_wdi_gini": ["economy"],
+      "qog_std_ts_wdi_taxrev": ["economy"],
+      "bti_su": ["economy"],
+      "qog_std_ts_wdi_gers": ["education"],
+      "qog_std_ts_wdi_gersm": ["education"],
+      "qog_std_ts_wdi_gersf": ["education", "gender"],
+      "qog_std_ts_gggi_ggi": ["gender"]
+    },
+    "repdem": {
+      "repdem_basic_cab_composition2": ["cabinets"],
+      "repdem_basic_cab_duration_days": ["cabinets"],
+      "repdem_basic_cab_num_parties": ["cabinets"],
+      "repdem_basic_cab_seatshare": ["cabinets"],
+      "repdem_basic_form_duration_alt": ["cabinets"],
+      "repdem_basic_govtype": ["cabinets"],
+      "repdem_basic_enpp": ["parliament"],
+      "repdem_basic_num_parties": ["parliament"],
+      "repdem_basic_seats_total": ["parliament"],
+      "repdem_basic_upper_seats_total": ["parliament"],
+      "parl_polar_ches": ["parliament"]
+    },
+    "v_dem": {
+      "v2x_polyarchy": ["democracy"],
+      "v2x_libdem": ["democracy"],
+      "v2x_partipdem": ["democracy"],
+      "v2x_delibdem": ["democracy"],
+      "v2x_egaldem": ["democracy"],
+      "v2exrescon": ["rule_of_law"],
+      "v2jupoatck": ["rule_of_law"],
+      "v2lgotovst": ["rule_of_law", "parliament"],
+      "v2exbribe": ["corruption"],
+      "v2mecenefm": ["media"],
+      "v2meharjrn": ["media"],
+      "v2smgovdom": ["media"],
+      "v2xca_academ": ["media"],
+      "v2cscnsult": ["civil_society"],
+      "v2dlengage": ["civil_society"]
+    }
+  }
+}
