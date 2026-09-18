@@ -238,9 +238,17 @@ Common tasks and where to work:
     as a toggle, because comparing the two is the clearest way to see what a
     projection does to the data
   - everything projection-shaped goes through `getMapProjection(key)`, which hands
-    back the OpenLayers projection, the world box and the tile grid for one plane.
-    Add a third projection there and the toggle, the tile grid, the pan limit and
-    the world fit all follow; nothing else in `MapController` names a projection
+    back one plane's OpenLayers projection, world box, tile grid, MapServer layer
+    pair and hex size ladder. Add a third projection there and the toggle, the
+    tile grid, the pan limit, the world fit, the layer names and the mesh sizes
+    all follow; nothing else in `MapController` names a projection or a layer
+  - the view is given an explicit `resolutions` ladder, built by
+    `viewResolutions()`: the world fit at the top, halving from there, and
+    `MAX_ZOOM`'s resolution exactly at the bottom. Handed only a floor and a
+    ceiling, OpenLayers keeps the floor and rounds the *span* down to a whole
+    number of levels, which made `MAX_ZOOM` of 6 come out as 5.52 in one window
+    and 5.72 in another. A ladder cannot be changed after a view has it, so a
+    resize rebuilds the view (`applyWorldFit()`) rather than adjusting it
   - **zoom is not `view.getZoom()`**, and the difference is not cosmetic.
     OpenLayers anchors its zoom numbering to whatever resolution the view holds as
     its coarsest, which moves every time the world-fit floor is re-measured and
@@ -265,12 +273,19 @@ Common tasks and where to work:
   - the toggle carries the scale across as a *multiple of the world view*, not as
     metres per pixel: the two worlds are different sizes, so keeping the metres would
     turn a world view into a view of the Atlantic
-  - Mercator requests carry `clip=mercator`, which is what stops the cells that
-    projection cannot draw — those reaching past 85.05N/S, and the handful straddling
-    the antimeridian — from being rendered as columns standing over the map and bands
-    across it. See the clip note in `mapserver/mapserver.map`. What survives is
-    genuinely stretched towards the poles, slivers and all; that is the distortion,
-    not a defect
+  - **each projection has a mesh of its own**, and the toggle switches MapServer
+    layers, not just the SRS. `hex_variable`/`hex_outline` are cut in Equal Earth,
+    `hex_variable_mercator`/`hex_outline_mercator` in Web Mercator. Reprojecting
+    one mesh into the other plane is what this replaced: a hexagon is a hexagon
+    only where it was cut, and an Equal Earth cell pushed into Mercator is twice
+    as tall as it is wide by 60N and a sliver by 80N. What the toggle compares is
+    what a cell *means* — a fixed amount of ground against a fixed amount of
+    screen — not how well one mesh survives being stretched
+  - the Mercator hex sizes are exactly twice the Equal Earth ones, which is what
+    makes the two the same grain to look at; both ladders match increments
+    precomputed in the database, so a size not on the ladder renders nothing.
+    See `hexResolutionStops` in `core/projection.js` and
+    `sql/mapserver_hex_mercator.sql`
   - the land basemap is *not* densified before projecting. Equal Earth curves the
     meridians, so a long straight lat/lon edge is drawn as a chord of the curve it
     should follow, but measured against Natural Earth 110m the worst segment in the
@@ -362,6 +377,6 @@ Then do a manual smoke test in browser:
 - legend update and map tile refresh
 - projection toggle: Equal Earth and Mercator both draw land and hexagons, the view keeps
   looking at the same place and the same fraction of the world, the zoom readout means the
-  same thing in both, and switching back leaves no stale tiles. In Mercator the Arctic cells
-  are tall slivers — that is correct; the bug to watch for is bands running across the whole
-  map, which means `clip=mercator` is not reaching MapServer
+  same thing in both, and switching back leaves no stale tiles. **Every cell is a regular
+  hexagon in both** — slivers, columns or bands mean the wrong mesh is being served for the
+  SRS. Zooming in must reach exactly 6 in either projection, at every window size

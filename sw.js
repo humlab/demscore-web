@@ -1,14 +1,19 @@
-// v3: the map is drawn by OpenLayers now, and it spells a tile's BBOX from the
-// grid origin and the resolution directly where Leaflet arrived at it through a
-// round trip in and out of lat/lon. The numbers agree to about a millionth of a
-// metre and the strings do not, so no URL cached by v2 can be asked for again --
-// left alone they would sit in returning users' browsers forever, matching
-// nothing. The version is part of the name so activate can drop them.
+// v4: the map is drawn by OpenLayers now, over two meshes rather than one.
 //
-// Requests now carry SRS=EPSG:8857 or SRS=EPSG:3857 depending on the projection
-// toggle, which is two sets of tiles rather than one; nothing here needs to know
-// the difference, since the SRS rides along in the URL that is the cache key.
-const WMS_TILE_CACHE = "demscore-wms-tile-cache-v3";
+// Neither the Equal Earth URLs nor the Mercator ones can be served out of an
+// older cache. OpenLayers spells a tile's BBOX from the grid origin and the
+// resolution directly, where Leaflet arrived at it through a round trip in and
+// out of lat/lon -- the numbers agree to about a millionth of a metre and the
+// strings do not -- and the projection toggle asks for different layers in a
+// different SRS again. Left alone the old entries would sit in returning users'
+// browsers forever, matching nothing; the version is part of the name so
+// activate can drop them.
+//
+// The toggle puts two sets of tiles in here rather than one, over two different
+// meshes. Nothing below needs to tell them apart: the layer names, the SRS and
+// the BBOX all ride along in the URL that is the cache key, so the two caches
+// are the same cache and can never collide.
+const WMS_TILE_CACHE = "demscore-wms-tile-cache-v4";
 
 // The fills may be asked for alone or together with the outline layer that rides
 // along in the same GetMap (see MapController.wmsLayerNames), and the two spell
@@ -17,7 +22,12 @@ const WMS_TILE_CACHE = "demscore-wms-tile-cache-v3";
 // and nothing was ever served out of it, so every autoplay frame paid for a fresh
 // MapServer render. Hence a set, not a string -- but still a closed one, so this
 // never becomes a cache for arbitrary layers.
-const CACHEABLE_WMS_LAYERS = new Set(["hex_variable", "hex_outline"]);
+const CACHEABLE_WMS_LAYERS = new Set([
+  "hex_variable",
+  "hex_outline",
+  "hex_variable_mercator",
+  "hex_outline_mercator",
+]);
 
 function isCacheableWmsTile(request) {
   if (request.method !== "GET") return false;

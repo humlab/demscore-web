@@ -1,5 +1,5 @@
 // Must match WMS_TILE_CACHE in sw.js, which is what evicts the older versions.
-const PRELOAD_CACHE_NAME = "demscore-wms-tile-cache-v3";
+const PRELOAD_CACHE_NAME = "demscore-wms-tile-cache-v4";
 const MAX_CONCURRENT_YEARS = 3;
 const MAX_CONCURRENT_REQUESTS = 4;
 

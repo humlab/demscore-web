@@ -10,9 +10,14 @@
 // Web Mercator is still offered, as a toggle rather than a default, because
 // comparing the two is the clearest way to see what the projection does to the
 // data -- and because it is the shape of the world most people have in mind.
-// The mesh itself does not change: it is the same equal-area mesh, reprojected
-// by MapServer, so in Mercator the cells visibly swell towards the poles. That
-// is the distortion made visible rather than a defect.
+//
+// Each projection has a mesh of its own, cut in its own plane. Reprojecting one
+// mesh into the other is not an option: a hexagon is a hexagon only in the plane
+// it was cut in, and an Equal Earth cell pushed into Mercator is drawn twice as
+// tall as it is wide by 60N and as a sliver by 80N, at which point the map stops
+// reading as a hex map. What the toggle compares is what a cell *means* -- a
+// fixed amount of ground against a fixed amount of screen -- not how well one
+// mesh survives being stretched.
 
 // Web Mercator's own resolution ladder, kept deliberately, and shared by both
 // projections. A zoom level therefore denotes the same metres per pixel it
@@ -43,6 +48,23 @@ export const EQUAL_EARTH_HALF_Y = 8392927.598466456;
 
 // Web Mercator's square world, pi * 6378137.
 const WEB_MERCATOR_HALF = 20037508.342789244;
+
+// Keep the hex layer generalized at world scale, then step into denser meshes
+// as the user settles on regional views. Both ladders match increments
+// precomputed in the database, and the Mercator sizes are exactly twice the
+// Equal Earth ones: a Mercator cell of a given size covers ground area
+// proportional to cos^2(latitude), so its mesh carries a surplus towards the
+// poles and reaching the same cell count takes a nominally larger cell.
+// Measured, Mercator 200k gives 5 917 cells against Equal Earth 100k's 5 690.
+//
+// The zoom thresholds are shared, and can be, because both projections use Web
+// Mercator's resolution ladder -- a zoom level means the same scale in either,
+// so the same threshold picks the same grain.
+const HEX_ZOOM_THRESHOLDS = [0, 2.75, 3.75, 4.75];
+
+function hexResolutionStops(sizes) {
+  return HEX_ZOOM_THRESHOLDS.map((minZoom, index) => ({ minZoom, hexSizeM: sizes[index] }));
+}
 
 // The ladder as an array, for the tile grids. Index is the zoom level.
 const RESOLUTIONS = Array.from(
@@ -118,8 +140,8 @@ const PROJECTION_DEFINITIONS = {
     code: EQUAL_EARTH_CODE,
     label: "Equal Earth",
     title: "Equal Earth (EPSG:8857) — every hexagon covers the same real area",
-    // The plane the mesh was cut in, so there is nothing it cannot draw.
-    clip: "none",
+    wmsLayers: { fill: "hex_variable", outline: "hex_outline" },
+    hexResolutionStops: hexResolutionStops([100000, 60000, 40000, 25000]),
     extent: [
       -EQUAL_EARTH_HALF_X,
       -EQUAL_EARTH_HALF_Y,
@@ -132,11 +154,10 @@ const PROJECTION_DEFINITIONS = {
     code: WEB_MERCATOR_CODE,
     label: "Mercator",
     title: "Web Mercator (EPSG:3857) — hexagons swell towards the poles",
-    // Mercator puts the poles at infinity and wraps the antimeridian, so the
-    // cells that reach either are dropped by MapServer rather than drawn as
-    // columns standing over the map and bands across it. See the clip note in
-    // mapserver/mapserver.map.
-    clip: "mercator",
+    // A second set of layers over a second mesh, not the first mesh reprojected.
+    // See the note above hex_variable_mercator in mapserver/mapserver.map.
+    wmsLayers: { fill: "hex_variable_mercator", outline: "hex_outline_mercator" },
+    hexResolutionStops: hexResolutionStops([200000, 120000, 80000, 50000]),
     extent: [
       -WEB_MERCATOR_HALF,
       -WEB_MERCATOR_HALF,

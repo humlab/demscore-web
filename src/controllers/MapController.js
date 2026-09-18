@@ -18,12 +18,6 @@ import {
 const POLARITY_POSITIVE = "positive";
 const POLARITY_NEUTRAL = "neutral";
 const LAND_BASEMAP_COLOR = "#fffaf0";
-const HEX_FILL_LAYER = "hex_variable";
-// Drawn by MapServer over the fills, from the precomputed edge table; see
-// the hex_outline layer in mapserver/mapserver.map. Asking for it in the same
-// GetMap as the fills keeps the two in step -- one image, one cache entry, and
-// no window where outlines from the previous year sit over this year's colours.
-const HEX_OUTLINE_LAYER = "hex_outline";
 // Adjacent quantile classes can be a shade apart, which is the whole reason the
 // outlines exist, so they start on and the toggle is there to take them off.
 const AREA_OUTLINES_DEFAULT = true;
@@ -61,25 +55,6 @@ const TILE_Z_DIRECTION = 0;
 // coarse a jump to frame a region with.
 const ZOOM_DELTA = 0.25;
 const ZOOM_DURATION_MS = 250;
-// Keep the hex layer generalized at world scale, then step into denser meshes
-// as the user settles on regional views. Values match demscore.hex_mesh's
-// precomputed 5km grid increments.
-//
-// Each size is half what it was under Web Mercator, which is what keeps the map
-// at the density it had. A Mercator hexagon covered ground area proportional to
-// cos^2(latitude), so the old mesh carried a surplus of hexagons towards the
-// poles that the sizes were implicitly counting on; an Equal Earth hexagon
-// covers the same area everywhere, and reaching the same count takes one about
-// half the nominal size. The zoom thresholds are untouched because both
-// projections share Web Mercator's resolution ladder -- a zoom still means the
-// same scale, and the mesh is picked in metres of real ground either way.
-const HEX_RESOLUTION_STOPS = [
-  { minZoom: 0, hexSizeM: 100000 },
-  { minZoom: 2.75, hexSizeM: 60000 },
-  { minZoom: 3.75, hexSizeM: 40000 },
-  { minZoom: 4.75, hexSizeM: 25000 },
-];
-
 // Zoom is continuous, and "Zoom: 3.2500000000000004" is not a reading anyone
 // wants.
 function formatZoom(zoom) {
@@ -221,6 +196,8 @@ export class MapController extends BaseController {
     this.map = new ol.Map({
       target: "mapCanvas",
       layers: [this.landLayer, this.hexLayerGroup],
+      // The world-fit floor cannot be measured until the map has a size, so this
+      // view is provisional; applyWorldFit replaces it as soon as it can.
       view: this.createView({
         center: ol.proj.fromLonLat(INITIAL_CENTER_LON_LAT, this.projection.projection),
         resolution: resolutionForZoom(INITIAL_ZOOM),
@@ -243,15 +220,15 @@ export class MapController extends BaseController {
     this.initializeLegend();
     this.installDisplayOptions();
     this.installZoomIndicator();
+    this.applyWorldFit();
     this.bindViewEvents();
-    this.applyZoomLimits();
     this.loadLandmassBaseLayer();
 
     // OpenLayers watches the map element itself, so this fires for a window
     // resize and for the panel changing width alike. A taller or wider window
     // fits the world at a different zoom, so the floor is re-measured rather
     // than fixed once at startup.
-    this.map.on("change:size", () => this.applyZoomLimits());
+    this.map.on("change:size", () => this.applyWorldFit());
     // Zoom is continuous and there is no separate zoomend: moveend is where a
     // pan and a zoom both come to rest, and the mesh only needs re-picking once
     // the view has settled.
@@ -274,6 +251,7 @@ export class MapController extends BaseController {
     return new ol.View({
       projection: this.projection.projection,
       extent: this.projection.extent,
+      resolutions: this.viewResolutions(),
       constrainOnlyCenter: true,
       // The edge of the world is a wall, not a rubber band: a drag that reaches
       // it stops there rather than overshooting and easing back.
@@ -296,21 +274,52 @@ export class MapController extends BaseController {
     this.updateZoomReadout();
   }
 
-  // The floor is the zoom at which the whole world fits the window, and the
-  // ceiling is the finest mesh MapServer is asked for. Both are stated in the
-  // app's own zoom -- Web Mercator metres per pixel -- and converted into
-  // OpenLayers' numbering, which is anchored to whatever the view happens to be
-  // holding as its coarsest resolution and so moves under its own feet.
-  applyZoomLimits() {
-    const fit = this.measureWorldFit();
-    if (!fit) return;
+  // The ladder the view may zoom along: the world fit at the coarse end,
+  // halving from there, and MAX_ZOOM's resolution exactly at the fine end.
+  //
+  // It has to be spelled out. Given only a floor and a ceiling, OpenLayers keeps
+  // the floor and then rounds the *span* down to a whole number of levels, so a
+  // MAX_ZOOM of 6 came out as 5.52 in one window and 5.72 in another -- how far
+  // in the map can go is not something that should depend on the shape of the
+  // window, and a ceiling that moves when the sidebar does is worse than one
+  // that is merely wrong.
+  //
+  // Halving from the fit rather than from zoom zero is what keeps the +/- step
+  // honest: OpenLayers counts a zoom level as one entry of this array, and every
+  // delta in the app -- the buttons, the keyboard, the wheel -- assumes a level
+  // is a factor of two. Only the last step is short, by however far the world
+  // fit falls off the ladder, and it is the one step nobody counts.
+  viewResolutions() {
+    const finest = resolutionForZoom(MAX_ZOOM);
+    // Before the map has a size there is nothing to fit the world to, so the
+    // ladder starts at the coarsest zoom instead and applyWorldFit rebuilds it.
+    const measured = this.measureWorldFit() || resolutionForZoom(MIN_ZOOM_FLOOR);
+    const coarsest = Math.max(
+      Math.min(measured, resolutionForZoom(MIN_ZOOM_FLOOR)),
+      finest * 2,
+    );
 
+    const resolutions = [];
+    for (let resolution = coarsest; resolution > finest; resolution /= 2) {
+      resolutions.push(resolution);
+    }
+    resolutions.push(finest);
+    return resolutions;
+  }
+
+  // A window of a different shape fits the world at a different zoom, and the
+  // ladder is built around that zoom, so the view is rebuilt rather than
+  // adjusted -- a view's resolutions cannot be changed once it has them.
+  applyWorldFit() {
     const view = this.map.getView();
-    const floor = Math.min(Math.max(zoomForResolution(fit), MIN_ZOOM_FLOOR), MAX_ZOOM);
-    if (!Number.isFinite(floor)) return;
+    const resolutions = this.viewResolutions();
+    if (resolutions[0] === view.getResolutions()?.[0]) return;
 
-    view.setMinZoom(view.getZoomForResolution(resolutionForZoom(floor)));
-    view.setMaxZoom(view.getZoomForResolution(resolutionForZoom(MAX_ZOOM)));
+    this.map.setView(this.createView({
+      center: view.getCenter(),
+      resolution: view.getResolution(),
+    }));
+    this.bindViewEvents();
   }
 
   // The resolution at which the whole of this projection's world fits the
@@ -360,7 +369,6 @@ export class MapController extends BaseController {
       resolution: this.measureWorldFit() * worldViews,
     }));
     this.bindViewEvents();
-    this.applyZoomLimits();
     this.renderLandBasemap();
 
     this.stopPendingLayerSwap();
@@ -528,7 +536,6 @@ export class MapController extends BaseController {
         polarity: this.metadataController.getActivePolarity(),
         year: String(this.state.year),
         hex_size: String(this.hexSizeFromZoom()),
-        clip: this.projection.clip,
       },
       // No high-DPI request. A retina screen would otherwise ask MapServer for a
       // doubled tile with MAP_RESOLUTION appended, which is a different URL per
@@ -549,8 +556,14 @@ export class MapController extends BaseController {
     });
   }
 
+  // Which pair of MapServer layers this projection's mesh lives in. The outline
+  // layer is drawn over the fills from a precomputed edge table; asking for it
+  // in the same GetMap keeps the two in step -- one image, one cache entry, and
+  // no window where outlines from the previous year sit over this year's
+  // colours.
   wmsLayerNames() {
-    return this.areaOutlinesEnabled ? `${HEX_FILL_LAYER},${HEX_OUTLINE_LAYER}` : HEX_FILL_LAYER;
+    const { fill, outline } = this.projection.wmsLayers;
+    return this.areaOutlinesEnabled ? `${fill},${outline}` : fill;
   }
 
   getAreaOutlinesEnabled() {
@@ -648,11 +661,15 @@ export class MapController extends BaseController {
     }
   }
 
+  // The mesh MapServer is asked for at this zoom, in the metres of whichever
+  // plane the map is drawn in -- so switching projection switches ladders as
+  // well as layers. See hexResolutionStops in core/projection.js.
   hexSizeFromZoom() {
     const zoom = this.getZoom();
-    let hexSize = HEX_RESOLUTION_STOPS[0].hexSizeM;
+    const stops = this.projection.hexResolutionStops;
+    let hexSize = stops[0].hexSizeM;
 
-    for (const stop of HEX_RESOLUTION_STOPS) {
+    for (const stop of stops) {
       if (zoom >= stop.minZoom) {
         hexSize = stop.hexSizeM;
       }
