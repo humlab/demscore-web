@@ -10,6 +10,15 @@
       integrity="sha256-q8iv1yzBC9KcwUP0Q7rkpoBL08s/smLmtqa8bJJOo08="
       crossorigin="anonymous"
     />
+    <!-- Lato is the handbook's working typeface; Open Sans carries its statistics
+         and metrics. See Demscore_Handbook_Web_Style_Brief.docx. Lato ships no
+         500/600/800, so a weight in between rounds up to the next one loaded. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&family=Open+Sans:wght@300;400;700&display=swap"
+    />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -34,7 +43,7 @@
           >
             <span id="mobileSelectedDataset" class="mobile-selected-dataset"></span>
             <span class="mobile-selected-copy">
-              <span id="mobileSelectedTitle" class="mobile-selected-title"></span>
+              <span id="mobileSelectedTitle" class="mobile-selected-title"><span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span></span>
               <span id="mobileSelectedMeta" class="mobile-selected-meta"></span>
             </span>
             <i data-lucide="chevron-down" aria-hidden="true"></i>
@@ -68,19 +77,18 @@
             <div class="filter-bar">
               <div class="filter-row">
                 <p id="topicFilterLabel" class="field-label">Filter by topic</p>
-                <div id="topicChips" class="chip-group" role="group" aria-labelledby="topicFilterLabel"></div>
+                <div id="topicChips" class="chip-group" role="group" aria-labelledby="topicFilterLabel" aria-busy="true"><span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span></div>
               </div>
               <div class="filter-row">
                 <p id="datasetFilterLabel" class="field-label">Filter by dataset</p>
-                <div id="datasetTabs" class="chip-group" role="group" aria-labelledby="datasetFilterLabel"></div>
+                <div id="datasetTabs" class="chip-group" role="group" aria-labelledby="datasetFilterLabel" aria-busy="true"><span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span></div>
               </div>
               <p id="filterSummary" class="filter-summary" role="status" aria-live="polite"></p>
             </div>
 
             <p id="variableListLabel" class="field-label">Variable</p>
-            <div id="variableList" class="variable-list" role="radiogroup" aria-labelledby="variableListLabel"></div>
+            <div id="variableList" class="variable-list" role="radiogroup" aria-labelledby="variableListLabel" aria-busy="true"><span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span></div>
 
-            <button id="variableMetaBtn" type="button">Variable information</button>
             <p id="datasetCodebookWrap" class="codebook-link" hidden>
               <a id="datasetCodebookLink" href="#" target="_blank" rel="noopener noreferrer">Open codebook PDF</a>
             </p>
@@ -111,7 +119,7 @@
               </div>
             </div>
           </div>
-          <div class="timeline-slider-wrap" id="timelineWrap">
+          <div class="timeline-slider-wrap is-awaiting-data" id="timelineWrap">
             <div id="timelinePreloadTrack" class="timeline-preload-track" aria-hidden="true"></div>
             <input id="yearSlider" type="range" step="1" aria-label="Year timeline" />
             <div id="timelineScale" class="timeline-scale" aria-hidden="true"></div>
@@ -136,14 +144,6 @@
       <p id="variableTooltipKey" class="variable-tooltip-key"></p>
       <div id="variableTooltipBody" class="variable-tooltip-body"></div>
     </div>
-
-    <dialog id="variableMetaDialog" class="variable-meta-dialog">
-      <div class="variable-meta-dialog-header">
-        <h2 id="variableMetaTitle">Variable information</h2>
-        <button id="variableMetaCloseBtn" type="button" class="variable-meta-close-btn">Close</button>
-      </div>
-      <div id="variableMetaContent" class="variable-meta-content"></div>
-    </dialog>
 
     <dialog id="mobileVariablePickerDialog" class="mobile-picker-dialog">
       <div class="mobile-dialog-header">

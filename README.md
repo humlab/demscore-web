@@ -36,11 +36,11 @@ Simple OpenLayers frontend for the Demscore MapServer WMS layer.
 
 `http://127.0.0.1:8090`
 
-## Optional cached WMS mode
+## WMS tile caching
 
 - Toggle cache in repo `.env`:
-  - `DEMSCORE_ENABLE_MAPCACHE=0` disables cache
-  - `DEMSCORE_ENABLE_MAPCACHE=1` enables cache
+  - `DEMSCORE_ENABLE_MAPCACHE=0` disables server and browser tile caching
+  - `DEMSCORE_ENABLE_MAPCACHE=1` enables server and browser tile caching
 - Start services for local dev: `./scripts/dev_up.sh`
 - Open app normally: `http://127.0.0.1:8090/`
-- The app WMS target is selected automatically from `DEMSCORE_ENABLE_MAPCACHE` via `web-backend` runtime config.
+- WMS requests always use the same-origin `/mapserver` route; the cache policy behind that route is selected from `DEMSCORE_ENABLE_MAPCACHE` via `web-backend` runtime config.

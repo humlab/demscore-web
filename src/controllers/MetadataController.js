@@ -218,11 +218,6 @@ export class MetadataController extends BaseController {
     this.datasetCitation = this.getEl("datasetCitation");
     this.datasetCodebookWrap = this.getEl("datasetCodebookWrap");
     this.datasetCodebookLink = this.getEl("datasetCodebookLink");
-    this.variableMetaBtn = this.getEl("variableMetaBtn");
-    this.variableMetaDialog = this.getEl("variableMetaDialog");
-    this.variableMetaTitle = this.getEl("variableMetaTitle");
-    this.variableMetaCloseBtn = this.getEl("variableMetaCloseBtn");
-    this.variableMetaContent = this.getEl("variableMetaContent");
     this.variableList = this.getEl("variableList");
     this.mobileControls = this.getEl("mobileControls");
     this.mobileVariablePickerBtn = this.getEl("mobileVariablePickerBtn");
@@ -244,6 +239,8 @@ export class MetadataController extends BaseController {
     this.variableTooltipTitle = this.getEl("variableTooltipTitle");
     this.variableTooltipKey = this.getEl("variableTooltipKey");
     this.variableTooltipBody = this.getEl("variableTooltipBody");
+    this.tooltipHideTimer = null;
+    this.tooltipPersistent = false;
     this.mobilePickerTopics = new Set();
     this.mobilePickerQuery = "";
   }
@@ -297,6 +294,7 @@ export class MetadataController extends BaseController {
   // their accent, which is also what the badge on each row is coloured with.
   renderDatasetChips() {
     this.datasetTabs.innerHTML = "";
+    this.datasetTabs.removeAttribute("aria-busy");
     this.datasetTabButtons.clear();
 
     for (const [key, ds] of Object.entries(this.meta.datasets)) {
@@ -317,6 +315,7 @@ export class MetadataController extends BaseController {
 
   renderTopicChips() {
     this.topicChips.innerHTML = "";
+    this.topicChips.removeAttribute("aria-busy");
     this.topicChipButtons.clear();
 
     for (const id of this.topicsConfig.order) {
@@ -420,16 +419,22 @@ export class MetadataController extends BaseController {
       void this.selectVariable(datasetKey, variable, { onBeforeDatasetChange, onVariableChange });
     });
 
-    this.variableMetaBtn.addEventListener("click", () => {
-      void this.openVariableMetadataDialog();
-    });
-
-    this.variableMetaCloseBtn.addEventListener("click", () => {
-      this.closeVariableMetadataDialog();
+    this.variableList.addEventListener("click", (event) => {
+      const button = event.target.closest(".variable-option-info");
+      if (!button || !this.variableList.contains(button)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void this.openVariableInfoPopover(button.dataset.dataset, button.dataset.variable, {
+        anchor: button,
+        triggerButton: button,
+      });
     });
 
     this.mobileVariableInfoBtn.addEventListener("click", () => {
-      void this.openVariableMetadataDialog();
+      void this.openVariableInfoPopover(this.state.dataset, this.state.variable, {
+        anchor: this.mobileVariableInfoBtn,
+        triggerButton: this.mobileVariableInfoBtn,
+      });
     });
 
     this.mobileVariablePickerBtn.addEventListener("click", () => {
@@ -501,22 +506,41 @@ export class MetadataController extends BaseController {
     dialog.removeAttribute("open");
   }
 
-  async openVariableMetadataDialog() {
-    if (this.variableMetaBtn.disabled) return;
-    const currentDataset = this.state.dataset;
-    const currentVariable = this.state.variable;
+  async openVariableInfoPopover(
+    datasetKey = this.state.dataset,
+    variableKey = this.state.variable,
+    { anchor = null, triggerButton = null } = {},
+  ) {
+    if (!this.hasVariableMetadataSummary(datasetKey, variableKey)) return;
+    this.hideVariableTooltip();
+    const opensSelectedVariable = datasetKey === this.state.dataset && variableKey === this.state.variable;
+    if (opensSelectedVariable && this.mobileVariableInfoBtn.disabled) return;
 
-    this.variableMetaBtn.disabled = true;
-    this.mobileVariableInfoBtn.disabled = true;
-    await this.ensureVariableFullMetadata(currentDataset, currentVariable);
-    if (this.state.dataset !== currentDataset || this.state.variable !== currentVariable) {
+    if (triggerButton) triggerButton.disabled = true;
+    if (opensSelectedVariable) this.mobileVariableInfoBtn.disabled = true;
+    await this.ensureVariableFullMetadata(datasetKey, variableKey);
+    if (opensSelectedVariable && (this.state.dataset !== datasetKey || this.state.variable !== variableKey)) {
       this.refreshVariableMetadataPanel();
+      if (triggerButton) triggerButton.disabled = false;
       return;
     }
 
     this.refreshVariableMetadataPanel();
-    if (this.variableMetaBtn.disabled) return;
-    this.openDialog(this.variableMetaDialog);
+    const metaForVariable = this.getCachedFullVariableMetadata(datasetKey, variableKey);
+    const title = this.getVariableTitle(datasetKey, variableKey);
+    const hasContent = metaForVariable
+      ? this.renderVariableTooltip(datasetKey, variableKey, metaForVariable, title, { persistent: true })
+      : false;
+    if (triggerButton) {
+      triggerButton.disabled =
+        !this.hasVariableMetadataSummary(datasetKey, variableKey) ||
+        this.getCachedFullVariableMetadata(datasetKey, variableKey) === null;
+    }
+    if (!hasContent) return;
+    this.tooltipPersistent = true;
+    this.tooltipVariable = `${datasetKey}:${variableKey}`;
+    this.variableTooltip.hidden = false;
+    this.positionVariableTooltip(anchor || triggerButton || this.mobileVariableInfoBtn || this.variableList);
   }
 
   async changeDataset(datasetKey, { onBeforeDatasetChange, onDatasetChange } = {}) {
@@ -765,6 +789,17 @@ export class MetadataController extends BaseController {
 
     option.appendChild(label);
 
+    const infoButton = document.createElement("button");
+    infoButton.type = "button";
+    infoButton.className = "variable-option-info";
+    infoButton.dataset.dataset = datasetKey;
+    infoButton.dataset.variable = variable;
+    infoButton.disabled = !this.hasVariableMetadataSummary(datasetKey, variable);
+    infoButton.title = infoButton.disabled ? "No variable information available" : `Variable information: ${title}`;
+    infoButton.setAttribute("aria-label", `Variable information: ${title}`);
+    infoButton.innerHTML = '<i data-lucide="info" aria-hidden="true"></i>';
+    option.appendChild(infoButton);
+
     this.renderCoverageStrip(datasetKey, option, variable);
     return option;
   }
@@ -900,18 +935,37 @@ export class MetadataController extends BaseController {
       this.scheduleVariableTooltip(option);
     });
 
-    this.variableList.addEventListener("pointerleave", () => this.hideVariableTooltip());
+    this.variableList.addEventListener("pointerleave", () => this.scheduleHideVariableTooltip());
     this.variableList.addEventListener("focusin", (event) => {
       const option = event.target.closest(".variable-option");
       if (option) this.scheduleVariableTooltip(option);
     });
-    this.variableList.addEventListener("focusout", () => this.hideVariableTooltip());
+    this.variableList.addEventListener("focusout", () => this.scheduleHideVariableTooltip());
+
+    this.variableTooltip.addEventListener("pointerenter", () => {
+      window.clearTimeout(this.tooltipHideTimer);
+      this.tooltipHideTimer = null;
+    });
+    this.variableTooltip.addEventListener("pointerleave", () => this.scheduleHideVariableTooltip());
 
     // Any scrolling container moves the row out from under the card, so drop it.
-    document.addEventListener("scroll", () => this.hideVariableTooltip(), true);
+    document.addEventListener(
+      "scroll",
+      (event) => {
+        if (this.variableTooltip.contains(event.target)) return;
+        this.hideVariableTooltip();
+      },
+      true,
+    );
     window.addEventListener("resize", () => this.hideVariableTooltip());
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") this.hideVariableTooltip();
+    });
+    document.addEventListener("pointerdown", (event) => {
+      if (!this.tooltipPersistent || this.variableTooltip.hidden) return;
+      if (this.variableTooltip.contains(event.target)) return;
+      if (event.target.closest(".variable-option-info, #mobileVariableInfoBtn")) return;
+      this.hideVariableTooltip();
     });
   }
 
@@ -924,17 +978,30 @@ export class MetadataController extends BaseController {
     const key = `${datasetKey}:${variable}`;
     if (key === this.tooltipVariable) return;
     this.hideVariableTooltip();
+    this.tooltipPersistent = false;
     this.tooltipVariable = key;
     this.tooltipTimer = window.setTimeout(() => {
       void this.showVariableTooltip(option, datasetKey, variable);
     }, TOOLTIP_HOVER_DELAY_MS);
   }
 
+  scheduleHideVariableTooltip() {
+    if (this.tooltipPersistent) return;
+    window.clearTimeout(this.tooltipHideTimer);
+    this.tooltipHideTimer = window.setTimeout(() => {
+      if (!this.variableTooltip.matches(":hover")) this.hideVariableTooltip();
+    }, 120);
+  }
+
   hideVariableTooltip() {
     window.clearTimeout(this.tooltipTimer);
+    window.clearTimeout(this.tooltipHideTimer);
     this.tooltipTimer = null;
+    this.tooltipHideTimer = null;
     this.tooltipVariable = null;
+    this.tooltipPersistent = false;
     this.variableTooltip.hidden = true;
+    this.variableTooltip.classList.remove("is-persistent");
   }
 
   async showVariableTooltip(option, datasetKey, variable) {
@@ -948,10 +1015,7 @@ export class MetadataController extends BaseController {
     if (!metaForVariable) return;
 
     const title = this.getVariableTitle(datasetKey, variable);
-    const summary = this.getVariableSummary(metaForVariable, title);
-    if (!summary.text) return;
-
-    this.renderVariableTooltip(datasetKey, variable, metaForVariable, title, summary);
+    if (!this.renderVariableTooltip(datasetKey, variable, metaForVariable, title)) return;
     this.variableTooltip.hidden = false;
     this.positionVariableTooltip(option);
   }
@@ -974,33 +1038,69 @@ export class MetadataController extends BaseController {
     return rest.length > 0 && rest !== description.slice(title.length) ? rest : description;
   }
 
-  renderVariableTooltip(datasetKey, variable, metaForVariable, title, summary) {
+  renderVariableTooltip(datasetKey, variable, metaForVariable, title, { persistent = false } = {}) {
     this.variableTooltip.style.setProperty("--tip-accent", this.getDatasetAccent(datasetKey));
+    this.variableTooltip.classList.toggle("is-persistent", persistent);
     this.variableTooltipTitle.textContent = title;
     this.variableTooltipKey.textContent = variable;
     // Untitled variables already show their key as the name, so skip the echo.
     this.variableTooltipKey.hidden = title === variable;
 
     this.variableTooltipBody.innerHTML = "";
+    return this.appendVariableInfoBody(this.variableTooltipBody, datasetKey, variable, metaForVariable, title, {
+      includeOverview: true,
+      includeCodebook: true,
+    });
+  }
+
+  appendVariableInfoBody(
+    container,
+    datasetKey,
+    variable,
+    metaForVariable,
+    title,
+    { includeOverview = false, includeCodebook = false, includeKey = false } = {},
+  ) {
+    const initialCount = container.children.length;
     const paragraph = document.createElement("p");
     paragraph.className = "variable-tooltip-desc";
+    const summary = this.getVariableSummary(metaForVariable, title);
     if (summary.label) {
       const label = document.createElement("span");
       label.className = "variable-tooltip-item-label";
       label.textContent = summary.label;
       paragraph.appendChild(label);
     }
-    paragraph.appendChild(document.createTextNode(summary.text));
-    this.variableTooltipBody.appendChild(paragraph);
+    if (summary.text) {
+      paragraph.appendChild(document.createTextNode(summary.text));
+      container.appendChild(paragraph);
+    }
 
-    this.appendVariableTooltipItem("Scale", metaForVariable.scale);
-    this.appendVariableTooltipCoverage(datasetKey, variable);
+    if (includeOverview) {
+      const clarification = this.getVariableMetaText(metaForVariable.clarification);
+      if (clarification && clarification !== summary.text) {
+        this.appendVariableTooltipItem("Overview", clarification, container);
+      }
+    }
+
+    this.appendVariableTooltipItem("Scale", metaForVariable.scale, container);
+    this.appendVariableTooltipCoverage(datasetKey, variable, container);
+
+    if (includeKey && title !== variable) {
+      this.appendVariableTooltipItem("Variable key", variable, container);
+    }
+    const hasBodyContent = container.children.length > initialCount;
+    if (includeCodebook) {
+      this.appendVariableMetaLink(container, datasetKey);
+    }
+
+    return hasBodyContent;
   }
 
   // The same strip the row carries, but with room to say what it means: the row
   // has to be read at a glance, so the years it is plotted against and the reason
   // one bar is taller than the next can only be spelled out here.
-  appendVariableTooltipCoverage(datasetKey, variable) {
+  appendVariableTooltipCoverage(datasetKey, variable, container = this.variableTooltipBody) {
     const data = this.getCoverageStripData(datasetKey, variable);
     const axisRange = this.getCoverageAxis();
     if (!data || !axisRange) return;
@@ -1047,10 +1147,10 @@ export class MetadataController extends BaseController {
       clipped;
     section.appendChild(note);
 
-    this.variableTooltipBody.appendChild(section);
+    container.appendChild(section);
   }
 
-  appendVariableTooltipItem(label, value) {
+  appendVariableTooltipItem(label, value, container = this.variableTooltipBody) {
     if (typeof value !== "string" || value.trim().length === 0) return;
     const item = document.createElement("p");
     item.className = "variable-tooltip-item";
@@ -1061,7 +1161,7 @@ export class MetadataController extends BaseController {
     item.appendChild(name);
     item.appendChild(document.createTextNode(value.trim()));
 
-    this.variableTooltipBody.appendChild(item);
+    container.appendChild(item);
   }
 
   positionVariableTooltip(option) {
@@ -1146,6 +1246,7 @@ export class MetadataController extends BaseController {
     const rows = this.getFilteredRows();
 
     this.variableList.innerHTML = "";
+    this.variableList.removeAttribute("aria-busy");
     for (const row of rows) {
       this.variableList.appendChild(this.buildVariableOption(row.datasetKey, row.mainVariable));
     }
@@ -1157,6 +1258,13 @@ export class MetadataController extends BaseController {
     this.markSelectedVariableOption(this.state.dataset, this.state.variable);
     this.scrollSelectedVariableIntoView();
     this.refreshMobileSelectionSummary();
+    this.refreshLucideIcons();
+  }
+
+  refreshLucideIcons() {
+    if (window.lucide && typeof window.lucide.createIcons === "function") {
+      window.lucide.createIcons();
+    }
   }
 
   // Every dataset's main variables in one list, ordered by the title the reader
@@ -1402,30 +1510,26 @@ export class MetadataController extends BaseController {
     }
   }
 
-  appendVariableMetaItem(container, label, value) {
-    if (typeof value !== "string" || value.trim().length === 0) return;
-    const item = document.createElement("div");
-    item.className = "variable-meta-item";
+  appendVariableMetaLink(container, datasetKey) {
+    const codebookUrl = this.meta.datasets?.[datasetKey]?.codebook;
+    if (typeof codebookUrl !== "string" || codebookUrl.length === 0) return;
 
-    const title = document.createElement("p");
-    title.className = "variable-meta-label";
-    title.textContent = label;
+    const item = document.createElement("p");
+    item.className = "variable-meta-codebook";
 
-    const body = document.createElement("p");
-    body.className = "variable-meta-value";
-    body.textContent = value.trim();
+    const link = document.createElement("a");
+    link.href = codebookUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Open codebook PDF";
 
-    item.appendChild(title);
-    item.appendChild(body);
+    item.appendChild(link);
     container.appendChild(item);
   }
 
-  closeVariableMetadataDialog() {
-    if (typeof this.variableMetaDialog.close === "function") {
-      this.variableMetaDialog.close();
-      return;
-    }
-    this.variableMetaDialog.removeAttribute("open");
+  getVariableMetaText(value) {
+    if (typeof value !== "string") return "";
+    return value.trim();
   }
 
   hasVariableMetadataSummary(datasetKey, variableKey) {
@@ -1441,74 +1545,24 @@ export class MetadataController extends BaseController {
   }
 
   refreshVariableMetadataPanel() {
-    this.variableMetaContent.innerHTML = "";
     const hasSummary = this.hasVariableMetadataSummary(this.state.dataset, this.state.variable);
-    const title = this.getVariableTitle(this.state.dataset, this.state.variable);
-    this.variableMetaTitle.textContent = `Variable information: ${title} (${this.state.variable})`;
 
     if (!hasSummary) {
-      this.variableMetaBtn.disabled = true;
       this.mobileVariableInfoBtn.disabled = true;
-      if (this.variableMetaDialog.open || this.variableMetaDialog.hasAttribute("open")) {
-        this.closeVariableMetadataDialog();
-      }
       return;
     }
 
     const metaForVariable = this.getCachedFullVariableMetadata(this.state.dataset, this.state.variable);
     if (metaForVariable === null) {
-      this.variableMetaBtn.disabled = true;
       this.mobileVariableInfoBtn.disabled = true;
-      if (this.variableMetaDialog.open || this.variableMetaDialog.hasAttribute("open")) {
-        this.closeVariableMetadataDialog();
-      }
       return;
     }
 
     if (metaForVariable === undefined) {
-      this.variableMetaBtn.disabled = false;
       this.mobileVariableInfoBtn.disabled = false;
       return;
     }
 
-    this.appendVariableMetaItem(this.variableMetaContent, "Variable", `${title} (${this.state.variable})`);
-    this.appendVariableMetaItem(this.variableMetaContent, "Description", metaForVariable.description);
-    if (
-      typeof metaForVariable.description_full === "string" &&
-      metaForVariable.description_full.trim().length > 0 &&
-      metaForVariable.description_full.trim() !== (metaForVariable.description || "").trim()
-    ) {
-      this.appendVariableMetaItem(this.variableMetaContent, "Full Description", metaForVariable.description_full);
-    }
-
-    this.appendVariableMetaItem(this.variableMetaContent, "Question", metaForVariable.question);
-    this.appendVariableMetaItem(this.variableMetaContent, "Clarification", metaForVariable.clarification);
-    this.appendVariableMetaItem(this.variableMetaContent, "Scale", metaForVariable.scale);
-    this.appendVariableMetaItem(this.variableMetaContent, "Sources", metaForVariable.sources);
-    this.appendVariableMetaItem(this.variableMetaContent, "Data Release", metaForVariable.data_release);
-    this.appendVariableMetaItem(this.variableMetaContent, "Aggregation", metaForVariable.aggregation);
-    this.appendVariableMetaItem(
-      this.variableMetaContent,
-      "Cross-Coder Aggregation",
-      metaForVariable.cross_coder_aggregation,
-    );
-    this.appendVariableMetaItem(
-      this.variableMetaContent,
-      "Country-Year Aggregation",
-      metaForVariable.country_year_aggregation,
-    );
-    this.appendVariableMetaItem(this.variableMetaContent, "Variable Citation", metaForVariable.variable_citation);
-    this.appendVariableMetaItem(this.variableMetaContent, "Dataset Tag", metaForVariable.dataset_tag);
-    this.appendVariableMetaItem(this.variableMetaContent, "Original Tag", metaForVariable.original_tag);
-    this.appendVariableMetaItem(this.variableMetaContent, "Source Long Tag", metaForVariable.source_long_tag);
-    this.appendVariableMetaItem(this.variableMetaContent, "Additional Versions", metaForVariable.additional_versions);
-    this.appendVariableMetaItem(this.variableMetaContent, "Raw Codebook Block", metaForVariable.raw_block_text);
-
-    const hasContent = this.variableMetaContent.children.length > 0;
-    this.variableMetaBtn.disabled = !hasContent;
-    this.mobileVariableInfoBtn.disabled = !hasContent;
-    if (!hasContent && (this.variableMetaDialog.open || this.variableMetaDialog.hasAttribute("open"))) {
-      this.closeVariableMetadataDialog();
-    }
+    this.mobileVariableInfoBtn.disabled = false;
   }
 }

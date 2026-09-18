@@ -84,7 +84,51 @@ Runtime endpoints:
   `MapController`
 
 WMS source:
-- MapServer on `:8088` (or cache path if enabled in surrounding stack)
+- Same-origin `/mapserver` route through the Demscore router. Server/browser tile caching is
+  controlled by `DEMSCORE_ENABLE_MAPCACHE` in `.env`.
+
+## Visual System
+The interface follows `Demscore_Handbook_Web_Style_Brief.docx`, the CSS-oriented summary of
+Handbook V7: Lato as the working typeface, Open Sans for statistics and metrics, dark navy as
+the structural colour, terracotta only as a thin accent, and soft neutral surfaces on white.
+
+- the handbook's own tokens are the first block of `styles.css` (`--navy`, `--terracotta`,
+  `--charcoal`, `--muted-surface`, `--rule`, ...); every token the app already spoke in
+  (`--accent`, `--text`, `--panel-bg`, `--map-cover-blue`) is *defined from* them, so a
+  palette change is one edit at the top rather than a sweep through the file
+- the two families load from Google Fonts in `index.html`. Lato carries 100/300/400/700/900
+  and no 500/600/800, so a weight in between rounds up at render time; write the weight that
+  actually ships rather than one the family does not have
+- `--font-numeric` (Open Sans) belongs only to elements showing a number — the year readout,
+  the timeline scale, a legend value span, the zoom reading. Everything else is Lato
+- `body` carries the handbook's reading measure (1.55). The sidebar is a control rail that
+  scrolls, so its labels pin their own tighter leading; do not let prose leading back into it
+- corners are `--radius-card` / `--radius-control` / `--radius-inline`, deliberately small:
+  the brief calls out heavy rounded cards as the thing to avoid. Pills (`999px`) are for
+  chips and badges, which read as toggles by being pill-shaped
+- the brief asks for terracotta *sparingly*. Its one use is the rule above the legend dock;
+  do not spend it on buttons or active states
+- the per-dataset palettes (`--ds-1`..`--ds-5`, from backend config) and the map's own
+  colours — legend ramps, `LAND_BASEMAP_COLOR` — are data graphics, not interface chrome,
+  and stand outside this system
+
+### Loading placeholders
+Config arrives over the network, so the sidebar and the timeline are on screen for a moment
+before they hold anything. What stands in for the content is placed so that rendering the
+content removes it — there is no loading flag to set, and none to forget to unset:
+
+- `.loading-dots` (three dots, `styles.css`) sits *inside* `#topicChips`, `#datasetTabs`,
+  `#variableList` and `#mobileSelectedTitle` in `index.html`. Each of those is cleared by its
+  renderer (`innerHTML = ""`, or `textContent =` for the mobile title) on the first pass, so
+  the placeholder goes with it. Add a new one the same way — a placeholder that lives
+  somewhere its renderer does not clear is a placeholder that has to be swept up by hand
+- the containers also carry `aria-busy="true"`, which the three renderers drop; that is the
+  same news for a reader who is not looking at the dots
+- `#timelineWrap` starts `is-awaiting-data`: the marker is hidden and the preload track holds
+  a placeholder rule, because a marker parked on a year is a reading of data that is not in
+  yet. `renderTimelineScale()` drops the class as it draws the real scale. The wrap's white
+  backdrop stays throughout — that is what says the timeline is coming
+- both animations are switched off under `prefers-reduced-motion: reduce`
 
 ## Developer Change Guide
 Common tasks and where to work:
@@ -226,8 +270,13 @@ Common tasks and where to work:
   - `DemscoreApp.renderPreloadState()` aggregates per-year status/progress into each
     box; `renderTimelineScale()` replays the last snapshot after a rebuild
   - box height lives in `--track-height` on `.timeline-slider-wrap`, box width in
-    `--preload-box-width` written onto the track by JS; tick marks sit above the boxes
+    `--preload-box-width` written onto the *wrap* by JS; tick marks sit above the boxes
     and tick labels below, both offset from `--track-height`
+  - the end boxes are centred on the wrap's edges, so each hangs half a box width past
+    it -- widest on short spans, where the box grows to `PRELOAD_SEGMENT_MAX_PX`. The
+    white backdrop (`.timeline-slider-wrap::before`) therefore reaches out by
+    `--backdrop-overhang`, derived from the box width, and `#timeline-overlay` keeps a
+    gutter wide enough for it; a fixed inset left the end box grazing the corner
   - `.timeline-scale` sits above the marker on purpose, and tick labels use an opaque
     halo instead of `opacity`, so the marker line breaks around a label instead of
     striking through it
@@ -297,13 +346,32 @@ Common tasks and where to work:
   - `MapController.initialize()` and `MapController.loadNextLayer()`
   - the pending layer is added at `opacity: 0`, which OpenLayers still renders and so
     still loads tiles for — it only drops the layer at the compositing step. What says
-    the layer is ready is `whenPendingLayerDrawn()`, on the map's `rendercomplete`:
-    counting `tileload` events on the source would be the closer translation of
-    Leaflet's `load` and the wrong one, because a layer whose tiles all come from the
-    cache never fires one and the swap would hang with the timeline still reading
-    "Pause". The map only works out whether a frame was complete while someone is
-    listening, so one `postrender` of our own is what tells a fresh "yes" from a stale
-    one
+    the layer is ready is `whenPendingLayerDrawn()`, and it must always say something:
+    autoplay schedules its next year from that answer, so a swap that never lands stops
+    the animation with the button still reading "Pause". It therefore listens for four
+    things and takes whichever comes first:
+    - the map's `rendercomplete`, the best reading and the only one that also covers a
+      layer whose tiles OpenLayers already had. The map only works out whether a frame
+      was complete while someone is listening, so one `postrender` of our own is what
+      tells a fresh "yes" from a stale one. It cannot be the only reading, because it
+      is map-wide: one tile request anywhere that never settles holds it back forever,
+      and under a preload-loaded MapServer that is not hypothetical
+    - the layer's own `tileloadend`/`tileloaderror` count reaching the number of tiles
+      the view asks for (`getVisibleTileCoords()`, the same count the preloader uses).
+      Counting the tiles that happened to start, rather than the ones the view asks for,
+      would land early: the map loads at most 16 tiles at once, so a layer's first wave
+      can report back while the rest is still queued. `PENDING_LAYER_QUIET_MS` then
+      rides out the seam between waves
+    - `PENDING_LAYER_STALL_MS` since the last tile came back, for a layer that was
+      arriving and stopped. A slow MapServer pushes this forward with every tile it
+      answers, so slow is waited for and stalled is not; the year is shown as far as it
+      got and the rest paints in once that layer is the live one
+    - `PENDING_LAYER_DEADLINE_MS` for a layer that never answered at all, where there is
+      no arrival rate to judge and nothing to show either way
+    `DemscoreApp` keeps a ceiling of its own (`AUTO_PLAY_FRAME_CEILING_MS`) above all of
+    these, for the case where the answer is not late but lost — a swap cancelled out from
+    under the frame waiting on it. A frame also carries a ticket (`autoPlayTicket`), so a
+    late answer cannot schedule a year on top of the one that replaced it
   - a swap can be superseded before it lands — a zoom crossing a hex resolution stop
     reloads the layer while autoplay is still waiting on the previous one. The waiting
     callback (`pendingLayerOnReady`) moves onto the replacement rather than dying with
@@ -332,6 +400,22 @@ Common tasks and where to work:
     otherwise claim years are cached that are not
   - `LayerPreloadController.start()` includes the toggle in its resume signature for the
     same reason
+
+- Change how the read-ahead and the animation share MapServer:
+  - they want the same backend at the same moment, and only one of them is being
+    watched. `LayerPreloadController` asks `waitForNetworkTurn()` before every tile it
+    cannot answer from the cache; `DemscoreApp.takePreloadNetworkTurn()` grants it
+    at once outside autoplay, and during autoplay only after the frame on its way to
+    the screen has landed (`MapController.whenLayerSwapSettles()`) and after whatever
+    read-ahead request is already out. At most one unwatched year is being rendered
+    ahead of the one on screen
+  - reading a year the cache already holds is not a request and never waits, which is
+    what lets the animation run at full speed across the preloaded stretch and then
+    carry on at the rate new tiles arrive
+  - pressing Animate restarts the preload run (`startAutoPlay`): it drops the dozen
+    requests already in flight, which the first frame would otherwise queue behind, and
+    re-anchors the year queue on the year the animation starts from. Years already
+    cached keep their marks — the run asks for the same thing, so it resumes
   - what the outlines are drawn from, and why they follow areas rather than hexagons,
     is in the repository root `AGENTS.md` and `mapserver/README.md`
 
@@ -355,6 +439,10 @@ After edits, run at minimum:
 - `node --check src/core/projection.js`
 
 Then do a manual smoke test in browser:
+- boot state (throttle the network or delay `/api/config/**`): three dots under "Filter by
+  topic", "Filter by dataset" and in the Variable well; the timeline shows its backdrop and a
+  placeholder rule with no year marker; all of it is gone once the config lands, with no
+  `.loading-dots`, `[aria-busy]` or `.is-awaiting-data` left in the DOM
 - panel is white and the rows carry the dataset colour, not the sidebar; a dataset chip, the
   rows it matches and the citation are recognisably the same colour
 - filter chips: a topic chip narrows the list across datasets, a dataset chip narrows it further

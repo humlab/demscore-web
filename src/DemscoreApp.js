@@ -35,8 +35,21 @@ export class DemscoreApp extends BaseController {
     this.preloadSnapshot = null;
     this.redrawTimelineScale = null;
 
+    this.autoPlayTicket = 0;
+    this.autoPlayWatchdog = null;
+    // The tail of the read-ahead queue while the animation is running; see
+    // takePreloadNetworkTurn.
+    this.preloadNetworkTurn = Promise.resolve();
+
     this.AUTO_PLAY_MIN_SPEED = 1;
     this.AUTO_PLAY_MAX_SPEED = 8;
+    // Each frame waits for the map to say the year is drawn, which is what lets
+    // autoplay run at the speed tiles arrive rather than at a fixed rate it
+    // cannot keep. A frame that never reports back would end the animation with
+    // the button still reading "Pause", so the wait has a ceiling. MapController
+    // has one of its own, below this; reaching this one means the answer was
+    // lost rather than late -- a swap cancelled out from under the frame.
+    this.AUTO_PLAY_FRAME_CEILING_MS = 12000;
     this.PRELOAD_SEGMENT_MIN_PX = 14;
     this.PRELOAD_SEGMENT_MAX_PX = 18;
     this.PRELOAD_SEGMENT_GAP_PX = 2;
@@ -104,7 +117,12 @@ export class DemscoreApp extends BaseController {
       state: this.state,
       metadataController: this.metadataController,
       mapController: this.mapController,
+      cacheEnabled: this.backendClient.cacheEnabled,
       onUpdate: (snapshot) => this.renderPreloadState(snapshot),
+      // Autoplay is the one time the map and the read-ahead want the same
+      // MapServer at the same moment, and the map is the one somebody is
+      // watching.
+      waitForNetworkTurn: () => this.takePreloadNetworkTurn(),
     });
     await this.layerPreloadController.initialize();
 
@@ -382,9 +400,43 @@ export class DemscoreApp extends BaseController {
     this.yearPlayBtn.setAttribute("aria-label", this.state.isAutoPlaying ? "Pause timeline" : "Play timeline");
   }
 
+  // What the preloader asks before every request it has to go to MapServer for.
+  //
+  // Outside autoplay nothing is waiting on the map, so there is no queue to join
+  // and the read-ahead runs flat out. While the animation is running the year on
+  // its way to the screen comes first: a request waits for the frame to land,
+  // and for whatever read-ahead request is already out, so at most one year
+  // nobody is looking at yet is ever being rendered ahead of the one they are.
+  // Reading a year the cache already holds is not a request and never waits,
+  // which is how the animation runs at full speed across what was preloaded.
+  async takePreloadNetworkTurn() {
+    if (!this.state.isAutoPlaying) return null;
+
+    const ahead = this.preloadNetworkTurn;
+    let releaseTurn;
+    this.preloadNetworkTurn = new Promise((resolve) => {
+      releaseTurn = resolve;
+    });
+
+    await ahead;
+    await this.mapController.whenLayerSwapSettles();
+
+    return releaseTurn;
+  }
+
+  clearAutoPlayWatchdog() {
+    if (this.autoPlayWatchdog === null) return;
+    window.clearTimeout(this.autoPlayWatchdog);
+    this.autoPlayWatchdog = null;
+  }
+
   stopAutoPlay() {
     this.state.isAutoPlaying = false;
     this.clearAutoPlayTimer();
+    // Any frame still waiting on the map belongs to the animation that is
+    // ending, so its answer must not schedule a year after it.
+    this.autoPlayTicket += 1;
+    this.clearAutoPlayWatchdog();
     this.updatePlayButton();
     this.mapController.getContainer().classList.remove("autoplay-active");
     this.mapController.stopPendingLayerSwap();
@@ -392,6 +444,7 @@ export class DemscoreApp extends BaseController {
 
   scheduleAutoPlayTick() {
     this.clearAutoPlayTimer();
+    this.clearAutoPlayWatchdog();
     if (!this.state.isAutoPlaying) return;
 
     this.state.autoPlayTimer = window.setTimeout(() => {
@@ -408,11 +461,23 @@ export class DemscoreApp extends BaseController {
       this.yearSlider.value = String(this.state.year);
       this.refreshYearDisplay();
       this.mapController.refreshLegend();
-      this.mapController.advanceAutoPlayLayer(() => {
+
+      // The frame this tick is about to ask for. A scrub, a pause or a later
+      // tick retires the ticket, so a late answer from a frame that has been
+      // superseded cannot schedule a year on top of the one that replaced it.
+      const ticket = (this.autoPlayTicket += 1);
+      let continued = false;
+      const continueAfterFrame = () => {
+        if (continued || ticket !== this.autoPlayTicket) return;
+        continued = true;
         if (this.state.isAutoPlaying) {
           this.scheduleAutoPlayTick();
         }
-      });
+      };
+
+      // The year is drawn, or it is given up on: either way the timeline moves.
+      this.autoPlayWatchdog = window.setTimeout(continueAfterFrame, this.AUTO_PLAY_FRAME_CEILING_MS);
+      this.mapController.advanceAutoPlayLayer(continueAfterFrame);
     }, this.getAutoPlayStepMs());
   }
 
@@ -425,6 +490,13 @@ export class DemscoreApp extends BaseController {
     this.state.isAutoPlaying = true;
     this.updatePlayButton();
     this.mapController.getContainer().classList.add("autoplay-active");
+    // Pressing Animate mid-preload used to mean racing it: a dozen read-ahead
+    // requests were already in flight, and the first frame queued behind them.
+    // Restarting the run drops those, re-anchors the queue on the year the
+    // animation starts from, and from here on the read-ahead waits its turn
+    // (see waitForNetworkTurn). Years already cached keep their marks: the run
+    // asks for the same thing, so it resumes rather than starts over.
+    this.layerPreloadController.start();
     this.scheduleAutoPlayTick();
   }
 
@@ -584,6 +656,9 @@ export class DemscoreApp extends BaseController {
   }
 
   renderTimelineScale(yearMin, yearMax, availableYears = [], countryCountsByYear = {}) {
+    // The scale is about to exist, so the placeholder rule and the hidden marker
+    // give way to it. Idempotent: every later redraw passes through here too.
+    this.timelineWrap.classList.remove("is-awaiting-data");
     this.timelineScale.innerHTML = "";
     this.timelinePreloadTrack.innerHTML = "";
     this.preloadSegments = [];
@@ -595,7 +670,9 @@ export class DemscoreApp extends BaseController {
 
     const { segments, boxWidth, sparse } = this.buildPreloadSegments(yearMin, yearMax, availableYearSet);
     this.timelinePreloadTrack.classList.toggle("is-sparse", sparse);
-    this.timelinePreloadTrack.style.setProperty("--preload-box-width", `${boxWidth}px`);
+    // on the wrap, not the track: the wrap's backdrop is sized off it too, so the
+    // edge boxes keep a margin instead of grazing the rounded corner
+    this.timelineWrap.style.setProperty("--preload-box-width", `${boxWidth}px`);
 
     for (const segment of segments) {
       const counts = segment.dataYears

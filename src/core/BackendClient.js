@@ -3,6 +3,7 @@ export class BackendClient {
     this.defaultMapServerBase = "/mapserver?map=/etc/mapserver/mapserver.map";
     this.mapServerBase = this.normalizeToPathUrl(this.defaultMapServerBase, this.defaultMapServerBase);
     this.webBackendBase = "";
+    this.cacheEnabled = false;
   }
 
   normalizeToPathUrl(input, fallback = "") {
@@ -45,12 +46,14 @@ export class BackendClient {
   async hydrateRuntime() {
     try {
       const runtime = await this.fetchJson("/api/runtime", "Could not load runtime config");
+      this.cacheEnabled = runtime?.cacheEnabled === true;
       if (runtime && typeof runtime.mapServerBase === "string" && runtime.mapServerBase.length > 0) {
         this.mapServerBase = this.normalizeToPathUrl(runtime.mapServerBase, this.defaultMapServerBase);
       } else {
         this.mapServerBase = this.normalizeToPathUrl(this.defaultMapServerBase, this.defaultMapServerBase);
       }
     } catch (_error) {
+      this.cacheEnabled = false;
       this.mapServerBase = this.normalizeToPathUrl(this.defaultMapServerBase, this.defaultMapServerBase);
     }
   }

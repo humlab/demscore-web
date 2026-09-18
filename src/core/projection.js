@@ -23,10 +23,12 @@
 // projections. A zoom level therefore denotes the same metres per pixel it
 // always did, in either projection, so the hex resolution stops, the zoom
 // readout and the +/- step all carry over unchanged and mean the same thing on
-// both sides of the toggle. Ten levels is three more than MAX_ZOOM needs, which
-// leaves room to raise it without touching this.
+// both sides of the toggle. The WMS tile grid is denser than the readout's
+// whole levels so fractional zooms do not scale MapServer's raster strokes far
+// enough to make outlines visibly change weight.
 const ZOOM_ZERO_RESOLUTION = 156543.03392804097;
-const ZOOM_LEVEL_COUNT = 10;
+const TILE_GRID_MAX_ZOOM = 9;
+const TILE_GRID_ZOOM_STEP = 0.25;
 const TILE_SIZE = 512;
 
 export const EQUAL_EARTH_CODE = "EPSG:8857";
@@ -49,27 +51,47 @@ export const EQUAL_EARTH_HALF_Y = 8392927.598466456;
 // Web Mercator's square world, pi * 6378137.
 const WEB_MERCATOR_HALF = 20037508.342789244;
 
-// Keep the hex layer generalized at world scale, then step into denser meshes
-// as the user settles on regional views. Both ladders match increments
-// precomputed in the database, and the Mercator sizes are exactly twice the
-// Equal Earth ones: a Mercator cell of a given size covers ground area
-// proportional to cos^2(latitude), so its mesh carries a surplus towards the
-// poles and reaching the same cell count takes a nominally larger cell.
-// Measured, Mercator 200k gives 5 917 cells against Equal Earth 100k's 5 690.
+// Keep the hex layer generalized at the broadest world views, then step into
+// denser meshes as soon as the world is large enough for Denmark-scale
+// countries to read. Both ladders match increments precomputed in the database,
+// and the Mercator sizes are exactly twice the Equal Earth ones: a Mercator
+// cell of a given size covers ground area proportional to cos^2(latitude), so
+// its mesh carries a surplus towards the poles and reaching the same cell count
+// takes a nominally larger cell. Measured at the sizes this ladder used to
+// start from, Mercator 200k gives 5 917 cells against Equal Earth 100k's 5 690.
+//
+// Those are the middle stop now: the whole ladder is deliberately one doubling
+// coarser than that measurement, because a cell small enough to resolve a
+// country's interior is smaller than anything the map is actually read at. A
+// hexagon is a unit of "this country's score here", not a pixel, and at the
+// world view a few thousand of them is noise in the shape of detail.
+//
+// Three stops, not more. Crossing a threshold changes hex_size, and hex_size is
+// a WMS dimension, so every tile on screen is a cache miss the moment it moves:
+// a stop is a full mesh reload, and a zoom from the world view to the closest
+// view pays for each one it passes. Three keeps that to two reloads, and the
+// grain halves at each so the steps land evenly rather than one crossing being
+// visibly larger than the rest.
+//
+// The coarsest stop is also what the mapcache preloader warms and what the
+// mapfile falls back to (default_hex_size), so moving it means moving those
+// together or the warm cache is warm for a size nothing asks for.
 //
 // The zoom thresholds are shared, and can be, because both projections use Web
 // Mercator's resolution ladder -- a zoom level means the same scale in either,
-// so the same threshold picks the same grain.
-const HEX_ZOOM_THRESHOLDS = [0, 2.75, 3.75, 4.75];
+// so the same threshold picks the same grain. They divide the 0-6 range evenly,
+// so no single grain carries a disproportionate stretch of the zoom.
+const HEX_ZOOM_THRESHOLDS = [0, 2, 4];
 
 function hexResolutionStops(sizes) {
   return HEX_ZOOM_THRESHOLDS.map((minZoom, index) => ({ minZoom, hexSizeM: sizes[index] }));
 }
 
-// The ladder as an array, for the tile grids. Index is the zoom level.
+// The ladder as an array, for the WMS tile grids. The index is only OpenLayers'
+// tile-grid z; the app zoom behind an entry is index * TILE_GRID_ZOOM_STEP.
 const RESOLUTIONS = Array.from(
-  { length: ZOOM_LEVEL_COUNT },
-  (_unused, zoom) => ZOOM_ZERO_RESOLUTION / 2 ** zoom,
+  { length: Math.floor(TILE_GRID_MAX_ZOOM / TILE_GRID_ZOOM_STEP) + 1 },
+  (_unused, index) => ZOOM_ZERO_RESOLUTION / 2 ** (index * TILE_GRID_ZOOM_STEP),
 );
 
 // Zoom and resolution are converted through the ladder rather than through the
@@ -141,7 +163,7 @@ const PROJECTION_DEFINITIONS = {
     label: "Equal Earth",
     title: "Equal Earth (EPSG:8857) — every hexagon covers the same real area",
     wmsLayers: { fill: "hex_variable", outline: "hex_outline" },
-    hexResolutionStops: hexResolutionStops([100000, 60000, 40000, 25000]),
+    hexResolutionStops: hexResolutionStops([200000, 100000, 50000]),
     extent: [
       -EQUAL_EARTH_HALF_X,
       -EQUAL_EARTH_HALF_Y,
@@ -157,7 +179,7 @@ const PROJECTION_DEFINITIONS = {
     // A second set of layers over a second mesh, not the first mesh reprojected.
     // See the note above hex_variable_mercator in mapserver/mapserver.map.
     wmsLayers: { fill: "hex_variable_mercator", outline: "hex_outline_mercator" },
-    hexResolutionStops: hexResolutionStops([200000, 120000, 80000, 50000]),
+    hexResolutionStops: hexResolutionStops([400000, 200000, 100000]),
     extent: [
       -WEB_MERCATOR_HALF,
       -WEB_MERCATOR_HALF,

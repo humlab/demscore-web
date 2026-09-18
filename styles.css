@@ -1,25 +1,49 @@
 :root {
-  /* Demscore handbook visual reference:
-     front-page palette uses deep blue #003c51 as the main brand field and
-     warm brown #c86e4e as a thinner divider/complement. The cover pairs a
-     clean white typographic header with a large map/globe photo, then uses
-     brown as the small separator before the blue footer. Future webapp theme
-     work should consider this balance: blue as the structural anchor, brown
-     as a restrained accent, and subtle blur/photo treatment where useful. */
-  --panel-bg: #f6f8fb;
-  --panel-border: #d6dde7;
-  --text: #1f2937;
-  --muted: #5f6b7a;
-  --accent: #114b84;
-  --timeline-ink: #111111;
-  --timeline-paper: #ffffff;
+  /* Demscore handbook visual system, as set out in
+     Demscore_Handbook_Web_Style_Brief.docx: Lato throughout, dark navy as the
+     structural colour, terracotta only as a thin accent, and soft neutral
+     surfaces on white. The handbook's own tokens come first; everything the app
+     already spoke in is defined from them, so one edit here moves the whole
+     interface. */
+  --navy: #1d3c4f;
+  --navy-deep: #17384b;
+  --terracotta: #c96e4d;
+  --ink: #000000;
+  --charcoal: #3b3838;
+  --paper: #ffffff;
+  --muted-surface: #f5f5f5;
+  --rule: #dde4e6;
+
+  /* Lato for everything the handbook calls editorial; Open Sans only where the
+     page shows a number — the year readout, the timeline scale, a value span. */
+  --font-sans: "Lato", "Segoe UI", Arial, sans-serif;
+  --font-numeric: "Open Sans", "Lato", "Segoe UI", Arial, sans-serif;
+
+  /* "Avoid heavy rounded cards": corners are a hairline softening, not a shape.
+     Pills stay pills — a chip reads as a toggle by being one. */
+  --radius-card: 6px;
+  --radius-control: 4px;
+  --radius-inline: 3px;
+
+  --panel-bg: var(--muted-surface);
+  --panel-border: var(--rule);
+  /* A hover/well grey off the same neutral as the surfaces, not the blue-grey
+     the panel used to mix its own. */
+  --surface-hover: #ececec;
+  --surface-well: var(--muted-surface);
+  --text: var(--charcoal);
+  --muted: #6b6664;
+  --accent: var(--navy);
+  --accent-strong: #142b39;
+  --timeline-ink: var(--navy);
+  --timeline-paper: var(--paper);
   --timeline-fill: var(--accent);
   --timeline-fail: #b91c1c;
   --timeline-size: 180px;
-  --map-cover-blue: #003c51;
-  --map-cover-brown: #c86e4e;
+  --map-cover-blue: var(--navy);
+  --map-cover-brown: var(--terracotta);
   --map-legend-height: 154px;
-  --map-ocean: #d9e6ef;
+  --map-ocean: var(--rule);
 }
 
 html,
@@ -29,8 +53,18 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  font-family: "Source Sans 3", "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
+  /* The handbook's body setting. Dense controls pin their own tighter leading
+     below; this is what prose in a dialog or a hover card inherits. */
+  line-height: 1.55;
   color: var(--text);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 #app {
@@ -102,6 +136,70 @@ body {
   text-decoration: underline;
 }
 
+/* ---- Loading placeholders ---- */
+/* Three dots standing where a list is about to be. Each one lives inside the
+   container it speaks for, so the first render clears it by clearing the
+   container -- there is no loading flag to set and none to forget to unset.
+   Restrained on purpose: a soft navy, no spinner, no skeleton blocks. */
+.loading-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.loading-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0.25;
+  animation: demscore-dots 1.05s ease-in-out infinite;
+}
+
+.loading-dots i:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.loading-dots i:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+@keyframes demscore-dots {
+  0%,
+  65%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  32% {
+    opacity: 0.9;
+    transform: translateY(-2px);
+  }
+}
+
+/* A chip row is about as tall as one chip; holding that height means the label
+   above the dots does not hop when the chips arrive. */
+.chip-group > .loading-dots {
+  min-height: 24px;
+}
+
+/* The variable well already reserves its height, so the dots sit in the middle
+   of it rather than in the top-left corner of an otherwise empty box. */
+.variable-list > .loading-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-dots i {
+    animation: none;
+    opacity: 0.4;
+  }
+}
+
 /* ---- Filter chips + variable panel ---- */
 /* The panel is neutral. Dataset colour belongs to the individual things that
    are of one dataset — a variable row, a dataset chip, the citation — not to
@@ -158,7 +256,7 @@ body {
   background: #fff;
   color: var(--text);
   font-size: 0.74rem;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.35;
   letter-spacing: 0.01em;
   text-align: center;
@@ -167,7 +265,7 @@ body {
 
 #controls .dataset-panel .chip:hover {
   border-color: var(--muted);
-  background: #f1f4f8;
+  background: var(--surface-hover);
 }
 
 #controls .dataset-panel .chip:focus-visible {
@@ -212,6 +310,7 @@ body {
 
 .filter-summary {
   margin: 0;
+  font-family: var(--font-numeric);
   color: var(--muted);
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
@@ -227,7 +326,7 @@ body {
   min-height: 0;
   padding: 10px 12px 14px;
   border: 1px solid var(--panel-border);
-  border-radius: 10px;
+  border-radius: var(--radius-card);
   background: #fff;
   color: var(--text);
 }
@@ -255,8 +354,9 @@ body {
 .field-label {
   display: block;
   margin: 10px 0 6px;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 0.92rem;
+  line-height: 1.3;
   color: var(--muted);
 }
 
@@ -270,10 +370,10 @@ body {
   overscroll-behavior: contain;
   padding: 4px;
   border: 1px solid var(--panel-border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   /* A faint grey well, so rows tinted with their dataset's palest shades still
      read as sitting on something rather than floating on the white panel. */
-  background: #f4f6f9;
+  background: var(--surface-well);
   scrollbar-width: thin;
   scrollbar-color: rgba(0, 0, 0, 0.28) transparent;
 }
@@ -288,7 +388,7 @@ body {
   position: relative;
   align-items: stretch;
   margin: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-inline);
   font-size: 1rem;
   font-weight: 400;
   background: #fff;
@@ -307,6 +407,50 @@ body {
   cursor: pointer;
 }
 
+#controls .variable-option-info {
+  display: none;
+  flex: 0 0 auto;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0 6px 0 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+}
+
+#controls .variable-option-info svg {
+  width: 15px;
+  height: 15px;
+}
+
+#controls .variable-option-info:hover:not(:disabled),
+#controls .variable-option-info:focus-visible {
+  border-color: var(--panel-border);
+  background: #fff;
+  color: var(--accent);
+}
+
+#controls .variable-option-info:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+#controls .variable-option-info:disabled {
+  opacity: 0.34;
+  cursor: not-allowed;
+}
+
+@media (hover: none), (pointer: coarse) {
+  #controls .variable-option-info {
+    display: inline-flex;
+  }
+}
+
 #controls .variable-option + .variable-option {
   margin-top: 2px;
 }
@@ -320,7 +464,7 @@ body {
 }
 
 .variable-option:hover {
-  background: #eef1f6;
+  background: var(--surface-hover);
 }
 
 .variable-option:has(input:focus-visible) {
@@ -345,10 +489,22 @@ body {
   font-weight: 700;
 }
 
+#controls .variable-option.is-selected .variable-option-info {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+#controls .variable-option.is-selected .variable-option-info:hover:not(:disabled),
+#controls .variable-option.is-selected .variable-option-info:focus-visible {
+  border-color: rgba(255, 255, 255, 0.62);
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
 .variable-option-name {
   display: block;
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.25;
 }
 
@@ -454,23 +610,23 @@ body {
   opacity: 0.45;
 }
 
-/* Direct children only: the filter chips and the per-row version carets are
+/* Direct children only: the filter chips and per-row info icons are
    also buttons inside this panel, but both carry their row's or their own
    dataset's colour and must not be repainted here. */
 #controls .dataset-panel > button {
   border-color: var(--panel-border);
   background: #fff;
   color: var(--text);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 #controls .dataset-panel > button:hover:not(:disabled) {
-  background: #f1f4f8;
+  background: var(--surface-hover);
 }
 
 #controls .dataset-panel > button:disabled {
   border-color: var(--panel-border);
-  background: #f7f8fa;
+  background: var(--muted-surface);
   color: var(--muted);
   cursor: not-allowed;
 }
@@ -489,17 +645,16 @@ body {
   box-sizing: border-box;
   width: 340px;
   max-width: calc(100vw - 24px);
-  /* No `overflow: hidden` here: it would clip the arrow. The card's height is
-     bounded by the line clamps on its content instead. */
+  /* No `overflow: hidden` here: it would clip the arrow. Long content scrolls
+     inside the body instead. */
   padding: 11px 14px 13px;
   border: 1px solid var(--panel-border);
   border-left: 4px solid var(--tip-accent, var(--accent));
-  border-radius: 10px;
+  border-radius: var(--radius-card);
   background: #fff;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.24);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--navy-deep) 24%, transparent);
   color: var(--text);
-  /* The card only ever follows the pointer's row; it must never eat the hover. */
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 /* Two stacked triangles: an accent one showing as a hairline outline behind a
@@ -564,26 +719,21 @@ body {
 
 .variable-tooltip-body {
   margin-top: 9px;
+  max-height: calc(100vh - 110px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  /* Ink, not the charcoal the rest of the interface is set in: this is the one
+     run of long-form reading text on the page. */
+  color: var(--ink);
   font-size: 0.85rem;
   line-height: 1.45;
 }
 
-/* Codebook descriptions run long; clamp to keep the card a card. */
 .variable-tooltip-desc {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 10;
-  line-clamp: 10;
-  overflow: hidden;
   margin: 0;
 }
 
 .variable-tooltip-item {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  overflow: hidden;
   margin: 9px 0 0;
   padding-top: 8px;
   border-top: 1px solid var(--panel-border);
@@ -640,6 +790,7 @@ body {
 .variable-tooltip-coverage-axis {
   display: flex;
   justify-content: space-between;
+  font-family: var(--font-numeric);
   margin-top: 3px;
   font-size: 0.68rem;
   font-variant-numeric: tabular-nums;
@@ -653,68 +804,27 @@ body {
   color: var(--muted);
 }
 
-.variable-meta-item + .variable-meta-item {
-  margin-top: 8px;
-}
-
-.variable-meta-label {
-  margin: 0 0 2px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-.variable-meta-value {
-  margin: 0;
+.variable-meta-codebook {
+  margin: 14px 0 0;
   font-size: 0.86rem;
-  line-height: 1.35;
-  white-space: pre-wrap;
 }
 
-.variable-meta-dialog {
-  width: min(860px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
-  border: 1px solid #c4ccd8;
-  border-radius: 10px;
-  padding: 0;
+.variable-meta-codebook a {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
 }
 
-.variable-meta-dialog::backdrop {
-  background: rgba(15, 23, 42, 0.45);
-}
-
-.variable-meta-dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 14px 16px;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.variable-meta-dialog-header h2 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.variable-meta-close-btn {
-  width: auto !important;
-  margin-top: 0 !important;
-  padding: 6px 10px !important;
-}
-
-.variable-meta-content {
-  max-height: calc(100vh - 170px);
-  overflow: auto;
-  padding: 14px 16px 18px;
+.variable-meta-codebook a:hover {
+  text-decoration: underline;
 }
 
 .mobile-picker-dialog,
 .mobile-source-dialog {
   width: min(720px, calc(100vw - 24px));
   max-height: calc(100vh - 40px);
-  border: 1px solid #c4ccd8;
-  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-card);
   padding: 0;
   background: #fff;
   color: var(--text);
@@ -722,7 +832,7 @@ body {
 
 .mobile-picker-dialog::backdrop,
 .mobile-source-dialog::backdrop {
-  background: rgba(15, 23, 42, 0.48);
+  background: color-mix(in srgb, var(--navy-deep) 48%, transparent);
 }
 
 .mobile-dialog-header {
@@ -731,7 +841,7 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--panel-border);
 }
 
 .mobile-dialog-header h2 {
@@ -747,8 +857,8 @@ body {
   width: 34px;
   height: 34px;
   padding: 0;
-  border: 1px solid #c4ccd8;
-  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
   background: #fff;
   color: var(--text);
 }
@@ -764,8 +874,8 @@ body {
   width: calc(100% - 28px);
   margin: 12px 14px 8px;
   padding: 9px 10px;
-  border: 1px solid #c4ccd8;
-  border-radius: 7px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
   font: inherit;
 }
 
@@ -811,10 +921,11 @@ body {
   z-index: 1;
   margin: 0 -2px 4px;
   padding: 8px 6px 5px;
-  background: #fff;
-  color: var(--muted);
+  background: var(--paper);
+  color: var(--accent);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 900;
+  letter-spacing: 0.18em;
   line-height: 1;
   text-transform: uppercase;
 }
@@ -825,7 +936,7 @@ body {
   width: 100%;
   padding: 8px 9px 7px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--ds-5) 24%, #fff);
   color: var(--text);
   text-align: left;
@@ -853,7 +964,7 @@ body {
   min-width: 0;
   overflow: hidden;
   font-size: 0.9rem;
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1.18;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -889,8 +1000,9 @@ body {
 #controls label {
   display: block;
   margin: 10px 0 6px;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 0.92rem;
+  line-height: 1.3;
 }
 
 #controls select,
@@ -899,8 +1011,8 @@ body {
   box-sizing: border-box;
   width: 100%;
   padding: 8px;
-  border: 1px solid #c4ccd8;
-  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
   font-size: 0.95rem;
   background: #fff;
 }
@@ -920,13 +1032,13 @@ body {
 #controls button {
   margin-top: 14px;
   cursor: pointer;
-  border: 1px solid #0f3f6f;
+  border: 1px solid var(--accent-strong);
   color: #fff;
   background: var(--accent);
 }
 
 #controls button:hover {
-  background: #0f3f6f;
+  background: var(--accent-strong);
 }
 
 .timeline-main {
@@ -940,6 +1052,12 @@ body {
   --selected-pct: 50%;
   --axis-y: 34px;
   --track-height: 12px;
+  /* set from JS once the boxes are sized; the backdrop has to know it too, so it
+     lives on the wrap and the track inherits it */
+  --preload-box-width: 12px;
+  /* the outermost box is centred on the wrap's edge and so hangs half its width
+     past it -- the backdrop has to clear that, not a fixed guess */
+  --backdrop-overhang: calc(var(--preload-box-width) / 2 + 10px);
   position: relative;
   height: var(--timeline-size);
   min-width: 0;
@@ -948,18 +1066,17 @@ body {
 .timeline-slider-wrap::before {
   position: absolute;
   top: calc(var(--axis-y) - 24px);
-  left: -10px;
-  right: -10px;
+  left: calc(-1 * var(--backdrop-overhang));
+  right: calc(-1 * var(--backdrop-overhang));
   height: 54px;
   content: "";
   z-index: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   background: rgba(255, 255, 255, 0.74);
   pointer-events: none;
 }
 
 .timeline-preload-track {
-  --preload-box-width: 12px;
   position: absolute;
   top: var(--axis-y);
   left: 0;
@@ -982,6 +1099,44 @@ body {
   border-radius: 999px;
   background: rgba(17, 17, 17, 0.16);
   transform: translateY(-50%);
+}
+
+/* Before a variable's years are in there is nothing to put on the axis, and a
+   marker parked on a year nothing has been read for is a reading of data that
+   does not exist yet. The wrap's backdrop stays -- that is what says the
+   timeline is coming -- and a single rule stands in for the scale. */
+.timeline-slider-wrap.is-awaiting-data .timeline-selected-marker {
+  display: none;
+}
+
+.timeline-slider-wrap.is-awaiting-data .timeline-preload-track::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 3px;
+  content: "";
+  z-index: 1;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--timeline-ink) 18%, transparent);
+  transform: translateY(-50%);
+  animation: demscore-timeline-wait 1.5s ease-in-out infinite;
+}
+
+@keyframes demscore-timeline-wait {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline-slider-wrap.is-awaiting-data .timeline-preload-track::before {
+    animation: none;
+  }
 }
 
 /* Centred on the year it covers, so a box lines up with its tick and the marker. */
@@ -1083,6 +1238,7 @@ body {
 
 .timeline-tick-label {
   position: absolute;
+  font-family: var(--font-numeric);
   top: calc(var(--track-height) / 2 + 5px);
   left: 0;
   transform: translateX(-50%);
@@ -1129,11 +1285,12 @@ body {
 .timeline-year-label {
   background: var(--timeline-ink);
   color: var(--timeline-paper);
+  font-family: var(--font-numeric);
   font-size: clamp(2rem, 4vw, 2.75rem);
   line-height: 1;
   font-weight: 700;
   padding: 8px 20px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   letter-spacing: 0.01em;
   transform: translateX(var(--selected-label-offset, 0px));
 }
@@ -1152,7 +1309,7 @@ body {
 .playback-control {
   display: inline-flex;
   border: 2px solid var(--timeline-ink);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   overflow: hidden;
   background: var(--timeline-paper);
 }
@@ -1161,7 +1318,7 @@ body {
   border: 0;
   background: transparent;
   color: var(--timeline-ink);
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   line-height: 1;
 }
@@ -1203,6 +1360,7 @@ body {
 #speedDisplay {
   min-width: 2em;
   text-align: center;
+  font-family: var(--font-numeric);
   font-size: 0.86rem;
   font-weight: 700;
   color: var(--timeline-ink);
@@ -1222,8 +1380,10 @@ body {
   left: calc(340px + ((100vw - 340px) / 2));
   transform: translateX(-50%);
   z-index: 1200;
-  width: min(760px, calc(100vw - 340px - 28px));
-  margin: 0 14px;
+  /* the gutter has to clear the slider backdrop, which reaches --backdrop-overhang
+     past the wrap on each side; `left` already centres it, so no margin shift */
+  width: min(760px, calc(100vw - 340px - 48px));
+  margin: 0;
   background: transparent;
   border: none;
   box-shadow: none;
@@ -1313,8 +1473,8 @@ body {
   padding: 0;
   border: 0;
   background: transparent;
-  font-family: "Source Sans 3", "Segoe UI", sans-serif;
-  color: #ffffff;
+  font-family: var(--font-sans);
+  color: var(--paper);
   box-shadow: none;
 }
 
@@ -1325,10 +1485,12 @@ body {
 
 .legend-title {
   margin-bottom: 5px;
-  color: #ffffff;
-  font-family: Georgia, "Times New Roman", serif;
+  color: var(--paper);
   font-size: clamp(1.25rem, 2vw, 1.62rem);
-  font-weight: 400;
+  /* Light 300, the weight the handbook gives its section titles; the size
+     carries the emphasis, not the stroke. */
+  font-weight: 300;
+  letter-spacing: 0.01em;
   line-height: 1.1;
 }
 
@@ -1371,9 +1533,9 @@ body {
   max-width: min(260px, calc(100vw - 24px));
   padding: 8px 12px 9px;
   border: 1px solid var(--panel-border);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: #ffffff;
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.24);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--navy-deep) 24%, transparent);
   color: var(--text);
   /* The card only ever follows the pointer's swatch; it must never eat the hover. */
   pointer-events: none;
@@ -1426,6 +1588,7 @@ body {
 
 .legend-tip-range {
   margin: 2px 0 0;
+  font-family: var(--font-numeric);
   font-size: 0.95rem;
   line-height: 1.2;
   /* Digits line up as the pointer moves from class to class. */
@@ -1443,6 +1606,7 @@ body {
 .legend-labels {
   display: flex;
   justify-content: space-between;
+  font-family: var(--font-numeric);
   margin-top: 6px;
   color: rgba(255, 255, 255, 0.88);
   font-size: 0.8rem;
@@ -1481,7 +1645,7 @@ body {
   gap: 0;
   padding: 0;
   background: none;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
   overflow: hidden;
 }
@@ -1501,7 +1665,7 @@ body {
 }
 
 .ol-zoom button + button {
-  border-top: 1px solid #ddd;
+  border-top: 1px solid var(--panel-border);
 }
 
 .ol-zoom button:hover,
@@ -1535,10 +1699,10 @@ body {
 
 .map-display-heading {
   margin: 0 0 3px;
-  color: #666;
+  color: var(--accent);
   font-size: 0.66rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
 }
 
@@ -1546,7 +1710,7 @@ body {
 .map-display-options {
   background: rgba(255, 255, 255, 0.92);
   padding: 5px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
   font-size: 0.78rem;
   color: #333;
@@ -1567,12 +1731,13 @@ body {
 }
 
 .zoom-display {
+  font-family: var(--font-numeric);
   /* the reading follows a continuous zoom now, so it is sized and spaced for a
      changing number rather than resizing on every wheel notch */
   min-width: 5.5em;
   background: rgba(255, 255, 255, 0.8);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
   color: #333;
@@ -1588,8 +1753,8 @@ body {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  border: 3px solid rgba(17, 75, 132, 0.18);
-  border-top-color: #114b84;
+  border: 3px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  border-top-color: var(--accent);
   animation: demscore-spin 0.75s linear infinite;
   opacity: 0;
   transition: opacity 0.15s ease;
@@ -1650,7 +1815,7 @@ body {
     margin: 0;
     padding: 8px 9px;
     border: 1px solid var(--panel-border);
-    border-radius: 8px;
+    border-radius: var(--radius-card);
     background: #fff;
     color: var(--text);
     text-align: left;
@@ -1672,10 +1837,17 @@ body {
     background: color-mix(in srgb, var(--ds-4, var(--accent)) 42%, #fff);
     color: color-mix(in srgb, var(--ds-1, var(--accent)) 72%, #000);
     font-size: 0.72rem;
-    font-weight: 800;
+    font-weight: 900;
     line-height: 1;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Hidden, not removed: the trigger is a three-column grid and `display: none`
+     takes the badge out of placement altogether, which slides the chevron in off
+     the right edge until the label arrives. */
+  .mobile-selected-dataset:empty {
+    visibility: hidden;
   }
 
   .mobile-selected-copy {
@@ -1692,7 +1864,7 @@ body {
 
   .mobile-selected-title {
     font-size: 0.94rem;
-    font-weight: 800;
+    font-weight: 900;
     line-height: 1.2;
   }
 
@@ -1721,11 +1893,11 @@ body {
     margin: 0;
     padding: 7px 8px;
     border: 1px solid var(--panel-border);
-    border-radius: 7px;
+    border-radius: var(--radius-control);
     background: #fff;
     color: var(--text);
     font-size: 0.82rem;
-    font-weight: 750;
+    font-weight: 700;
     line-height: 1;
     text-decoration: none;
   }
@@ -1733,13 +1905,13 @@ body {
   #controls .mobile-action-button:hover,
   #controls .mobile-action-link:hover {
     border-color: var(--muted);
-    background: #f1f4f8;
+    background: var(--surface-hover);
   }
 
   #controls .mobile-action-button:disabled {
-    color: #8b96a6;
+    color: var(--muted);
     cursor: not-allowed;
-    background: #eef2f6;
+    background: var(--muted-surface);
   }
 
   #controls .mobile-action-link[hidden] {
@@ -1802,7 +1974,7 @@ body {
     max-height: calc(100dvh - 18px);
     margin: auto 0 0;
     border-width: 1px 0 0;
-    border-radius: 14px 14px 0 0;
+    border-radius: 10px 10px 0 0;
   }
 
   .mobile-picker-list {
@@ -1818,8 +1990,8 @@ body {
     top: calc(12px + env(safe-area-inset-top, 0px));
     left: auto;
     transform: none;
-    width: min(620px, calc(100vw - 20px));
-    margin: 0 10px;
+    width: min(620px, calc(100vw - 48px));
+    margin: 0 24px;
   }
 
   .timeline-slider-wrap {

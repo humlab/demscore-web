@@ -1,5 +1,5 @@
 // Must match WMS_TILE_CACHE in sw.js, which is what evicts the older versions.
-const PRELOAD_CACHE_NAME = "demscore-wms-tile-cache-v4";
+const PRELOAD_CACHE_NAME = "demscore-wms-tile-cache-v6";
 const MAX_CONCURRENT_YEARS = 3;
 const MAX_CONCURRENT_REQUESTS = 4;
 
@@ -26,11 +26,18 @@ function buildContinuousYears(yearMin, yearMax) {
 }
 
 export class LayerPreloadController {
-  constructor({ state, metadataController, mapController, onUpdate }) {
+  constructor({ state, metadataController, mapController, cacheEnabled, onUpdate, waitForNetworkTurn }) {
     this.state = state;
     this.metadataController = metadataController;
     this.mapController = mapController;
+    this.cacheEnabled = cacheEnabled === true;
     this.onUpdate = onUpdate;
+    // Asked before every request that has to go to MapServer, so the read-ahead
+    // can be told to stand aside for the year the map is drawing. It resolves to
+    // the way to hand the turn back, or to nothing when there was no queue to
+    // join. Left out, the read-ahead never stands aside.
+    this.waitForNetworkTurn =
+      typeof waitForNetworkTurn === "function" ? waitForNetworkTurn : () => Promise.resolve(null);
 
     this.cache = null;
     this.abortController = null;
@@ -45,6 +52,11 @@ export class LayerPreloadController {
   }
 
   async initialize() {
+    if (!this.cacheEnabled) {
+      await this.disableBrowserCache();
+      return;
+    }
+
     if ("serviceWorker" in navigator && isServiceWorkerSafeOrigin()) {
       try {
         await navigator.serviceWorker.register("./sw.js", { scope: "./" });
@@ -62,8 +74,49 @@ export class LayerPreloadController {
     }
   }
 
+  async disableBrowserCache() {
+    if ("serviceWorker" in navigator) {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(
+          registrations
+            .filter((registration) => {
+              const scriptUrl =
+                registration.active?.scriptURL ||
+                registration.waiting?.scriptURL ||
+                registration.installing?.scriptURL ||
+                "";
+              return scriptUrl && new URL(scriptUrl).pathname.endsWith("/sw.js");
+            })
+            .map((registration) => registration.unregister()),
+        );
+      } catch (error) {
+        console.warn("Could not unregister WMS cache service worker", error);
+      }
+    }
+
+    if ("caches" in window) {
+      try {
+        const cacheNames = await caches.keys();
+        await Promise.all(
+          cacheNames
+            .filter((name) => name.startsWith("demscore-wms-tile-cache-"))
+            .map((name) => caches.delete(name)),
+        );
+      } catch (error) {
+        console.warn("Could not clear WMS tile cache", error);
+      }
+    }
+  }
+
   start() {
     this.cancel();
+    if (!this.cacheEnabled) {
+      this.statusByYear = new Map();
+      this.progressByYear = new Map();
+      this.emitUpdate();
+      return;
+    }
 
     const dataset = this.state.dataset;
     const variable = this.state.variable;
@@ -220,19 +273,33 @@ export class LayerPreloadController {
       if (cached) return true;
     }
 
-    const response = await fetch(url, {
-      cache: "force-cache",
-      signal,
-    });
+    // A miss is a MapServer render, and MapServer is also what the map itself is
+    // waiting on whenever a year is on its way to the screen. Reading a cached
+    // year ahead costs the map nothing and is never held up; fetching one waits
+    // its turn. During autoplay that is what keeps the timeline moving at the
+    // speed tiles arrive instead of behind a queue of years nobody is looking at
+    // yet.
+    const releaseTurn = await this.waitForNetworkTurn();
 
-    if (!response.ok) {
-      throw new Error(`WMS preload failed: ${response.status}`);
+    try {
+      const response = await fetch(url, {
+        cache: "force-cache",
+        signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`WMS preload failed: ${response.status}`);
+      }
+
+      if (this.cache) {
+        await this.cache.put(url, response.clone());
+      }
+
+      return false;
+    } finally {
+      // Including the throwing paths: a turn that is never handed back is one
+      // the rest of the read-ahead waits on forever.
+      if (typeof releaseTurn === "function") releaseTurn();
     }
-
-    if (this.cache) {
-      await this.cache.put(url, response.clone());
-    }
-
-    return false;
   }
 }

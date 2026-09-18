@@ -46,9 +46,33 @@ const INITIAL_ZOOM = 2;
 // against the rest of the stack.
 const BASEMAP_Z_INDEX = 100;
 const HEX_Z_INDEX = 350;
-// Which way the tile grid rounds a continuous resolution to a whole tile zoom.
-// Zero means nearest, which is what ol/layer/Tile asks for by default -- and the
-// preload has to ask the same question, or it names tiles the map never wants.
+// A swap lands when the year's tiles are on the map. The map's own rendercomplete
+// is the best reading of that, but it is a map-wide one: it waits on every tile
+// queued anywhere -- including the ones left behind by years autoplay has already
+// walked past -- and on the browser settling every request, which a tile fetch
+// hitting a MapServer busy with the preloader's own reads may take a very long
+// time to do, or never do at all. Autoplay schedules its next year from that
+// signal, so a swap that never lands stops the timeline dead, which is what
+// "Animate stops after one year while the tiles are still coming in" was. The
+// pending layer's own tiles reporting back is therefore a second way to land,
+// and a deadline is the third.
+//
+// The quiet window is there because tiles are queued in batches: the counters
+// touch zero between two batches of the same layer, and a moment with nothing
+// starting is what tells that seam from the end of the layer.
+const PENDING_LAYER_QUIET_MS = 120;
+// How long a layer that has begun arriving is given to carry on arriving. A slow
+// MapServer resets this with every tile it answers, so a genuinely slow year is
+// waited for; a year with a tile that is not coming back is shown as far as it
+// got, and the missing tiles paint in behind it once the layer is the live one.
+const PENDING_LAYER_STALL_MS = 3000;
+// The ceiling for a layer that has not answered at all, where there is no
+// arrival rate to judge it by and nothing to show even if it is given up on.
+const PENDING_LAYER_DEADLINE_MS = 10000;
+// Which way the tile grid rounds a continuous resolution to a discrete tile
+// resolution. Zero means nearest, which is what ol/layer/Tile asks for by
+// default -- and the preload has to ask the same question, or it names tiles the
+// map never wants.
 const TILE_Z_DIRECTION = 0;
 // Zoom is continuous, so the wheel and pinch land wherever they land; this is
 // only the step the +/- buttons and the keyboard move by. Whole levels were too
@@ -148,7 +172,11 @@ export class MapController extends BaseController {
     this.activeWmsLayer = null;
     this.pendingWmsLayer = null;
     this.pendingLayerOnReady = null;
-    this.pendingLayerListeners = [];
+    this.pendingLayerCleanups = [];
+    // Resolved every time a swap lands or is cancelled. The preloader waits on
+    // this before any fetch it cannot answer from the cache, so the year the map
+    // is drawing is never queued behind a read-ahead.
+    this.layerSwapWaiters = [];
     this.viewListeners = [];
     this.zoomReadoutEl = null;
     this.projectionInputs = [];
@@ -214,14 +242,15 @@ export class MapController extends BaseController {
       }),
     });
 
-    this.activeWmsLayer = this.createWmsLayer();
-    this.hexLayerGroup.getLayers().push(this.activeWmsLayer);
-
     this.initializeLegend();
     this.installDisplayOptions();
     this.installZoomIndicator();
     this.applyWorldFit();
     this.bindViewEvents();
+
+    this.activeWmsLayer = this.createWmsLayer();
+    this.hexLayerGroup.getLayers().push(this.activeWmsLayer);
+
     this.loadLandmassBaseLayer();
 
     // OpenLayers watches the map element itself, so this fires for a window
@@ -451,10 +480,10 @@ export class MapController extends BaseController {
     const resolution = view.getResolution();
     if (!size || !size[0] || !size[1] || !Number.isFinite(resolution)) return [];
 
-    // Zoom is continuous, so between whole levels the grid keeps asking for one
-    // whole tile zoom and scales what comes back. Rounding the map's own zoom
-    // here would name tiles it never asks for, and the preload marks would then
-    // be reporting on the wrong ones -- so the grid is asked exactly the
+    // Zoom is continuous, so between tile-grid stops the grid keeps asking for
+    // one discrete resolution and scales what comes back. Rounding the map's own
+    // zoom here would name tiles it never asks for, and the preload marks would
+    // then be reporting on the wrong ones -- so the grid is asked exactly the
     // question the tile renderer asks it.
     const tileGrid = this.projection.tileGrid;
     const z = tileGrid.getZForResolution(resolution, TILE_Z_DIRECTION);
@@ -506,12 +535,39 @@ export class MapController extends BaseController {
     // means to keep the wait alive carries the continuation over itself first --
     // see loadNextLayer.
     this.pendingLayerOnReady = null;
-    ol.Observable.unByKey(this.pendingLayerListeners);
-    this.pendingLayerListeners = [];
+    this.cancelPendingLayerWatch();
     if (!this.pendingWmsLayer) return;
     this.hexLayerGroup.getLayers().remove(this.pendingWmsLayer);
     this.pendingWmsLayer = null;
     this.hideLoadingIndicator();
+    this.releaseLayerSwapWaiters();
+  }
+
+  cancelPendingLayerWatch() {
+    const cleanups = this.pendingLayerCleanups;
+    this.pendingLayerCleanups = [];
+    for (const cleanup of cleanups) cleanup();
+  }
+
+  // Resolves as soon as no swap is in flight. The preloader holds its next
+  // request here during autoplay: MapServer renders one tile at a time per
+  // worker, so a dozen read-ahead requests queued in front of the frame on its
+  // way to the screen is the difference between animating at the speed tiles
+  // arrive and appearing to stop.
+  whenLayerSwapSettles() {
+    if (!this.pendingWmsLayer) return Promise.resolve();
+
+    return new Promise((resolve) => {
+      this.layerSwapWaiters.push(resolve);
+    });
+  }
+
+  // Every path that clears pendingWmsLayer ends here, which is what keeps the
+  // promise above from outliving the swap it was waiting on.
+  releaseLayerSwapWaiters() {
+    const waiters = this.layerSwapWaiters;
+    this.layerSwapWaiters = [];
+    for (const resolve of waiters) resolve();
   }
 
   createWmsLayer() {
@@ -550,8 +606,8 @@ export class MapController extends BaseController {
 
     return new ol.layer.Tile({
       source,
-      // Nearest whole tile zoom, which is what getVisibleTileCoords assumes when
-      // it names the tiles for the preloader.
+      // Nearest tile-grid resolution, which is what getVisibleTileCoords assumes
+      // when it names the tiles for the preloader.
       zDirection: TILE_Z_DIRECTION,
     });
   }
@@ -716,7 +772,7 @@ export class MapController extends BaseController {
     this.pendingLayerOnReady = readyCallback;
 
     this.showLoadingIndicator();
-    this.whenPendingLayerDrawn(() => {
+    this.whenPendingLayerDrawn(nextLayer, () => {
       if (this.pendingWmsLayer !== nextLayer) return;
       nextLayer.setOpacity(1);
       this.hexLayerGroup.getLayers().remove(this.activeWmsLayer);
@@ -724,37 +780,103 @@ export class MapController extends BaseController {
       this.pendingWmsLayer = null;
       this.pendingLayerOnReady = null;
       this.hideLoadingIndicator();
+      this.releaseLayerSwapWaiters();
       if (readyCallback) readyCallback();
     });
   }
 
   // Leaflet's tile layer had a "load" event of its own. OpenLayers counts
   // loading across the whole map instead and fires rendercomplete on the first
-  // frame where nothing is queued, loading or half-drawn -- which, since the
-  // layer has just been added, cannot arrive before its tiles have. Counting
-  // tileload events on the source alone would be the closer translation and the
-  // wrong one: a layer whose tiles all come from the cache never fires one and
-  // the swap would hang with the timeline still reading "Pause".
+  // frame where nothing is queued, loading or half-drawn. That is the reading to
+  // prefer -- it is the only one that also covers a layer whose tiles were all
+  // already in OpenLayers' own cache and so never load at all -- but it is not
+  // one to depend on alone, because it speaks for the whole map: one tile
+  // request anywhere that never settles holds it back forever, and with it the
+  // autoplay frame waiting on this swap. See PENDING_LAYER_QUIET_MS.
+  //
+  // So the swap also lands when the pending layer's own tiles have all reported
+  // back -- loaded or errored, an errored tile being one OpenLayers itself stops
+  // waiting for -- when a layer that was arriving stops arriving, and, failing
+  // all of those, on a deadline. Whichever comes first takes the swap; the rest
+  // are unbound with it.
+  //
+  // That count is against the tiles the view asks for rather than against the
+  // ones that happen to have started, because OpenLayers starts them in waves:
+  // the map loads at most 16 at once, so a layer's tiles can all report back
+  // while the rest of them are still queued behind another year's leftovers, and
+  // a swap landed there would put a half-drawn year on screen.
   //
   // The map only bothers to work out whether a frame was complete when someone
   // is listening, so a stale "yes" can be dispatched from the tick before the
   // layer was added. One postrender of our own is what tells the two apart.
-  whenPendingLayerDrawn(onDrawn) {
+  whenPendingLayerDrawn(layer, onDrawn) {
+    const source = layer.getSource();
+    // Zero means the view could not be measured; then only the map's own reading
+    // and the deadline can land the swap.
+    const expectedTiles = this.getVisibleTileCoords().length;
     let drawnSinceAdded = false;
+    let landed = false;
+    let started = 0;
+    let reported = 0;
+    let quietTimer = null;
+    let stallTimer = null;
+
+    const land = () => {
+      if (landed) return;
+      landed = true;
+      this.cancelPendingLayerWatch();
+      onDrawn();
+    };
+
+    const clearQuietTimer = () => {
+      if (quietTimer === null) return;
+      window.clearTimeout(quietTimer);
+      quietTimer = null;
+    };
+
+    // Armed by the first tile to come back and pushed forward by every tile
+    // after it, so it measures the gap between arrivals rather than the length
+    // of the wait. A layer that has not answered at all never arms it: there is
+    // no rate to call slow yet, and the deadline is what covers that.
+    const restartStallTimer = () => {
+      if (stallTimer !== null) window.clearTimeout(stallTimer);
+      stallTimer = window.setTimeout(land, PENDING_LAYER_STALL_MS);
+    };
+
     const listeners = [
       this.map.on("postrender", () => {
         drawnSinceAdded = true;
       }),
       this.map.on("rendercomplete", () => {
         if (!drawnSinceAdded) return;
-        ol.Observable.unByKey(listeners);
-        this.pendingLayerListeners = this.pendingLayerListeners.filter(
-          (key) => !listeners.includes(key),
-        );
-        onDrawn();
+        land();
       }),
+      source.on("tileloadstart", () => {
+        started += 1;
+        clearQuietTimer();
+      }),
+      ...["tileloadend", "tileloaderror"].map((type) =>
+        source.on(type, () => {
+          reported += 1;
+          restartStallTimer();
+          if (expectedTiles === 0 || started < expectedTiles || reported < started) return;
+          clearQuietTimer();
+          quietTimer = window.setTimeout(() => {
+            quietTimer = null;
+            if (reported >= started) land();
+          }, PENDING_LAYER_QUIET_MS);
+        }),
+      ),
     ];
-    this.pendingLayerListeners.push(...listeners);
+
+    const deadline = window.setTimeout(land, PENDING_LAYER_DEADLINE_MS);
+
+    this.pendingLayerCleanups.push(() => {
+      ol.Observable.unByKey(listeners);
+      clearQuietTimer();
+      if (stallTimer !== null) window.clearTimeout(stallTimer);
+      window.clearTimeout(deadline);
+    });
   }
 
   resolveLegendMeaning(dataset, variable) {

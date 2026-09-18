@@ -1,3 +1,10 @@
+// v6: WMS tile resolutions are quarter-zoom stops now, reducing raster scaling
+// so MapServer strokes keep a steadier apparent weight between continuous zooms.
+//
+// v5: the low-zoom mesh ladder gained an intermediate stop, so old WMS tiles
+// should not influence visual checks while the browser settles onto the new
+// hex_size requests.
+//
 // v4: the map is drawn by OpenLayers now, over two meshes rather than one.
 //
 // Neither the Equal Earth URLs nor the Mercator ones can be served out of an
@@ -13,7 +20,7 @@
 // meshes. Nothing below needs to tell them apart: the layer names, the SRS and
 // the BBOX all ride along in the URL that is the cache key, so the two caches
 // are the same cache and can never collide.
-const WMS_TILE_CACHE = "demscore-wms-tile-cache-v4";
+const WMS_TILE_CACHE = "demscore-wms-tile-cache-v6";
 
 // The fills may be asked for alone or together with the outline layer that rides
 // along in the same GetMap (see MapController.wmsLayerNames), and the two spell
