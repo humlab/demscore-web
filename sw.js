@@ -1,8 +1,14 @@
-// v2: the tiles are Equal Earth now. Every tile cached by v1 was requested with
-// SRS=EPSG:3857 and a Web Mercator BBOX, so none of those URLs can ever be asked
-// for again -- left alone they would sit in returning users' browsers forever,
-// matching nothing. The version is part of the name so activate can drop them.
-const WMS_TILE_CACHE = "demscore-wms-tile-cache-v2";
+// v3: the map is drawn by OpenLayers now, and it spells a tile's BBOX from the
+// grid origin and the resolution directly where Leaflet arrived at it through a
+// round trip in and out of lat/lon. The numbers agree to about a millionth of a
+// metre and the strings do not, so no URL cached by v2 can be asked for again --
+// left alone they would sit in returning users' browsers forever, matching
+// nothing. The version is part of the name so activate can drop them.
+//
+// Requests now carry SRS=EPSG:8857 or SRS=EPSG:3857 depending on the projection
+// toggle, which is two sets of tiles rather than one; nothing here needs to know
+// the difference, since the SRS rides along in the URL that is the cache key.
+const WMS_TILE_CACHE = "demscore-wms-tile-cache-v3";
 
 // The fills may be asked for alone or together with the outline layer that rides
 // along in the same GetMap (see MapController.wmsLayerNames), and the two spell

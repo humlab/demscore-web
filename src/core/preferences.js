@@ -57,3 +57,22 @@ export function writeAreaOutlinesEnabled(enabled) {
     // A browser that refuses cookies still works; it just forgets between visits.
   }
 }
+
+// Which projection the map is drawn in. Equal Earth is the default and the
+// reason the mesh exists; Mercator is a deliberate departure from it, so an
+// unreadable cookie falls back to the argument rather than to a hardcoded
+// choice, the same way the outline toggle does.
+const MAP_PROJECTION_COOKIE = "demscore_map_projection";
+
+export function readMapProjection(allowedKeys, fallback) {
+  const stored = readCookie(MAP_PROJECTION_COOKIE);
+  return allowedKeys.includes(stored) ? stored : fallback;
+}
+
+export function writeMapProjection(key) {
+  try {
+    writeCookie(MAP_PROJECTION_COOKIE, key);
+  } catch (_) {
+    // A browser that refuses cookies still works; it just forgets between visits.
+  }
+}

@@ -1,6 +1,6 @@
 # Web App
 
-Simple Leaflet frontend for the Demscore MapServer WMS layer.
+Simple OpenLayers frontend for the Demscore MapServer WMS layer.
 
 ## Features
 

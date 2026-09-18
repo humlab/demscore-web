@@ -1,5 +1,5 @@
 // Must match WMS_TILE_CACHE in sw.js, which is what evicts the older versions.
-const PRELOAD_CACHE_NAME = "demscore-wms-tile-cache-v2";
+const PRELOAD_CACHE_NAME = "demscore-wms-tile-cache-v3";
 const MAX_CONCURRENT_YEARS = 3;
 const MAX_CONCURRENT_REQUESTS = 4;
 
@@ -83,10 +83,14 @@ export class LayerPreloadController {
     const polarity = this.metadataController.getActivePolarity();
     const hexSize = this.mapController.hexSizeFromZoom();
     const areaOutlines = this.mapController.getAreaOutlinesEnabled();
+    // The projection is in the signature because it is in every tile URL: a
+    // switch means a different SRS and a different BBOX, so none of the marks
+    // from before it describe a tile that is still being asked for.
+    const projection = this.mapController.getProjectionKey();
 
     // Without a tile cache nothing survives a restart, so there is nothing to
     // resume: every tile is fetched again and every year genuinely starts over.
-    const signature = `${dataset}|${variable}|${polarity}|${hexSize}|${areaOutlines}|${yearMin}-${yearMax}|${years.length}`;
+    const signature = `${dataset}|${variable}|${polarity}|${hexSize}|${areaOutlines}|${projection}|${yearMin}-${yearMax}|${years.length}`;
     const resume = Boolean(this.cache) && signature === this.targetSignature;
     this.targetSignature = signature;
 

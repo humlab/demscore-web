@@ -1282,8 +1282,12 @@ body {
   background: var(--map-ocean);
 }
 
-#mapCanvas.leaflet-container {
-  background: var(--map-ocean);
+/* OpenLayers draws into a canvas that only covers the world; the ocean is the
+   page behind it. The viewport has to be told it fills the canvas element,
+   which Leaflet's container styling used to do. */
+#mapCanvas .ol-viewport {
+  width: 100%;
+  height: 100%;
 }
 
 .map-legend-dock {
@@ -1452,18 +1456,93 @@ body {
   line-height: 1.3;
 }
 
-/* Suppress Leaflet tile fade animation during auto-play */
-.autoplay-active .leaflet-tile {
-  transition: none !important;
-  opacity: 1 !important;
+/* The bottom-left stack: the zoom readout over the display options. Leaflet
+   docked each control to a corner by name; OpenLayers leaves placement to CSS,
+   so one stack is anchored and its cards flow inside it. */
+.map-display-stack {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 
-/* Keep the data overlay steady during zoom tile refreshes */
-.demscore-hex-pane .leaflet-tile {
-  transition: none !important;
+/* OpenLayers' own zoom buttons, dressed as the square white pair the map had
+   before. Its default is a pill of brand-blue buttons, which belongs to no
+   other control on this page. */
+.ol-zoom {
+  top: 10px;
+  left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  background: none;
+  border-radius: 4px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
 }
 
-/* Map display options, docked with Leaflet's own bottom-left controls */
+.ol-zoom button {
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: #ffffff;
+  color: #333;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ol-zoom button + button {
+  border-top: 1px solid #ddd;
+}
+
+.ol-zoom button:hover,
+.ol-zoom button:focus {
+  background: #f4f4f4;
+  color: #000;
+  outline: none;
+}
+
+.ol-zoom button:disabled {
+  color: #bbb;
+  cursor: default;
+}
+
+.ol-attribution.ol-uncollapsible {
+  right: 0;
+  bottom: 0;
+  padding: 0 5px;
+  border-radius: 3px 0 0 0;
+  background: rgba(255, 255, 255, 0.75);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.ol-attribution ul {
+  margin: 0;
+  padding: 0;
+  color: #333;
+  text-shadow: none;
+}
+
+.map-display-heading {
+  margin: 0 0 3px;
+  color: #666;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Map display options, docked bottom-left over the map */
 .map-display-options {
   background: rgba(255, 255, 255, 0.92);
   padding: 5px 8px;

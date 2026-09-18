@@ -152,7 +152,9 @@ export class DemscoreApp extends BaseController {
 
     this.applyYear = this.debounce(() => this.mapController.refresh(), 400);
     this.restartPreload = this.debounce(() => this.layerPreloadController.start(), 300);
-    this.mapController.getMap().on("moveend zoomend", () => this.restartPreload());
+    // Zoom is continuous and OpenLayers has no separate zoomend: moveend is
+    // where a pan and a zoom both come to rest.
+    this.mapController.getMap().on("moveend", () => this.restartPreload());
     this.redrawTimelineScale = this.debounce(() => {
       const coverage = this.getActiveTimelineCoverage();
       this.renderTimelineScale(coverage.yearMin, coverage.yearMax, coverage.availableYears, coverage.countryCountsByYear);
@@ -384,7 +386,7 @@ export class DemscoreApp extends BaseController {
     this.state.isAutoPlaying = false;
     this.clearAutoPlayTimer();
     this.updatePlayButton();
-    L.DomUtil.removeClass(this.mapController.getContainer(), "autoplay-active");
+    this.mapController.getContainer().classList.remove("autoplay-active");
     this.mapController.stopPendingLayerSwap();
   }
 
@@ -422,7 +424,7 @@ export class DemscoreApp extends BaseController {
 
     this.state.isAutoPlaying = true;
     this.updatePlayButton();
-    L.DomUtil.addClass(this.mapController.getContainer(), "autoplay-active");
+    this.mapController.getContainer().classList.add("autoplay-active");
     this.scheduleAutoPlayTick();
   }
 

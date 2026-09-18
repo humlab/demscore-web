@@ -1,9 +1,18 @@
 import { BaseController } from "../core/BaseController.js";
-import { readAreaOutlinesEnabled, writeAreaOutlinesEnabled } from "../core/preferences.js";
 import {
-  createEqualEarthCrs,
-  equalEarthPanBounds,
-  equalEarthProjectedBounds,
+  readAreaOutlinesEnabled,
+  readMapProjection,
+  writeAreaOutlinesEnabled,
+  writeMapProjection,
+} from "../core/preferences.js";
+import {
+  DEFAULT_PROJECTION_KEY,
+  PROJECTION_KEYS,
+  getMapProjection,
+  resolutionForZoom,
+  transferCenter,
+  worldFitResolution,
+  zoomForResolution,
 } from "../core/projection.js";
 
 const POLARITY_POSITIVE = "positive";
@@ -36,10 +45,22 @@ const LEGEND_COLORS_NEGATIVE = ["#313695", "#4575b4", "#74add1", "#abd9e9", "#fd
 const LEGEND_COLORS_NEUTRAL = ["#d1fae5", "#a7f3d0", "#6ee7b7", "#34d399", "#10b981", "#059669", "#047857"];
 const MIN_ZOOM_FLOOR = 0;
 const MAX_ZOOM = 6;
-// Zoom is continuous (zoomSnap 0) so the wheel and pinch land wherever they
-// land; this is only the step the +/- buttons and the keyboard move by. Whole
-// levels were too coarse a jump to frame a region with.
+const INITIAL_CENTER_LON_LAT = [10, 20];
+const INITIAL_ZOOM = 2;
+// The land sits under the hexagons and neither takes a click; the numbers are
+// the pane z-indexes the Leaflet version used, kept so the order is readable
+// against the rest of the stack.
+const BASEMAP_Z_INDEX = 100;
+const HEX_Z_INDEX = 350;
+// Which way the tile grid rounds a continuous resolution to a whole tile zoom.
+// Zero means nearest, which is what ol/layer/Tile asks for by default -- and the
+// preload has to ask the same question, or it names tiles the map never wants.
+const TILE_Z_DIRECTION = 0;
+// Zoom is continuous, so the wheel and pinch land wherever they land; this is
+// only the step the +/- buttons and the keyboard move by. Whole levels were too
+// coarse a jump to frame a region with.
 const ZOOM_DELTA = 0.25;
+const ZOOM_DURATION_MS = 250;
 // Keep the hex layer generalized at world scale, then step into denser meshes
 // as the user settles on regional views. Values match demscore.hex_mesh's
 // precomputed 5km grid increments.
@@ -49,8 +70,9 @@ const ZOOM_DELTA = 0.25;
 // cos^2(latitude), so the old mesh carried a surplus of hexagons towards the
 // poles that the sizes were implicitly counting on; an Equal Earth hexagon
 // covers the same area everywhere, and reaching the same count takes one about
-// half the nominal size. The zoom thresholds are untouched because the CRS
-// reuses Web Mercator's resolution ladder -- a zoom still means the same scale.
+// half the nominal size. The zoom thresholds are untouched because both
+// projections share Web Mercator's resolution ladder -- a zoom still means the
+// same scale, and the mesh is picked in metres of real ground either way.
 const HEX_RESOLUTION_STOPS = [
   { minZoom: 0, hexSizeM: 100000 },
   { minZoom: 2.75, hexSizeM: 60000 },
@@ -58,8 +80,8 @@ const HEX_RESOLUTION_STOPS = [
   { minZoom: 4.75, hexSizeM: 25000 },
 ];
 
-// Leaflet reports fractional zoom now, and "Zoom: 3.2500000000000004" is not a
-// reading anyone wants.
+// Zoom is continuous, and "Zoom: 3.2500000000000004" is not a reading anyone
+// wants.
 function formatZoom(zoom) {
   return String(Math.round(zoom * 100) / 100);
 }
@@ -135,6 +157,7 @@ export class MapController extends BaseController {
     this.legendMeaning = compileLegendMeaning(legendMeta);
     this.onLayerParamsChange = typeof onLayerParamsChange === "function" ? onLayerParamsChange : () => {};
     this.areaOutlinesEnabled = readAreaOutlinesEnabled(AREA_OUTLINES_DEFAULT);
+    this.projectionKey = readMapProjection(PROJECTION_KEYS, DEFAULT_PROJECTION_KEY);
 
     this.loadingIndicator = this.getEl("loading-indicator");
     this.legendDock = this.getEl("mapLegendDock");
@@ -144,11 +167,18 @@ export class MapController extends BaseController {
     this.legendTipCountEl = this.getEl("legendTooltipCount");
 
     this.map = null;
-    this.layerControl = null;
+    this.landLayer = null;
+    this.landGeoJson = null;
     this.hexLayerGroup = null;
     this.activeWmsLayer = null;
     this.pendingWmsLayer = null;
     this.pendingLayerOnReady = null;
+    this.pendingLayerListeners = [];
+    this.viewListeners = [];
+    this.zoomReadoutEl = null;
+    this.projectionInputs = [];
+    this.layerToggleInputs = [];
+    this.displayOptionsEl = null;
 
     this.legend = null;
     this.legendTitleEl = null;
@@ -167,118 +197,181 @@ export class MapController extends BaseController {
     this.legendTipKey = null;
 
     this.loadingRevealTimer = null;
-    this.demscoreBasemapPaneName = "demscoreBasemapPane";
-    this.demscoreHexPaneName = "demscoreHexPane";
   }
 
   initialize() {
-    const landmassBase = L.layerGroup([], {
-      attribution: '<a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener noreferrer">Natural Earth</a>',
+    this.projection = getMapProjection(this.projectionKey);
+
+    this.landLayer = new ol.layer.Vector({
+      source: new ol.source.Vector({
+        attributions:
+          '<a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener noreferrer">Natural Earth</a>',
+      }),
+      style: new ol.style.Style({
+        fill: new ol.style.Fill({ color: LAND_BASEMAP_COLOR }),
+        stroke: new ol.style.Stroke({ color: LAND_BASEMAP_COLOR, width: 1 }),
+      }),
+      zIndex: BASEMAP_Z_INDEX,
     });
 
-    const crs = createEqualEarthCrs();
+    // The hexagons live in a group of their own because a swap is two layers at
+    // once -- the one on screen and the one loading behind it.
+    this.hexLayerGroup = new ol.layer.Group({ zIndex: HEX_Z_INDEX });
 
-    this.map = L.map("mapCanvas", {
-      crs,
-      center: [20, 10],
-      zoom: 2,
-      // The floor is replaced by the measured world-fit zoom in
-      // applyWorldFitMinZoom; this is only the limit that measurement may
-      // return.
-      minZoom: MIN_ZOOM_FLOOR,
-      maxZoom: MAX_ZOOM,
-      zoomSnap: 0,
-      zoomDelta: ZOOM_DELTA,
-      layers: [landmassBase],
-      // maxBounds is set in applyPanBounds once the map has a size to measure;
-      // it depends on both that and the zoom. Viscosity stays here because
-      // Map.Drag reads the two together.
-      maxBoundsViscosity: 1.0,
-      worldCopyJump: false,
+    this.map = new ol.Map({
+      target: "mapCanvas",
+      layers: [this.landLayer, this.hexLayerGroup],
+      view: this.createView({
+        center: ol.proj.fromLonLat(INITIAL_CENTER_LON_LAT, this.projection.projection),
+        resolution: resolutionForZoom(INITIAL_ZOOM),
+      }),
+      // The defaults include a rotate control and a rotating drag; the world is
+      // read north-up here and the hex mesh has no rotated form to serve.
+      controls: [
+        new ol.control.Zoom({ delta: ZOOM_DELTA, duration: ZOOM_DURATION_MS }),
+        new ol.control.Attribution({ collapsible: false }),
+      ],
+      interactions: ol.interaction.defaults.defaults({
+        altShiftDragRotate: false,
+        pinchRotate: false,
+      }),
     });
 
-    this.map.createPane(this.demscoreBasemapPaneName);
-    const demscoreBasemapPane = this.map.getPane(this.demscoreBasemapPaneName);
-    demscoreBasemapPane.style.zIndex = "100";
-    demscoreBasemapPane.style.pointerEvents = "none";
-
-    this.map.createPane(this.demscoreHexPaneName);
-    const demscoreHexPane = this.map.getPane(this.demscoreHexPaneName);
-    demscoreHexPane.style.zIndex = "350";
-    demscoreHexPane.style.pointerEvents = "none";
-    demscoreHexPane.classList.add("demscore-hex-pane");
-
-    this.hexLayerGroup = L.layerGroup([]).addTo(this.map);
     this.activeWmsLayer = this.createWmsLayer();
-    this.hexLayerGroup.addLayer(this.activeWmsLayer);
-
-    this.layerControl = L.control.layers(
-      {
-        Landmasses: landmassBase,
-      },
-      {
-        "Demscore Hex Layer": this.hexLayerGroup,
-      },
-      { collapsed: false, position: "bottomleft" },
-    );
-    this.layerControl.addTo(this.map);
+    this.hexLayerGroup.getLayers().push(this.activeWmsLayer);
 
     this.initializeLegend();
-    this.installAreaOutlineToggle();
+    this.installDisplayOptions();
     this.installZoomIndicator();
-    this.applyWorldFitMinZoom();
-    this.applyPanBounds();
-    this.loadLandmassBaseLayer(landmassBase);
+    this.bindViewEvents();
+    this.applyZoomLimits();
+    this.loadLandmassBaseLayer();
 
-    this.map.on("resize", () => {
-      // A taller or wider window fits the world at a different zoom, so the
-      // floor is re-measured rather than fixed once at startup.
-      this.applyWorldFitMinZoom();
-      this.applyPanBounds();
-      this.rebalanceLegendPosition();
-    });
-    // How much ground half a window covers is what the pan limit is made of, so
-    // it is remeasured whenever the zoom settles. Only on zoomend, not during:
-    // setMaxBounds can pull the view back inside, and doing that mid-animation
-    // fights the zoom.
-    this.map.on("zoomend", () => this.applyPanBounds());
+    // OpenLayers watches the map element itself, so this fires for a window
+    // resize and for the panel changing width alike. A taller or wider window
+    // fits the world at a different zoom, so the floor is re-measured rather
+    // than fixed once at startup.
+    this.map.on("change:size", () => this.applyZoomLimits());
+    // Zoom is continuous and there is no separate zoomend: moveend is where a
+    // pan and a zoom both come to rest, and the mesh only needs re-picking once
+    // the view has settled.
+    this.map.on("moveend", () => this.updateHexLayerForZoom());
     window.addEventListener("resize", () => this.rebalanceLegendPosition());
   }
 
-  // The zoom at which the whole world fits the window. Measured straight in
-  // projected metres: getBoundsZoom would do it through a LatLngBounds, which
-  // only describes this world when its corners are pushed past +/-180 (see
-  // equalEarthPanBounds), and it clamps its answer to the map's current minimum
-  // -- which is the value being computed. The coarsest resolution that still
-  // fits the world in the window is handed back to the CRS's own ladder, so the
-  // answer agrees with fractional zoom.
-  applyWorldFitMinZoom() {
-    const size = this.map.getSize();
-    if (!size.x || !size.y) return;
-
-    const world = equalEarthProjectedBounds().getSize();
-    const fitResolution = Math.max(world.x / size.x, world.y / size.y);
-    const worldFit = this.map.options.crs.zoom(1 / fitResolution);
-
-    const nextMin = Math.min(Math.max(worldFit, MIN_ZOOM_FLOOR), MAX_ZOOM);
-    if (!Number.isFinite(nextMin) || nextMin === this.map.getMinZoom()) return;
-    this.map.setMinZoom(nextMin);
+  // A view belongs to one projection and cannot be moved to another, so this is
+  // what the projection toggle rebuilds.
+  //
+  // `extent` with `constrainOnlyCenter` is the whole panning rule: the centre of
+  // the window has to stay on the globe, so any point can be brought to the
+  // middle of the screen and no further. The looser reading -- keeping the whole
+  // viewport inside the world -- is the one that cannot be used: the world is a
+  // fixed box in a window of whatever shape, and at zoom 3.73 in a 740px-tall
+  // map it stands 1484px high, so nothing north of about 35N could ever be
+  // centred and the only way to look straight at Europe would be to zoom in
+  // until it happened to land in the middle.
+  createView({ center, resolution }) {
+    return new ol.View({
+      projection: this.projection.projection,
+      extent: this.projection.extent,
+      constrainOnlyCenter: true,
+      // The edge of the world is a wall, not a rubber band: a drag that reaches
+      // it stops there rather than overshooting and easing back.
+      smoothExtentConstraint: false,
+      smoothResolutionConstraint: false,
+      constrainResolution: false,
+      enableRotation: false,
+      multiWorld: false,
+      center,
+      resolution,
+    });
   }
 
-  // Any point on the globe can be brought to the middle of the window, and no
-  // further -- see equalEarthPanBounds, which also explains why the box cannot
-  // be a plain lat/lon one. Leaflet keeps the whole viewport inside maxBounds,
-  // so the box is the world grown by half a window, and half a window is worth
-  // a different number of metres at every zoom and every window size. Setting
-  // the option is enough to move every limit at once: Map.Drag rebuilds its own
-  // from it at each dragstart, and _limitCenter reads it at each setView.
-  applyPanBounds() {
-    const size = this.map.getSize();
-    if (!size.x || !size.y) return;
+  bindViewEvents() {
+    ol.Observable.unByKey(this.viewListeners);
+    const view = this.map.getView();
+    // The readout follows a continuous zoom while it moves, not only where it
+    // stops.
+    this.viewListeners = [view.on("change:resolution", () => this.updateZoomReadout())];
+    this.updateZoomReadout();
+  }
 
-    this.map.setMaxBounds(
-      equalEarthPanBounds(this.map.options.crs, size, this.map.getZoom()),
-    );
+  // The floor is the zoom at which the whole world fits the window, and the
+  // ceiling is the finest mesh MapServer is asked for. Both are stated in the
+  // app's own zoom -- Web Mercator metres per pixel -- and converted into
+  // OpenLayers' numbering, which is anchored to whatever the view happens to be
+  // holding as its coarsest resolution and so moves under its own feet.
+  applyZoomLimits() {
+    const fit = this.measureWorldFit();
+    if (!fit) return;
+
+    const view = this.map.getView();
+    const floor = Math.min(Math.max(zoomForResolution(fit), MIN_ZOOM_FLOOR), MAX_ZOOM);
+    if (!Number.isFinite(floor)) return;
+
+    view.setMinZoom(view.getZoomForResolution(resolutionForZoom(floor)));
+    view.setMaxZoom(view.getZoomForResolution(resolutionForZoom(MAX_ZOOM)));
+  }
+
+  // The resolution at which the whole of this projection's world fits the
+  // window, or 0 before the map has a size to measure.
+  measureWorldFit() {
+    const size = this.map?.getSize();
+    if (!size || !size[0] || !size[1]) return 0;
+    return worldFitResolution(this.projection.extent, size);
+  }
+
+  // Web Mercator metres per pixel, read off the resolution rather than taken
+  // from the view. See resolutionForZoom in core/projection.js for why the two
+  // are not the same number.
+  getZoom() {
+    const resolution = this.map?.getView().getResolution();
+    return Number.isFinite(resolution) ? zoomForResolution(resolution) : INITIAL_ZOOM;
+  }
+
+  getProjectionKey() {
+    return this.projectionKey;
+  }
+
+  // Swapping the plane the map is drawn in rebuilds three things, because none
+  // of them can be converted in place: the view, which belongs to its
+  // projection; the land outlines, which were projected when they were read; and
+  // the WMS layer, whose tiles were cut to the old grid and asked of MapServer
+  // in the old SRS.
+  setProjection(key) {
+    if (!PROJECTION_KEYS.includes(key) || key === this.projectionKey) return;
+
+    const view = this.map.getView();
+    const center = transferCenter(view.getCenter(), this.projectionKey, key);
+    // The scale carries across as a multiple of the world view rather than as a
+    // number of metres per pixel. The two worlds are different sizes -- Mercator
+    // is 40075km wide against Equal Earth's 34488km, and half as tall again --
+    // so keeping the metres would turn a world view into a view of the Atlantic.
+    // Keeping the multiple means a world view stays a world view and a look at
+    // Europe stays a look at Europe.
+    const worldViews = view.getResolution() / this.measureWorldFit();
+
+    this.projectionKey = key;
+    this.projection = getMapProjection(key);
+    writeMapProjection(key);
+
+    this.map.setView(this.createView({
+      center,
+      resolution: this.measureWorldFit() * worldViews,
+    }));
+    this.bindViewEvents();
+    this.applyZoomLimits();
+    this.renderLandBasemap();
+
+    this.stopPendingLayerSwap();
+    this.hexLayerGroup.getLayers().clear();
+    this.activeWmsLayer = this.createWmsLayer();
+    this.hexLayerGroup.getLayers().push(this.activeWmsLayer);
+
+    this.syncDisplayOptions();
+    // Every tile URL now names a different SRS and a different BBOX, so the
+    // preload marks count tiles nobody will ask for again.
+    this.onLayerParamsChange();
   }
 
   getMap() {
@@ -286,32 +379,41 @@ export class MapController extends BaseController {
   }
 
   getContainer() {
-    return this.map.getContainer();
+    return this.map.getTargetElement();
   }
 
-  async loadLandmassBaseLayer(layerGroup) {
+  async loadLandmassBaseLayer() {
     try {
       const response = await fetch("/api/basemap/land");
       if (!response.ok) {
         throw new Error(`Could not load land basemap: ${response.status}`);
       }
-      const geojson = await response.json();
-      const landLayer = L.geoJSON(geojson, {
-        pane: this.demscoreBasemapPaneName,
-        interactive: false,
-        style: {
-          color: LAND_BASEMAP_COLOR,
-          fillColor: LAND_BASEMAP_COLOR,
-          fillOpacity: 1,
-          opacity: 1,
-          stroke: true,
-          weight: 1,
-        },
-      });
-      layerGroup.addLayer(landLayer);
+      // Kept in lon/lat, not as projected features: the projection toggle reads
+      // it again rather than converting what is already on the map.
+      this.landGeoJson = await response.json();
+      this.renderLandBasemap();
     } catch (error) {
       console.error(error);
     }
+  }
+
+  // The outlines are not densified before projecting. Both projections curve or
+  // stretch what a lat/lon edge should follow, so a long straight one is drawn
+  // as a chord of the curve it belongs to; measured against Natural Earth 110m
+  // in Equal Earth the worst segment in the world (the 141W Alaska/Yukon border)
+  // is off by 6.3km, which is 0.2px at the world view and 2.6px at MAX_ZOOM.
+  // Not worth a densify step; re-measure before adding one.
+  renderLandBasemap() {
+    const source = this.landLayer.getSource();
+    source.clear();
+    if (!this.landGeoJson) return;
+
+    source.addFeatures(
+      new ol.format.GeoJSON().readFeatures(this.landGeoJson, {
+        dataProjection: "EPSG:4326",
+        featureProjection: this.projection.projection,
+      }),
+    );
   }
 
   refresh() {
@@ -327,65 +429,60 @@ export class MapController extends BaseController {
     // against the active layer restarted swaps that already carried the right
     // mesh, which during autoplay cost a frame every time.
     const incomingLayer = this.pendingWmsLayer || this.activeWmsLayer;
-    const incomingHexSize = String(incomingLayer?.wmsParams?.hex_size ?? "");
+    const incomingHexSize = String(incomingLayer?.getSource()?.getParams()?.hex_size ?? "");
     if (incomingHexSize === nextHexSize) return;
 
     this.loadNextLayer();
   }
 
-  getVisibleTileCoords(layer = this.activeWmsLayer) {
-    if (!this.map || !layer) return [];
+  getVisibleTileCoords() {
+    if (!this.map) return [];
 
-    // Between whole zooms the grid keeps requesting one whole tile zoom and
-    // scales what comes back, so the preload asks the grid which zoom and which
-    // pixel bounds it is actually working in. Rounding the map's own fractional
-    // zoom here would name tiles the map never asks for, and the preload marks
-    // would then be reporting on the wrong tiles.
-    const tileZoom = Number.isFinite(layer._tileZoom) ? layer._tileZoom : Math.round(this.map.getZoom());
-    const tileSize = layer.getTileSize();
-    const pixelBounds = typeof layer._getTiledPixelBounds === "function"
-      ? layer._getTiledPixelBounds(this.map.getCenter())
-      : this.map.getPixelBounds();
-    // Same rounding as Leaflet's own _pxBoundsToTileRange, so the two agree on
-    // the last row and column.
-    const tileRange = L.bounds(
-      pixelBounds.min.unscaleBy(tileSize).floor(),
-      pixelBounds.max.unscaleBy(tileSize).ceil().subtract([1, 1]),
-    );
+    const view = this.map.getView();
+    const size = this.map.getSize();
+    const resolution = view.getResolution();
+    if (!size || !size[0] || !size[1] || !Number.isFinite(resolution)) return [];
+
+    // Zoom is continuous, so between whole levels the grid keeps asking for one
+    // whole tile zoom and scales what comes back. Rounding the map's own zoom
+    // here would name tiles it never asks for, and the preload marks would then
+    // be reporting on the wrong ones -- so the grid is asked exactly the
+    // question the tile renderer asks it.
+    const tileGrid = this.projection.tileGrid;
+    const z = tileGrid.getZForResolution(resolution, TILE_Z_DIRECTION);
+    // The grid's own tile range at this zoom, which is what keeps the preload
+    // off tiles that fall outside the world box.
+    const worldRange = tileGrid.getFullTileRange(z);
     const coords = [];
 
-    for (let y = tileRange.min.y; y <= tileRange.max.y; y += 1) {
-      for (let x = tileRange.min.x; x <= tileRange.max.x; x += 1) {
-        const point = new L.Point(x, y);
-        point.z = tileZoom;
-        if (typeof layer._isValidTile === "function" && !layer._isValidTile(point)) {
-          continue;
-        }
-        coords.push(typeof layer._wrapCoords === "function" ? layer._wrapCoords(point) : point);
-      }
-    }
+    tileGrid.forEachTileCoord(view.calculateExtent(size), z, ([tileZ, x, y]) => {
+      if (worldRange && !worldRange.containsXY(x, y)) return;
+      coords.push([tileZ, x, y]);
+    });
 
     return coords;
   }
 
   getVisibleWmsTileUrls(paramOverrides = {}) {
-    const layer = this.activeWmsLayer;
-    if (!layer || typeof layer.getTileUrl !== "function") return [];
+    const source = this.activeWmsLayer?.getSource();
+    if (!source) return [];
 
-    const originalParams = { ...layer.wmsParams };
-    const originalKeys = new Set(Object.keys(originalParams));
+    // The URLs are spelled by a source of its own rather than by the one on
+    // screen. updateParams() on a live source drops its tiles and refetches
+    // them, and the preloader asks this for a different year every time.
+    const speller = new ol.source.TileWMS({
+      url: this.mapServerBase,
+      projection: this.projection.projection,
+      tileGrid: this.projection.tileGrid,
+      params: { ...source.getParams(), ...paramOverrides },
+      hidpi: false,
+    });
+    const tileUrl = speller.getTileUrlFunction();
+    const urls = this.getVisibleTileCoords()
+      .map((coords) => tileUrl(coords, 1, this.projection.projection))
+      .filter(Boolean);
 
-    try {
-      Object.assign(layer.wmsParams, paramOverrides);
-      return [...new Set(this.getVisibleTileCoords(layer).map((coords) => layer.getTileUrl(coords)))];
-    } finally {
-      for (const key of Object.keys(layer.wmsParams)) {
-        if (!originalKeys.has(key)) {
-          delete layer.wmsParams[key];
-        }
-      }
-      Object.assign(layer.wmsParams, originalParams);
-    }
+    return [...new Set(urls)];
   }
 
   advanceAutoPlayLayer(onReady) {
@@ -401,37 +498,54 @@ export class MapController extends BaseController {
     // means to keep the wait alive carries the continuation over itself first --
     // see loadNextLayer.
     this.pendingLayerOnReady = null;
+    ol.Observable.unByKey(this.pendingLayerListeners);
+    this.pendingLayerListeners = [];
     if (!this.pendingWmsLayer) return;
-    this.pendingWmsLayer.off("load");
-    this.hexLayerGroup.removeLayer(this.pendingWmsLayer);
+    this.hexLayerGroup.getLayers().remove(this.pendingWmsLayer);
     this.pendingWmsLayer = null;
     this.hideLoadingIndicator();
   }
 
   createWmsLayer() {
-    return L.tileLayer.wms(this.mapServerBase, {
-      layers: this.wmsLayerNames(),
-      styles: "",
-      format: "image/png",
-      transparent: true,
-      version: "1.1.1",
-      dataset: this.state.dataset,
-      variable: this.state.variable,
-      polarity: this.metadataController.getActivePolarity(),
-      year: String(this.state.year),
-      hex_size: String(this.hexSizeFromZoom()),
-      tileSize: 512,
-      updateWhenIdle: true,
-      updateInterval: 400,
-      keepBuffer: 0,
-      pane: this.demscoreHexPaneName,
-      zIndex: 2,
-      noWrap: true,
-      // No bounds option: a LatLngBounds cannot describe the Equal Earth world,
-      // and one built from the corners would mark every tile east of about 106E
-      // invalid so the map would simply never request them. The CRS carries the
-      // projected world box instead, which is what Leaflet builds its global
-      // tile range from.
+    const source = new ol.source.TileWMS({
+      url: this.mapServerBase,
+      projection: this.projection.projection,
+      // The grid is the world box cut by the shared resolution ladder, so the
+      // BBOX of every request is derived from the same two numbers the mapfile
+      // and the mapcache preloader use.
+      tileGrid: this.projection.tileGrid,
+      params: {
+        LAYERS: this.wmsLayerNames(),
+        STYLES: "",
+        FORMAT: "image/png",
+        TRANSPARENT: true,
+        // 1.1.1 rather than OpenLayers' default 1.3.0: 1.3.0 would spell the
+        // projection as CRS and reorder the BBOX for north-east axis order,
+        // which is a second thing to get right for no gain here.
+        VERSION: "1.1.1",
+        dataset: this.state.dataset,
+        variable: this.state.variable,
+        polarity: this.metadataController.getActivePolarity(),
+        year: String(this.state.year),
+        hex_size: String(this.hexSizeFromZoom()),
+        clip: this.projection.clip,
+      },
+      // No high-DPI request. A retina screen would otherwise ask MapServer for a
+      // doubled tile with MAP_RESOLUTION appended, which is a different URL per
+      // device -- a separate tile cache per device, and preload marks describing
+      // tiles no one else will ever fetch.
+      hidpi: false,
+      wrapX: false,
+      // The hexagons are the data. Fading them in reads as the map changing its
+      // mind, and during autoplay it would never settle.
+      transition: 0,
+    });
+
+    return new ol.layer.Tile({
+      source,
+      // Nearest whole tile zoom, which is what getVisibleTileCoords assumes when
+      // it names the tiles for the preloader.
+      zDirection: TILE_Z_DIRECTION,
     });
   }
 
@@ -456,29 +570,86 @@ export class MapController extends BaseController {
     this.onLayerParamsChange();
   }
 
-  installAreaOutlineToggle() {
-    const control = L.control({ position: "bottomleft" });
-    control.onAdd = () => {
-      const div = L.DomUtil.create("div", "map-display-options");
-      div.innerHTML = `
+  // One bottom-left stack replacing what Leaflet spread over a layers control
+  // and a custom one: which plane the map is drawn in, whether equal-colour
+  // areas are outlined, and which of the two layers are on.
+  //
+  // OpenLayers has no layer switcher of its own, which is the price of it
+  // drawing everything into one canvas rather than into stacked panes.
+  installDisplayOptions() {
+    const container = document.createElement("div");
+    container.className = "ol-unselectable map-display-stack";
+    container.innerHTML = `
+      <div class="zoom-display"></div>
+      <div class="map-display-options">
+        <p class="map-display-heading">Projection</p>
+        ${PROJECTION_KEYS.map((key) => {
+          const projection = getMapProjection(key);
+          return `
+            <label class="map-display-option" title="${projection.title}">
+              <input type="radio" name="mapProjection" value="${key}" />
+              <span>${projection.label}</span>
+            </label>`;
+        }).join("")}
+      </div>
+      <div class="map-display-options">
         <label class="map-display-option">
           <input id="areaOutlineToggle" type="checkbox" />
           <span>Outline equal-colour areas</span>
-        </label>`;
-      const checkbox = div.querySelector("#areaOutlineToggle");
-      checkbox.checked = this.areaOutlinesEnabled;
-      checkbox.addEventListener("change", () => this.setAreaOutlinesEnabled(checkbox.checked));
-      // The control sits over the map, so a click on it must not also pan or
-      // zoom the map underneath.
-      L.DomEvent.disableClickPropagation(div);
-      L.DomEvent.disableScrollPropagation(div);
-      return div;
-    };
-    control.addTo(this.map);
+        </label>
+      </div>
+      <div class="map-display-options">
+        <label class="map-display-option">
+          <input type="checkbox" data-layer="land" />
+          <span>Landmasses</span>
+        </label>
+        <label class="map-display-option">
+          <input type="checkbox" data-layer="hex" />
+          <span>Demscore Hex Layer</span>
+        </label>
+      </div>`;
+
+    this.projectionInputs = Array.from(container.querySelectorAll('input[name="mapProjection"]'));
+    for (const input of this.projectionInputs) {
+      input.addEventListener("change", () => {
+        if (input.checked) this.setProjection(input.value);
+      });
+    }
+
+    const outlineToggle = container.querySelector("#areaOutlineToggle");
+    outlineToggle.addEventListener("change", () => this.setAreaOutlinesEnabled(outlineToggle.checked));
+
+    this.layerToggleInputs = Array.from(container.querySelectorAll("input[data-layer]"));
+    for (const input of this.layerToggleInputs) {
+      const layer = input.dataset.layer === "land" ? this.landLayer : this.hexLayerGroup;
+      input.addEventListener("change", () => layer.setVisible(input.checked));
+    }
+
+    this.displayOptionsEl = container;
+    this.syncDisplayOptions();
+
+    // The control sits over the map, and OpenLayers only holds a click back from
+    // the map when the element is in the stop-event container, which is what
+    // ol.control.Control puts it in.
+    this.map.addControl(new ol.control.Control({ element: container }));
+  }
+
+  syncDisplayOptions() {
+    if (!this.displayOptionsEl) return;
+
+    for (const input of this.projectionInputs) {
+      input.checked = input.value === this.projectionKey;
+    }
+    const outlineToggle = this.displayOptionsEl.querySelector("#areaOutlineToggle");
+    if (outlineToggle) outlineToggle.checked = this.areaOutlinesEnabled;
+    for (const input of this.layerToggleInputs) {
+      const layer = input.dataset.layer === "land" ? this.landLayer : this.hexLayerGroup;
+      input.checked = layer.getVisible();
+    }
   }
 
   hexSizeFromZoom() {
-    const zoom = this.map ? this.map.getZoom() : 0;
+    const zoom = this.getZoom();
     let hexSize = HEX_RESOLUTION_STOPS[0].hexSizeM;
 
     for (const stop of HEX_RESOLUTION_STOPS) {
@@ -519,22 +690,54 @@ export class MapController extends BaseController {
     const readyCallback = typeof onReady === "function" ? onReady : carriedOnReady;
 
     const nextLayer = this.createWmsLayer();
-    this.hexLayerGroup.addLayer(nextLayer);
+    // Invisible, not hidden: OpenLayers renders a zero-opacity layer as usual
+    // and only drops it at the compositing step, so its tiles are requested
+    // while the layer on screen carries on showing the year that is leaving.
     nextLayer.setOpacity(0);
+    this.hexLayerGroup.getLayers().push(nextLayer);
     this.pendingWmsLayer = nextLayer;
     this.pendingLayerOnReady = readyCallback;
 
     this.showLoadingIndicator();
-    nextLayer.once("load", () => {
+    this.whenPendingLayerDrawn(() => {
       if (this.pendingWmsLayer !== nextLayer) return;
       nextLayer.setOpacity(1);
-      this.hexLayerGroup.removeLayer(this.activeWmsLayer);
+      this.hexLayerGroup.getLayers().remove(this.activeWmsLayer);
       this.activeWmsLayer = nextLayer;
       this.pendingWmsLayer = null;
       this.pendingLayerOnReady = null;
       this.hideLoadingIndicator();
       if (readyCallback) readyCallback();
     });
+  }
+
+  // Leaflet's tile layer had a "load" event of its own. OpenLayers counts
+  // loading across the whole map instead and fires rendercomplete on the first
+  // frame where nothing is queued, loading or half-drawn -- which, since the
+  // layer has just been added, cannot arrive before its tiles have. Counting
+  // tileload events on the source alone would be the closer translation and the
+  // wrong one: a layer whose tiles all come from the cache never fires one and
+  // the swap would hang with the timeline still reading "Pause".
+  //
+  // The map only bothers to work out whether a frame was complete when someone
+  // is listening, so a stale "yes" can be dispatched from the tick before the
+  // layer was added. One postrender of our own is what tells the two apart.
+  whenPendingLayerDrawn(onDrawn) {
+    let drawnSinceAdded = false;
+    const listeners = [
+      this.map.on("postrender", () => {
+        drawnSinceAdded = true;
+      }),
+      this.map.on("rendercomplete", () => {
+        if (!drawnSinceAdded) return;
+        ol.Observable.unByKey(listeners);
+        this.pendingLayerListeners = this.pendingLayerListeners.filter(
+          (key) => !listeners.includes(key),
+        );
+        onDrawn();
+      }),
+    ];
+    this.pendingLayerListeners.push(...listeners);
   }
 
   resolveLegendMeaning(dataset, variable) {
@@ -794,25 +997,16 @@ export class MapController extends BaseController {
   }
 
   rebalanceLegendPosition() {
-    this.map?.invalidateSize({ pan: false });
+    this.map?.updateSize();
   }
 
   installZoomIndicator() {
-    const zoomControl = L.control({ position: "bottomleft" });
-    zoomControl.onAdd = () => {
-      const div = L.DomUtil.create("div", "zoom-display");
-      div.textContent = `Zoom: ${formatZoom(this.map.getZoom())}`;
-      return div;
-    };
-    zoomControl.addTo(this.map);
+    this.zoomReadoutEl = this.displayOptionsEl.querySelector(".zoom-display");
+    this.updateZoomReadout();
+  }
 
-    // The reading follows a continuous zoom while it moves, not only where it
-    // stops; the layer only needs to hear about it once it has stopped.
-    this.map.on("zoom zoomlevelschange", () => {
-      zoomControl.getContainer().textContent = `Zoom: ${formatZoom(this.map.getZoom())}`;
-    });
-    this.map.on("zoomend", () => {
-      this.updateHexLayerForZoom();
-    });
+  updateZoomReadout() {
+    if (!this.zoomReadoutEl) return;
+    this.zoomReadoutEl.textContent = `Zoom: ${formatZoom(this.getZoom())}`;
   }
 }

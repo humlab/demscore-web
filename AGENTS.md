@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Purpose
-This web app is a Leaflet frontend for Demscore hex-map WMS tiles. It loads dataset/variable/year config from `web-backend` and renders dynamic map layers from MapServer.
+This web app is an OpenLayers frontend for Demscore hex-map WMS tiles. It loads dataset/variable/year config from `web-backend` and renders dynamic map layers from MapServer.
 
 Primary user flows:
 - narrow the variable list with the topic and dataset filter chips above it; both groups are
@@ -34,10 +34,11 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - variable hierarchy building (which variables are base ones, so derived versions stay out)
   - polarity resolution (`default` -> `dataset_default` -> `rules` -> `override` precedence as implemented)
 - `src/core/projection.js`
-  - the Equal Earth (EPSG:8857) CRS the whole map is drawn in, and the two things
-    Leaflet gets wrong about a projection that is not a rectangle
+  - the two planes the map can be drawn in — Equal Earth (EPSG:8857), the default, and
+    Web Mercator (EPSG:3857) — the resolution ladder they share, and the conversion
+    between the app's zoom and a resolution
 - `src/controllers/MapController.js`
-  - Leaflet map setup, baselayers, zoom display
+  - OpenLayers map setup, baselayers, projection toggle, zoom display
   - WMS layer lifecycle (active layer + pending layer for smooth swaps)
   - legend rendering and overlap rebalancing
   - legend swatch hover card (which value span each colour stands for)
@@ -55,7 +56,7 @@ The app was refactored into a small class hierarchy with one top-level coordinat
    - `/api/config/variable-coverage` and `/api/config/variable-topics` (both optional)
 2. `MetadataController` initializes the filter chips and the variable list. It loads *every*
    dataset's metadata up front, not just the opening one, because one list holds all their rows.
-3. `MapController` initializes Leaflet map and first WMS layer.
+3. `MapController` initializes the OpenLayers map and first WMS layer.
 4. User interactions update shared `state` in `DemscoreApp`.
 5. `MapController.loadNextLayer()` swaps to a fresh WMS layer when dataset/variable/year changes.
 
@@ -232,29 +233,44 @@ Common tasks and where to work:
     striking through it
 
 - Change anything about the projection, panning limits or world fit:
-  - `src/core/projection.js`. The map is drawn in Equal Earth (EPSG:8857), not Web
-    Mercator, and so is every hexagon MapServer serves; there is no projection
-    toggle and no Mercator path left anywhere in the stack
-  - two traps live there, both from the same fact — Equal Earth fills a lens, not
-    the rectangle that bounds it:
-    1. no LatLngBounds can describe the world. The projection is widest on the
-       equator (x = +/-17243959) and narrowest at the poles (+/-10216474), and
-       Leaflet projects only the two corners of a bounds. A `maxBounds` of
-       `[[-90,-180],[90,180]]` therefore limits panning to the *pole* width and
-       puts Indonesia, Australia, Japan and New Zealand permanently out of reach;
-       the same box handed to `getBoundsZoom` or to a tile layer's `bounds` option
-       would measure the world 41% too narrow and mark those tiles invalid. The
-       limit comes from the CRS's projected bounds instead, via
-       `limitPanningToProjectedWorld`
-    2. the projection is extended past the globe so it can never return NaN.
-       Whenever the world does not exactly fill the window, Leaflet unprojects the
-       corners of the letterboxed viewport, which are off the globe; proj4 answers
-       NaN there and `GridLayer._updateLevels` takes the whole map down on first
-       paint. `unproject` also never takes proj4's longitude, which wraps past
-       +/-180 and would return a point half a world away
-  - the CRS deliberately reuses Web Mercator's resolution ladder, so a zoom level
-    still means the metres per pixel it always did and the hex resolution stops,
-    `MAX_ZOOM` and the zoom readout all carry over unchanged
+  - `src/core/projection.js`. The map is drawn in Equal Earth (EPSG:8857) by default
+    and so is every hexagon MapServer generates; Web Mercator is offered beside it,
+    as a toggle, because comparing the two is the clearest way to see what a
+    projection does to the data
+  - everything projection-shaped goes through `getMapProjection(key)`, which hands
+    back the OpenLayers projection, the world box and the tile grid for one plane.
+    Add a third projection there and the toggle, the tile grid, the pan limit and
+    the world fit all follow; nothing else in `MapController` names a projection
+  - **zoom is not `view.getZoom()`**, and the difference is not cosmetic.
+    OpenLayers anchors its zoom numbering to whatever resolution the view holds as
+    its coarsest, which moves every time the world-fit floor is re-measured and
+    differs between the two planes. The app's zoom is Web Mercator metres per pixel,
+    computed from the resolution by `zoomForResolution()`, so the hex resolution
+    stops, `MAX_ZOOM` and the readout mean one fixed thing on both sides of the
+    toggle and across a resize. `MapController.getZoom()` is the only place to read
+    it from
+  - panning is `extent` plus `constrainOnlyCenter: true` on the view, which says the
+    centre of the window must stay on the globe: any point can be brought to the
+    middle of the screen and no further. OpenLayers' looser reading — keeping the
+    whole viewport inside the world — is the one that cannot be used: the world is a
+    fixed box in a window of whatever shape, and at zoom 3.73 in a 740px-tall map it
+    stands 1484px high, so nothing north of about 35N could ever be centred
+  - the world box is not the transform of `(-180,-90)` and `(180,90)`. Equal Earth is
+    widest on the equator (x = `+/-17243959`) and narrowest at the poles
+    (`+/-10216474`), so a box built from the corners is 41% too narrow and cuts off
+    everything east of about 106E. `EQUAL_EARTH_HALF_X` / `_HALF_Y` are the real
+    numbers, and the mapfile and the mapcache preloader use the same two
+  - both projections share Web Mercator's resolution ladder, so a zoom level means
+    the same metres per pixel in either and the toggle does not move the mesh
+  - the toggle carries the scale across as a *multiple of the world view*, not as
+    metres per pixel: the two worlds are different sizes, so keeping the metres would
+    turn a world view into a view of the Atlantic
+  - Mercator requests carry `clip=mercator`, which is what stops the cells that
+    projection cannot draw — those reaching past 85.05N/S, and the handful straddling
+    the antimeridian — from being rendered as columns standing over the map and bands
+    across it. See the clip note in `mapserver/mapserver.map`. What survives is
+    genuinely stretched towards the poles, slivers and all; that is the distortion,
+    not a defect
   - the land basemap is *not* densified before projecting. Equal Earth curves the
     meridians, so a long straight lat/lon edge is drawn as a chord of the curve it
     should follow, but measured against Natural Earth 110m the worst segment in the
@@ -264,6 +280,15 @@ Common tasks and where to work:
 
 - Change map baselayers or WMS swap behavior:
   - `MapController.initialize()` and `MapController.loadNextLayer()`
+  - the pending layer is added at `opacity: 0`, which OpenLayers still renders and so
+    still loads tiles for — it only drops the layer at the compositing step. What says
+    the layer is ready is `whenPendingLayerDrawn()`, on the map's `rendercomplete`:
+    counting `tileload` events on the source would be the closer translation of
+    Leaflet's `load` and the wrong one, because a layer whose tiles all come from the
+    cache never fires one and the swap would hang with the timeline still reading
+    "Pause". The map only works out whether a frame was complete while someone is
+    listening, so one `postrender` of our own is what tells a fresh "yes" from a stale
+    one
   - a swap can be superseded before it lands — a zoom crossing a hex resolution stop
     reloads the layer while autoplay is still waiting on the previous one. The waiting
     callback (`pendingLayerOnReady`) moves onto the replacement rather than dying with
@@ -281,6 +306,11 @@ Common tasks and where to work:
     one layer or two. One request means one image and one cache entry, so outlines can
     never lag a year behind the colours they belong to; the cost is that toggling
     rewrites every tile URL and therefore refetches
+  - the checkbox lives in the one bottom-left control `installDisplayOptions()` builds,
+    beside the projection radios and the layer toggles. OpenLayers has no layer switcher
+    of its own — the price of it drawing every layer into one canvas rather than into
+    stacked panes — so that control replaces what Leaflet spread over `L.control.layers`
+    and a custom one
   - `MapController.setAreaOutlinesEnabled()` stores the choice in a cookie
     (`core/preferences.js`) and calls `onLayerParamsChange`, which `DemscoreApp` wires to
     `restartPreload` — the preload marks count tiles under the old URL and would
@@ -307,6 +337,7 @@ After edits, run at minimum:
 - `node --check src/controllers/MapController.js`
 - `node --check src/core/BaseController.js`
 - `node --check src/core/BackendClient.js`
+- `node --check src/core/projection.js`
 
 Then do a manual smoke test in browser:
 - panel is white and the rows carry the dataset colour, not the sidebar; a dataset chip, the
@@ -329,3 +360,8 @@ Then do a manual smoke test in browser:
   in the row it points at, and its end years are the shared axis, not the variable's own
 - metadata dialog open/close
 - legend update and map tile refresh
+- projection toggle: Equal Earth and Mercator both draw land and hexagons, the view keeps
+  looking at the same place and the same fraction of the world, the zoom readout means the
+  same thing in both, and switching back leaves no stale tiles. In Mercator the Arctic cells
+  are tall slivers — that is correct; the bug to watch for is bands running across the whole
+  map, which means `clip=mercator` is not reaching MapServer
