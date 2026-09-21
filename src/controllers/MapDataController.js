@@ -147,6 +147,10 @@ export class MapDataController extends BaseController {
       `Drawn in ${legend.projectionTitle}.`,
       `Countries are shaded in ${legend.classCount} quantile classes from ${legend.low.toLowerCase()} ` +
         `to ${legend.high.toLowerCase()}.`,
+      // Which scheme is in use belongs here because it is a choice the reader
+      // may have made, and a summary that described colours they are not
+      // looking at would be worse than one that described none.
+      `Colour scheme: ${legend.paletteLabel}.`,
       legend.directionHint,
       legend.noDataNote,
       this.describeCoverage(breaks),

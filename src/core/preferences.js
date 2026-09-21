@@ -76,3 +76,24 @@ export function writeMapProjection(key) {
     // A browser that refuses cookies still works; it just forgets between visits.
   }
 }
+
+// Which colour scheme the hexagons are painted in. This is the one preference
+// here that may be a necessity rather than a taste -- about one man in twelve
+// cannot use the red-green channel the default ramp leans on -- so it is worth
+// more than the others that it survives a visit. Same shape as the projection:
+// an unreadable or unknown cookie falls back to the argument rather than to a
+// hardcoded choice, so the caller's default is the only default.
+const MAP_PALETTE_COOKIE = "demscore_map_palette";
+
+export function readMapPalette(allowedKeys, fallback) {
+  const stored = readCookie(MAP_PALETTE_COOKIE);
+  return allowedKeys.includes(stored) ? stored : fallback;
+}
+
+export function writeMapPalette(key) {
+  try {
+    writeCookie(MAP_PALETTE_COOKIE, key);
+  } catch (_) {
+    // A browser that refuses cookies still works; it just forgets between visits.
+  }
+}

@@ -2368,6 +2368,36 @@ textarea {
   cursor: pointer;
 }
 
+/* The colour scheme picker. A real <label for> and a real <select>: the point
+   of this control is that it works for whoever needs it, so it is not the
+   place to reinvent either. */
+.map-display-field {
+  display: block;
+  margin: 0 0 3px;
+  color: var(--accent);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.map-display-select {
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-inline);
+  background: #fff;
+  color: #333;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.map-display-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* The ring goes round the whole label, not round the radio dot: the dot is
    12px of native widget and the words beside it are what is being chosen. The
    card is white over the map, so the accent reads against it. */

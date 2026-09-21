@@ -1,10 +1,21 @@
 import { BaseController } from "../core/BaseController.js";
 import {
   readAreaOutlinesEnabled,
+  readMapPalette,
   readMapProjection,
   writeAreaOutlinesEnabled,
+  writeMapPalette,
   writeMapProjection,
 } from "../core/preferences.js";
+import {
+  CLASS_COUNT,
+  DEFAULT_PALETTE_KEY,
+  MAP_PALETTES,
+  PALETTE_KEYS,
+  directionHintFor,
+  getPalette,
+  legendColorsFor,
+} from "../core/palettes.js";
 import {
   DEFAULT_PROJECTION_KEY,
   PROJECTION_KEYS,
@@ -15,15 +26,17 @@ import {
   zoomForResolution,
 } from "../core/projection.js";
 
-const POLARITY_POSITIVE = "positive";
-const POLARITY_NEUTRAL = "neutral";
+// Polarity no longer branches here: which colours a polarity takes is a
+// question for core/palettes.js, which is also what generates the mapfile side
+// of the same answer.
 const LAND_BASEMAP_COLOR = "#fffaf0";
 // Adjacent quantile classes can be a shade apart, which is the whole reason the
 // outlines exist, so they start on and the toggle is there to take them off.
 const AREA_OUTLINES_DEFAULT = true;
 // ntile(7) in demscore.country_scores() is what both the map and the legend are
-// built on, so the swatch count is not a styling choice.
-const LEGEND_CLASS_COUNT = 7;
+// built on, so the swatch count is not a styling choice. It comes from
+// core/palettes.js because every ramp there is cut to the same number.
+const LEGEND_CLASS_COUNT = CLASS_COUNT;
 // Shorter than the variable list's 170ms: the swatches are small and next to
 // each other, so a pointer crossing the bar is usually on its way somewhere,
 // but the card it opens is one line of numbers rather than a whole record.
@@ -35,27 +48,6 @@ const LEGEND_TIP_ARROW_INSET_PX = 14;
 // the cache keeps the hovered ones, not the whole timeline.
 const CLASS_BREAKS_CACHE_LIMIT = 120;
 
-// The same two ramps mapserver/hex_classes.inc paints the hexagons with, and
-// they have to stay the same: this bar is the key to that map.
-// scripts/check_palette_contrast.mjs reads both files and fails if they drift,
-// as well as measuring every adjacent pair in greyscale and under simulated
-// protanopia, deuteranopia and tritanopia.
-//
-// Diverging (ColorBrewer RdYlBu), used for signed polarity: blue is one end of
-// the scale and red the other, which is the direction the polarity is there to
-// carry. Every adjacent pair clears the CVD thresholds, but the ramp is *not*
-// monotonic in lightness -- class 2 and class 7 are the same grey -- so a
-// reader who cannot use hue at all needs the area outlines (on by default) or
-// the data table to order the classes. That is a deliberate trade for keeping
-// direction in the colour; the neutral ramp below makes the other trade.
-const LEGEND_COLORS_NEGATIVE = ["#313695", "#4575b4", "#74add1", "#abd9e9", "#fdae61", "#f46d43", "#d73027"];
-// Neutral (viridis, trimmed to 0.15-0.85). Perceptually uniform and monotonic
-// in lightness, so it orders correctly in greyscale and under every simulated
-// CVD. It replaced a seven-step emerald ramp that failed twice over: its two
-// lightest classes were delta-E 6 apart under protanopia and deuteranopia, and
-// its lightest shade sat delta-E 17 from the cream no-data land, so a country
-// with no value read as the bottom class.
-const LEGEND_COLORS_NEUTRAL = ["#472d7b", "#3b528b", "#2c728e", "#21918c", "#28ae80", "#5ec962", "#addc30"];
 const MIN_ZOOM_FLOOR = 0;
 const MAX_ZOOM = 6;
 const INITIAL_CENTER_LON_LAT = [10, 20];
@@ -208,6 +200,7 @@ export class MapController extends BaseController {
     this.onStateChange = typeof onStateChange === "function" ? onStateChange : () => {};
     this.areaOutlinesEnabled = readAreaOutlinesEnabled(AREA_OUTLINES_DEFAULT);
     this.projectionKey = readMapProjection(PROJECTION_KEYS, DEFAULT_PROJECTION_KEY);
+    this.paletteKey = readMapPalette(PALETTE_KEYS, DEFAULT_PALETTE_KEY);
 
     this.loadingIndicator = this.getEl("loading-indicator");
     this.loadingStatusEl = this.getEl("mapLoadingStatus");
@@ -232,6 +225,7 @@ export class MapController extends BaseController {
     this.viewListeners = [];
     this.zoomReadoutEl = null;
     this.projectionInputs = [];
+    this.paletteSelectEl = null;
     this.layerToggleInputs = [];
     this.displayOptionsEl = null;
 
@@ -673,6 +667,12 @@ export class MapController extends BaseController {
         polarity: this.metadataController.getActivePolarity(),
         year: String(this.state.year),
         hex_size: String(this.hexSizeFromZoom()),
+        // Left out entirely on the default scheme rather than sent as
+        // `palette=default`. The mapfile's `default_palette` makes the two
+        // requests render identically, but they are different URLs and both
+        // caches key on the URL -- so spelling it out would have thrown away
+        // every tile already cached by everyone who never touches this control.
+        ...(this.paletteKey === DEFAULT_PALETTE_KEY ? {} : { palette: this.paletteKey }),
       },
       // No high-DPI request. A retina screen would otherwise ask MapServer for a
       // doubled tile with MAP_RESOLUTION appended, which is a different URL per
@@ -748,6 +748,21 @@ export class MapController extends BaseController {
             </label>`;
         }).join("")}
       </div>
+      <!-- On screen, like the outline toggle below it and for the same reason:
+           which colours a reader can tell apart is not a preference, and a
+           control that answers it does not belong behind a shortcut. A select
+           rather than four radios because the stack is already three cards
+           tall over the map, and a native select is a keyboard and screen
+           reader control without anything being added to make it one. -->
+      <div class="map-display-options">
+        <label class="map-display-field" for="mapPaletteSelect">Colours</label>
+        <select id="mapPaletteSelect" class="map-display-select">
+          ${PALETTE_KEYS.map((key) => {
+            const palette = MAP_PALETTES[key];
+            return `<option value="${key}" title="${palette.description}">${palette.label}</option>`;
+          }).join("")}
+        </select>
+      </div>
       <!-- On screen rather than behind Shift+D with the rest of the extras.
            The outlines are what separates two adjacent classes a shade apart,
            and for a reader who cannot use hue at all -- the diverging ramp has
@@ -779,6 +794,9 @@ export class MapController extends BaseController {
         if (input.checked) this.setProjection(input.value);
       });
     }
+
+    this.paletteSelectEl = container.querySelector("#mapPaletteSelect");
+    this.paletteSelectEl.addEventListener("change", () => this.setPalette(this.paletteSelectEl.value));
 
     const outlineToggle = container.querySelector("#areaOutlineToggle");
     outlineToggle.addEventListener("change", () => this.setAreaOutlinesEnabled(outlineToggle.checked));
@@ -822,6 +840,7 @@ export class MapController extends BaseController {
     for (const input of this.projectionInputs) {
       input.checked = input.value === this.projectionKey;
     }
+    if (this.paletteSelectEl) this.paletteSelectEl.value = this.paletteKey;
     const outlineToggle = this.displayOptionsEl.querySelector("#areaOutlineToggle");
     if (outlineToggle) outlineToggle.checked = this.areaOutlinesEnabled;
     for (const input of this.layerToggleInputs) {
@@ -1078,7 +1097,7 @@ export class MapController extends BaseController {
     // the ramp had run out of. The swatch is painted from the basemap's own
     // colour so the two cannot drift apart.
     const noDataNote =
-      "Countries with no value for this variable and year keep the plain land colour — no hexagons and no outline.";
+      "Areas with no value for this variable and year keep the plain land colour — no hexagons and no outline.";
     this.legendNoDataEl.title = noDataNote;
     // A `title` is a mouse affordance: it never reaches the keyboard, and this
     // element is not focusable to begin with. The sentence is the only thing
@@ -1368,21 +1387,41 @@ export class MapController extends BaseController {
       directionHint: this.legendDirectionHint(polarity),
       polarity,
       classCount: LEGEND_CLASS_COUNT,
+      paletteLabel: getPalette(this.paletteKey).label,
       projectionTitle: this.projection?.title || this.projectionKey,
-      noDataNote: "Countries with no value for this variable and year are drawn as plain land, with no hexagons.",
+      noDataNote: "Areas with no value for this variable and year are drawn as plain land, with no hexagons.",
     };
   }
 
+  // The bar reads low-to-high left to right in every scheme. A scheme that
+  // honours polarity has its signed band reversed for positive polarity here,
+  // and the mapfile does the same reversal in SQL (`base + (8 - class_idx)`),
+  // so the bar and the map cannot disagree about which end is which.
   legendColorsForPolarity(polarity) {
-    if (polarity === POLARITY_NEUTRAL) return LEGEND_COLORS_NEUTRAL;
-    return polarity === POLARITY_POSITIVE ? LEGEND_COLORS_NEGATIVE.slice().reverse() : LEGEND_COLORS_NEGATIVE;
+    return legendColorsFor(this.paletteKey, polarity);
   }
 
   legendDirectionHint(polarity) {
-    if (polarity === POLARITY_NEUTRAL) return "Higher values run from deep purple through teal to light green.";
-    return polarity === POLARITY_POSITIVE
-      ? "Higher values are mapped to blue tones."
-      : "Higher values are mapped to red tones.";
+    return directionHintFor(this.paletteKey, polarity);
+  }
+
+  getPaletteKey() {
+    return this.paletteKey;
+  }
+
+  // Switching schemes repaints every hexagon, which means new tiles: the scheme
+  // rides in the tile URL, so the old ones stay cached and valid under their own
+  // key and the preload marks -- which count tiles under the URL the map was
+  // making -- stop describing what is cached until the run restarts.
+  setPalette(key) {
+    if (!PALETTE_KEYS.includes(key) || key === this.paletteKey) return;
+
+    this.paletteKey = key;
+    writeMapPalette(key);
+    this.syncDisplayOptions();
+    this.loadNextLayer();
+    this.refreshLegend();
+    this.onLayerParamsChange();
   }
 
   rebalanceLegendPosition() {

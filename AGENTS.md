@@ -38,6 +38,10 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - metadata caching and dialog content
   - variable hierarchy building (which variables are base ones, so derived versions stay out)
   - polarity resolution (`default` -> `dataset_default` -> `rules` -> `override` precedence as implemented)
+- `src/core/palettes.js`
+  - the four colour schemes the reader can pick between, and the only place any quantile
+    colour is written. `mapserver/hex_classes.inc` is generated from it by
+    `scripts/build_hex_classes.mjs` in the deployment repo
 - `src/core/projection.js`
   - the two planes the map can be drawn in — Equal Earth (EPSG:8857), the default, and
     Web Mercator (EPSG:3857) — the resolution ladder they share, and the conversion
@@ -280,6 +284,28 @@ Common tasks and where to work:
 - Change polarity mapping behavior:
   - `config/variable_polarity.json`
   - resolution logic in `MetadataController.resolveConfiguredPolarity()`
+
+- Change the colour schemes, or add one:
+  - `src/core/palettes.js`, and nothing else on this side. The picker, the legend bar, the
+    direction hint, the cookie and the map's spoken summary are all driven from
+    `MAP_PALETTES`; a scheme added there appears in all five
+  - the hexagons are painted by MapServer, not here, so a scheme cannot be a stylesheet: it
+    travels with the tile request as `palette`, which the `DATA` query turns into an offset
+    on `class_idx`. A new scheme therefore also needs a `WHEN` arm in the four `DATA` strings
+    and its key in the four `VALIDATION` blocks in `mapserver/mapserver.map`, plus a run of
+    `node scripts/build_hex_classes.mjs`
+  - **a band's `base` is permanent.** It is baked into every cached tile, and because the
+    scheme rides in the URL while the base does not, renumbering one would leave both caches
+    serving the old colours under the new legend. Add a band at a fresh base
+  - `honoursPolarity` is the real difference between the two kinds of scheme. The diverging
+    ones encode *valence* -- one end is the unfavourable end, and `polarity` picks which --
+    so their signed band is reversed for positive polarity, here and identically in SQL. The
+    sequential ones have no second end to put anything at, so they run low-to-high always and
+    ignore polarity; the "which end is bad" cue then lives only in the legend's end labels,
+    which are words. That is the trade the reader makes by picking one
+  - the default scheme deliberately sends **no** `palette` parameter. It renders identically
+    to `palette=default`, but it is a different URL, and both the mapcache and the service
+    worker key on the URL
 
 - Change legend text/rules/colors:
   - `config/legend_semantics.json`
@@ -616,9 +642,11 @@ After edits, run at minimum:
 - `node --check src/core/BaseController.js`
 - `node --check src/core/BackendClient.js`
 - `node --check src/controllers/MapDataController.js`
+- `node --check src/core/palettes.js`
 - `node --check src/core/projection.js`
-- `node ../scripts/check_palette_contrast.mjs` if any colour moved — it also checks that the
-  legend ramps still match `mapserver/hex_classes.inc`
+- `node ../scripts/build_hex_classes.mjs --check` and `node ../scripts/check_palette_contrast.mjs`
+  if any colour moved — together they check that every scheme still matches the classes
+  MapServer paints, and that no adjacent pair has collapsed under a colour-vision deficiency
 
 Then do a manual smoke test in browser:
 - boot state (throttle the network or delay `/api/config/**`): three dots under "Filter by
@@ -671,6 +699,10 @@ Then do a manual smoke test in browser:
   sidebar -> timeline -> map controls -> legend, which is the visible layout and the reason
   `#timeline-overlay` sits before `<main id="map">` in the source despite being painted over
   it
+- colour schemes: each of the four repaints the hexagons *and* the legend bar together, the
+  legend note describes the scheme actually on screen, the choice survives a reload, and the
+  bar still reads low-to-high left to right in every one of them — compare a positive-polarity
+  variable against a negative one in a diverging scheme, where the band is reversed
 - projection toggle: Equal Earth and Mercator both draw land and hexagons, the view keeps
   looking at the same place and the same fraction of the world, the zoom readout means the
   same thing in both, and switching back leaves no stale tiles. **Every cell is a regular
