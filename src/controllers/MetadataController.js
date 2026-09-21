@@ -11,9 +11,36 @@ const VARIANT_SUFFIXES = new Set(["codelow", "codehigh", "sd", "mean", "nr", "or
 // config happens to list the keys in.
 const VARIABLE_COLLATOR = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
 const DATASET_ACCENTS = ["#114b84", "#0f766e", "#9a3412", "#5b21b6", "#155e75", "#166534"];
-// Darkest to lightest. `--ds-1` marks (badge, selected edge), `--ds-3` fills a
-// selected row, `--ds-4` tints an unselected one; the panel itself stays white.
+// Darkest to lightest. `--ds-1` marks dataset tag and chip borders,
+// `--ds-3` fills a selected chip, `--ds-4` tints an unselected one.
 const DATASET_PALETTE_STEPS = 5;
+// Ink for a fill painted in a dataset's own colour. The three configured
+// palettes do not agree on one answer -- REPDEM's sand takes black and V-Dem's
+// magenta takes white -- so it is decided per dataset from the colour's
+// luminance rather than fixed in the stylesheet. 0.45 sits in the gap between
+// REPDEM (0.65) and the two dark palettes (0.12-0.16).
+const DATASET_INK_LIGHT = "#fff";
+const DATASET_INK_DARK = "#1b1712";
+const DATASET_INK_LUMINANCE_SPLIT = 0.45;
+
+// WCAG relative luminance, for hex colours only: every palette we ship is hex,
+// and anything else keeps the light ink it had before.
+function hexLuminance(color) {
+  const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(typeof color === "string" ? color.trim() : "");
+  if (!match) return null;
+  const digits = match[1].length === 3 ? [...match[1]].map((c) => c + c) : match[1].match(/../g);
+  const [r, g, b] = digits.map((pair) => {
+    const channel = parseInt(pair, 16) / 255;
+    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function readableInkOn(color) {
+  const luminance = hexLuminance(color);
+  if (luminance === null) return DATASET_INK_LIGHT;
+  return luminance > DATASET_INK_LUMINANCE_SPLIT ? DATASET_INK_DARK : DATASET_INK_LIGHT;
+}
 const POLARITY_POSITIVE = "positive";
 const POLARITY_NEGATIVE = "negative";
 const POLARITY_NEUTRAL = "neutral";
@@ -172,6 +199,7 @@ export class MetadataController extends BaseController {
 
     this.datasetAccents = {};
     this.datasetPalettes = {};
+    this.datasetInks = {};
     Object.keys(this.meta.datasets).forEach((datasetKey, index) => {
       const ds = this.meta.datasets[datasetKey];
       const palette = Array.isArray(ds?.palette)
@@ -183,6 +211,10 @@ export class MetadataController extends BaseController {
           ? configured.trim()
           : palette[0] || DATASET_ACCENTS[index % DATASET_ACCENTS.length];
       this.datasetAccents[datasetKey] = accent;
+      // `--ds-1` is the shade an active chip is filled with, so the ink is read
+      // off that exact colour -- not off the accent, which a config may set to
+      // something other than its palette's first shade.
+      this.datasetInks[datasetKey] = readableInkOn(palette.length >= DATASET_PALETTE_STEPS ? palette[0] : accent);
       // Datasets are told apart by tinting their rows, so a dataset without a
       // palette still needs five usable shades: they are mixed from its accent,
       // which keeps a new dataset legible before anyone picks colours for it.
@@ -200,6 +232,9 @@ export class MetadataController extends BaseController {
     // choice the reader has not made yet.
     this.activeTopics = new Set();
     this.activeDatasets = new Set();
+    // The sidebar search box, lowercased. A third filter alongside the two chip
+    // groups, ANDed with them the same way they AND with each other.
+    this.variableQuery = "";
     this.tooltipTimer = null;
     this.tooltipVariable = null;
     // The whole list, every dataset's rows in title order, cached once every
@@ -215,9 +250,7 @@ export class MetadataController extends BaseController {
     this.topicChips = this.getEl("topicChips");
     this.filterSummary = this.getEl("filterSummary");
     this.datasetPanel = this.getEl("datasetPanel");
-    this.datasetCitation = this.getEl("datasetCitation");
-    this.datasetCodebookWrap = this.getEl("datasetCodebookWrap");
-    this.datasetCodebookLink = this.getEl("datasetCodebookLink");
+    this.variableSearch = this.getEl("variableSearch");
     this.variableList = this.getEl("variableList");
     this.mobileControls = this.getEl("mobileControls");
     this.mobileVariablePickerBtn = this.getEl("mobileVariablePickerBtn");
@@ -225,19 +258,15 @@ export class MetadataController extends BaseController {
     this.mobileSelectedTitle = this.getEl("mobileSelectedTitle");
     this.mobileSelectedMeta = this.getEl("mobileSelectedMeta");
     this.mobileVariableInfoBtn = this.getEl("mobileVariableInfoBtn");
-    this.mobileSourceBtn = this.getEl("mobileSourceBtn");
-    this.mobileCodebookLink = this.getEl("mobileCodebookLink");
     this.mobileVariablePickerDialog = this.getEl("mobileVariablePickerDialog");
     this.mobileVariablePickerCloseBtn = this.getEl("mobileVariablePickerCloseBtn");
     this.mobileVariableSearch = this.getEl("mobileVariableSearch");
     this.mobileTopicChips = this.getEl("mobileTopicChips");
     this.mobileVariablePickerList = this.getEl("mobileVariablePickerList");
-    this.mobileSourceDialog = this.getEl("mobileSourceDialog");
-    this.mobileSourceCloseBtn = this.getEl("mobileSourceCloseBtn");
-    this.mobileSourceContent = this.getEl("mobileSourceContent");
     this.variableTooltip = this.getEl("variableTooltip");
     this.variableTooltipTitle = this.getEl("variableTooltipTitle");
     this.variableTooltipKey = this.getEl("variableTooltipKey");
+    this.variableTooltipDataset = this.getEl("variableTooltipDataset");
     this.variableTooltipBody = this.getEl("variableTooltipBody");
     this.tooltipHideTimer = null;
     this.tooltipPersistent = false;
@@ -256,8 +285,6 @@ export class MetadataController extends BaseController {
     await Promise.all(Object.keys(this.meta.datasets).map((key) => this.ensureDatasetMetadata(key)));
     this.applyInitialSelection();
     this.refreshVariables();
-    this.refreshCitation(this.state.dataset);
-    this.refreshCodebookLink(this.state.dataset);
     this.refreshVariableMetadataPanel();
     this.refreshMobileSelectionSummary();
     this.refreshMobilePicker();
@@ -269,9 +296,9 @@ export class MetadataController extends BaseController {
     return fallbackKey;
   }
 
-  // The short form ("V-Dem", not "Varieties of Democracy"). Chips share a row
-  // and badges share a line with the variable title, so both need the name that
-  // does not wrap; the full title rides along as the tooltip.
+  // The short form ("V-Dem", not "Varieties of Democracy"). Chips share a row,
+  // so they need the name that does not wrap; the full title rides along as the
+  // tooltip.
   getDatasetLabel(ds, fallbackKey) {
     if (typeof ds?.label === "string" && ds.label.trim()) return ds.label.trim();
     return this.getDatasetTitle(ds, fallbackKey);
@@ -282,16 +309,17 @@ export class MetadataController extends BaseController {
   }
 
   // Dataset colour now lives on the things that belong to one dataset — a row,
-  // a chip, the citation — rather than on the whole panel, which is neutral.
+  // a chip, an info card — rather than on the whole panel, which is neutral.
   applyDatasetPalette(el, datasetKey) {
     const palette = this.datasetPalettes[datasetKey] || [];
     el.style.setProperty("--ds-accent", this.getDatasetAccent(datasetKey));
+    el.style.setProperty("--ds-ink", this.datasetInks[datasetKey] || DATASET_INK_LIGHT);
     palette.forEach((shade, index) => el.style.setProperty(`--ds-${index + 1}`, shade));
   }
 
   // Datasets are filters now, not tabs: the list spans all of them at once, so
   // there is no one panel a tab could own. They stay in dataset order and keep
-  // their accent, which is also what the badge on each row is coloured with.
+  // their accent, which is also what each row's dataset tag is coloured with.
   renderDatasetChips() {
     this.datasetTabs.innerHTML = "";
     this.datasetTabs.removeAttribute("aria-busy");
@@ -304,7 +332,7 @@ export class MetadataController extends BaseController {
       chip.id = `datasetChip-${key}`;
       chip.dataset.dataset = key;
       chip.setAttribute("aria-pressed", "false");
-      chip.title = `${this.getDatasetTitle(ds, key)} (${key})`;
+      chip.setAttribute("aria-label", `Filter by dataset: ${this.getDatasetTitle(ds, key)} (${key})`);
       this.applyDatasetPalette(chip, key);
       chip.textContent = this.getDatasetLabel(ds, key);
       this.datasetTabs.appendChild(chip);
@@ -390,10 +418,9 @@ export class MetadataController extends BaseController {
 
   // The panel itself is neutral: a dataset photo and scrim behind every control
   // claimed the whole sidebar for whichever dataset happened to be selected,
-  // which is not what the colour means. Only the citation — which really is
-  // about one dataset — still takes its colour.
+  // which is not what the colour means. Dataset colour now lives only on the
+  // things that belong to one dataset — a row, a chip, an info card.
   applyDatasetChrome(datasetKey) {
-    this.applyDatasetPalette(this.datasetCitation, datasetKey);
     this.datasetSection.dataset.dataset = datasetKey;
   }
 
@@ -408,6 +435,23 @@ export class MetadataController extends BaseController {
       const chip = event.target.closest(".chip-topic");
       if (!chip || !this.topicChips.contains(chip)) return;
       this.toggleFilter(this.activeTopics, chip.dataset.topic);
+    });
+
+    // Rebuilt on every keystroke, undebounced: the whole list is a few dozen
+    // rows that are already in memory, and the same handler on the phone
+    // picker has always worked this way.
+    this.variableSearch.addEventListener("input", () => {
+      this.setVariableQuery(this.variableSearch.value);
+    });
+
+    // Escape empties the field rather than leaving the list narrowed behind a
+    // box the reader has stopped looking at. `type="search"` gives Chrome and
+    // Safari a clear button that fires `input` on its own; Firefox has neither.
+    this.variableSearch.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || this.variableSearch.value === "") return;
+      event.stopPropagation();
+      this.variableSearch.value = "";
+      this.setVariableQuery("");
     });
 
     this.variableList.addEventListener("change", (event) => {
@@ -475,16 +519,6 @@ export class MetadataController extends BaseController {
       if (!datasetKey || !variable) return;
       this.closeDialog(this.mobileVariablePickerDialog);
       void this.selectVariable(datasetKey, variable, { onBeforeDatasetChange, onVariableChange });
-    });
-
-    this.mobileSourceBtn.addEventListener("click", () => {
-      this.refreshMobileSourceDialog();
-      if (this.mobileSourceBtn.disabled) return;
-      this.openDialog(this.mobileSourceDialog);
-    });
-
-    this.mobileSourceCloseBtn.addEventListener("click", () => {
-      this.closeDialog(this.mobileSourceDialog);
     });
 
     this.bindVariableTooltip();
@@ -558,8 +592,6 @@ export class MetadataController extends BaseController {
     // The list is not rebuilt here any more: it spans every dataset, so the
     // dataset changing underneath it changes which row is selected, not which
     // rows exist.
-    this.refreshCitation(datasetKey);
-    this.refreshCodebookLink(datasetKey);
     this.refreshVariableMetadataPanel();
     this.refreshMobileSelectionSummary();
     this.refreshMobilePicker();
@@ -604,10 +636,19 @@ export class MetadataController extends BaseController {
     this.refreshVariables();
   }
 
+  setVariableQuery(value) {
+    const next = typeof value === "string" ? value.trim().toLowerCase() : "";
+    if (next === this.variableQuery) return;
+    this.variableQuery = next;
+    this.refreshVariables();
+  }
+
   clearFilters() {
-    if (this.activeTopics.size === 0 && this.activeDatasets.size === 0) return;
+    if (this.activeTopics.size === 0 && this.activeDatasets.size === 0 && this.variableQuery === "") return;
     this.activeTopics.clear();
     this.activeDatasets.clear();
+    this.variableQuery = "";
+    if (this.variableSearch) this.variableSearch.value = "";
     this.syncFilterChipState();
     this.refreshVariables();
   }
@@ -736,6 +777,15 @@ export class MetadataController extends BaseController {
     return polarity;
   }
 
+  buildDatasetTag(datasetKey, className = "variable-option-dataset") {
+    const dataset = this.meta.datasets[datasetKey];
+    const tag = document.createElement("span");
+    tag.className = className;
+    tag.textContent = this.getDatasetLabel(dataset, datasetKey);
+    tag.title = this.getDatasetTitle(dataset, datasetKey);
+    return tag;
+  }
+
   // A row is one control: a label wrapping a hidden radio. It used to be a split
   // button, with a caret opening a menu of the variable's other versions; only
   // the base version is offered now, so every row is the same shape and the
@@ -762,24 +812,15 @@ export class MetadataController extends BaseController {
     label.appendChild(input);
 
     const title = this.getVariableTitle(datasetKey, variable);
-    // Title and badge share a line, so the badge needs a flex row of its own —
-    // the label itself is a block that stacks the title row over the strip.
-    const titleRow = document.createElement("span");
-    titleRow.className = "variable-option-title-row";
+    const head = document.createElement("span");
+    head.className = "variable-option-head";
 
     const name = document.createElement("span");
     name.className = "variable-option-name";
     name.textContent = title;
-    titleRow.appendChild(name);
-
-    // Which dataset a row came from is the one thing the flat list took away
-    // that the tabs used to say for free.
-    const badge = document.createElement("span");
-    badge.className = "variable-option-badge";
-    badge.textContent = this.getDatasetLabel(this.meta.datasets[datasetKey], datasetKey);
-    titleRow.appendChild(badge);
-
-    label.appendChild(titleRow);
+    head.appendChild(name);
+    head.appendChild(this.buildDatasetTag(datasetKey));
+    label.appendChild(head);
 
     // Last line: where this variable has data, on the axis its whole dataset
     // shares, so two rows can be compared by eye without reading any numbers.
@@ -927,6 +968,19 @@ export class MetadataController extends BaseController {
   // sidebar and the variable list both scroll, and either would clip a card
   // parented inside them.
   bindVariableTooltip() {
+    this.datasetTabs.addEventListener("pointerover", (event) => {
+      if (event.pointerType && event.pointerType !== "mouse") return;
+      const chip = event.target.closest(".chip-dataset");
+      if (!chip || !this.datasetTabs.contains(chip)) return;
+      this.scheduleDatasetTooltip(chip);
+    });
+    this.datasetTabs.addEventListener("pointerleave", () => this.scheduleHideVariableTooltip());
+    this.datasetTabs.addEventListener("focusin", (event) => {
+      const chip = event.target.closest(".chip-dataset");
+      if (chip) this.scheduleDatasetTooltip(chip);
+    });
+    this.datasetTabs.addEventListener("focusout", () => this.scheduleHideVariableTooltip());
+
     this.variableList.addEventListener("pointerover", (event) => {
       // Touch and pen taps select a row; only a hovering mouse gets the card.
       if (event.pointerType && event.pointerType !== "mouse") return;
@@ -964,9 +1018,25 @@ export class MetadataController extends BaseController {
     document.addEventListener("pointerdown", (event) => {
       if (!this.tooltipPersistent || this.variableTooltip.hidden) return;
       if (this.variableTooltip.contains(event.target)) return;
-      if (event.target.closest(".variable-option-info, #mobileVariableInfoBtn")) return;
+      // Every trigger that opens the persistent card has to be listed here, or
+      // its own opening click is read as a click outside and shuts the card in
+      // the same gesture that asked for it.
+      if (event.target.closest(".variable-option-info, .timeline-variable-info, #mobileVariableInfoBtn")) return;
       this.hideVariableTooltip();
     });
+  }
+
+  scheduleDatasetTooltip(chip) {
+    const datasetKey = chip.dataset.dataset;
+    if (!datasetKey || !this.meta.datasets[datasetKey]) return;
+    const key = `dataset:${datasetKey}`;
+    if (key === this.tooltipVariable) return;
+    this.hideVariableTooltip();
+    this.tooltipPersistent = false;
+    this.tooltipVariable = key;
+    this.tooltipTimer = window.setTimeout(() => {
+      void this.showDatasetTooltip(chip, datasetKey);
+    }, TOOLTIP_HOVER_DELAY_MS);
   }
 
   scheduleVariableTooltip(option) {
@@ -975,7 +1045,7 @@ export class MetadataController extends BaseController {
     // the backend for, say, a REPDEM variable under v_dem and 404ed.
     const datasetKey = option.dataset.dataset;
     if (!variable || !datasetKey) return;
-    const key = `${datasetKey}:${variable}`;
+    const key = `variable:${datasetKey}:${variable}`;
     if (key === this.tooltipVariable) return;
     this.hideVariableTooltip();
     this.tooltipPersistent = false;
@@ -1005,7 +1075,7 @@ export class MetadataController extends BaseController {
   }
 
   async showVariableTooltip(option, datasetKey, variable) {
-    const key = `${datasetKey}:${variable}`;
+    const key = `variable:${datasetKey}:${variable}`;
     let metaForVariable = this.getCachedFullVariableMetadata(datasetKey, variable);
     if (metaForVariable === undefined) {
       metaForVariable = await this.ensureVariableFullMetadata(datasetKey, variable);
@@ -1018,6 +1088,72 @@ export class MetadataController extends BaseController {
     if (!this.renderVariableTooltip(datasetKey, variable, metaForVariable, title)) return;
     this.variableTooltip.hidden = false;
     this.positionVariableTooltip(option);
+  }
+
+  async showDatasetTooltip(chip, datasetKey) {
+    const key = `dataset:${datasetKey}`;
+    if (!this.varMetaByDataset[datasetKey]) {
+      await this.ensureDatasetMetadata(datasetKey);
+      if (this.tooltipVariable !== key) return;
+    }
+    if (!this.renderDatasetTooltip(datasetKey)) return;
+    this.variableTooltip.hidden = false;
+    this.positionVariableTooltip(chip);
+  }
+
+  renderDatasetTooltip(datasetKey) {
+    const dataset = this.meta.datasets[datasetKey];
+    if (!dataset) return false;
+
+    this.variableTooltip.style.setProperty("--tip-accent", this.getDatasetAccent(datasetKey));
+    this.applyDatasetPalette(this.variableTooltip, datasetKey);
+    this.variableTooltip.classList.remove("is-persistent");
+
+    const title = this.getDatasetTitle(dataset, datasetKey);
+    const label = this.getDatasetLabel(dataset, datasetKey);
+    this.variableTooltipTitle.textContent = title;
+    this.variableTooltipDataset.textContent = label;
+    this.variableTooltipDataset.title = title;
+    this.variableTooltipKey.textContent = datasetKey;
+    this.variableTooltipKey.hidden = false;
+
+    this.variableTooltipBody.innerHTML = "";
+    const description = typeof dataset.description === "string" ? dataset.description.trim() : "";
+    if (description) {
+      const paragraph = document.createElement("p");
+      paragraph.className = "variable-tooltip-desc";
+      paragraph.textContent = description;
+      this.variableTooltipBody.appendChild(paragraph);
+    }
+
+    const mainVariableCount = this.datasetHierarchies[datasetKey]?.mainVariables?.length;
+    const rawVariableCount = Array.isArray(dataset.variables) ? dataset.variables.length : null;
+    const variableCount = Number.isInteger(mainVariableCount) ? mainVariableCount : rawVariableCount;
+    if (Number.isInteger(variableCount)) {
+      const variantNote =
+        Number.isInteger(rawVariableCount) && rawVariableCount > variableCount
+          ? ` (${rawVariableCount} total columns including derived versions)`
+          : "";
+      this.appendVariableTooltipItem(
+        "Variables",
+        `${variableCount} listed ${variableCount === 1 ? "variable" : "variables"}${variantNote}`,
+      );
+    }
+
+    if (Number.isInteger(dataset.yearMin) && Number.isInteger(dataset.yearMax)) {
+      const years = dataset.yearMin === dataset.yearMax ? String(dataset.yearMin) : `${dataset.yearMin}-${dataset.yearMax}`;
+      this.appendVariableTooltipItem("Years", years);
+    }
+
+    const defaultVariable = typeof dataset.defaultVariable === "string" ? dataset.defaultVariable : "";
+    if (defaultVariable) {
+      this.appendVariableTooltipItem("Default", this.getVariableTitle(datasetKey, defaultVariable));
+    }
+
+    this.appendVariableTooltipItem("Source", this.varMetaByDataset[datasetKey]?.citation);
+    this.appendVariableMetaLinks(this.variableTooltipBody, datasetKey);
+
+    return this.variableTooltipBody.children.length > 0;
   }
 
   getVariableSummary(metaForVariable, title) {
@@ -1040,8 +1176,19 @@ export class MetadataController extends BaseController {
 
   renderVariableTooltip(datasetKey, variable, metaForVariable, title, { persistent = false } = {}) {
     this.variableTooltip.style.setProperty("--tip-accent", this.getDatasetAccent(datasetKey));
+    // The card's dataset tag draws its edge from `--ds-1`, the same custom
+    // property the variable rows draw theirs from, so the two marks cannot drift
+    // apart for a dataset whose configured `color` is not its palette's first
+    // shade -- they now read one value, not two that happen to agree.
+    this.applyDatasetPalette(this.variableTooltip, datasetKey);
     this.variableTooltip.classList.toggle("is-persistent", persistent);
     this.variableTooltipTitle.textContent = title;
+    // The list mixes every dataset's rows together, so the card says which one
+    // this variable came from. The short label is what fits a corner tag; the
+    // full name rides along as its tooltip, the way the dataset chips do it.
+    const dataset = this.meta.datasets[datasetKey];
+    this.variableTooltipDataset.textContent = this.getDatasetLabel(dataset, datasetKey);
+    this.variableTooltipDataset.title = this.getDatasetTitle(dataset, datasetKey);
     this.variableTooltipKey.textContent = variable;
     // Untitled variables already show their key as the name, so skip the echo.
     this.variableTooltipKey.hidden = title === variable;
@@ -1089,9 +1236,13 @@ export class MetadataController extends BaseController {
     if (includeKey && title !== variable) {
       this.appendVariableTooltipItem("Variable key", variable, container);
     }
+    // How to cite the data this variable came from. It is the dataset's line,
+    // not the variable's -- the card's dataset tag says which one -- and it
+    // lives here because the card is now the only place it is written out.
+    this.appendVariableTooltipItem("Source", this.varMetaByDataset[datasetKey]?.citation, container);
     const hasBodyContent = container.children.length > initialCount;
     if (includeCodebook) {
-      this.appendVariableMetaLink(container, datasetKey);
+      this.appendVariableMetaLinks(container, datasetKey);
     }
 
     return hasBodyContent;
@@ -1188,7 +1339,7 @@ export class MetadataController extends BaseController {
   }
 
   // Picking a row is now also how the dataset changes: the list spans all of
-  // them, so the row carries which one it belongs to and the panel follows it.
+  // them, so the row tag says which one it belongs to and the panel follows it.
   async selectVariable(datasetKey, variable, { onBeforeDatasetChange, onVariableChange } = {}) {
     const datasetChanged = datasetKey !== this.state.dataset;
     if (datasetChanged) {
@@ -1197,8 +1348,6 @@ export class MetadataController extends BaseController {
       this.applyDatasetChrome(datasetKey);
       await this.ensureDatasetMetadata(datasetKey);
       if (this.state.dataset !== datasetKey) return;
-      this.refreshCitation(datasetKey);
-      this.refreshCodebookLink(datasetKey);
     }
 
     this.state.variable = variable;
@@ -1296,39 +1445,46 @@ export class MetadataController extends BaseController {
     return rows;
   }
 
+  // What a free-text search looks at, for the sidebar box and the phone picker
+  // alike. Everything a row shows or stands for, so the key a reader copied out
+  // of a codebook finds its row even though the row is titled in prose, and a
+  // dataset or topic name finds the rows under it even with no chip lit.
+  rowMatchesQuery(row, query) {
+    if (!query) return true;
+    const dataset = this.meta.datasets[row.datasetKey];
+    const topicText = row.topics
+      .map((id) => this.topicsConfig.topics.get(id)?.label || "")
+      .filter(Boolean)
+      .join(" ");
+    return [
+      row.title,
+      row.mainVariable,
+      row.datasetKey,
+      this.getDatasetLabel(dataset, row.datasetKey),
+      this.getDatasetTitle(dataset, row.datasetKey),
+      topicText,
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(query);
+  }
+
   getFilteredRows() {
     const rows = this.getAllVariableRows();
-    if (this.activeTopics.size === 0 && this.activeDatasets.size === 0) return rows;
+    if (this.activeTopics.size === 0 && this.activeDatasets.size === 0 && !this.variableQuery) return rows;
     return rows.filter((row) => {
       if (this.activeDatasets.size > 0 && !this.activeDatasets.has(row.datasetKey)) return false;
       if (this.activeTopics.size > 0 && !row.topics.some((id) => this.activeTopics.has(id))) return false;
-      return true;
+      return this.rowMatchesQuery(row, this.variableQuery);
     });
   }
 
   getMobilePickerRows() {
-    const query = this.mobilePickerQuery;
     return this.getAllVariableRows().filter((row) => {
       if (this.mobilePickerTopics.size > 0 && !row.topics.some((id) => this.mobilePickerTopics.has(id))) {
         return false;
       }
-      if (!query) return true;
-      const dataset = this.meta.datasets[row.datasetKey];
-      const topicText = row.topics
-        .map((id) => this.topicsConfig.topics.get(id)?.label || "")
-        .filter(Boolean)
-        .join(" ");
-      return [
-        row.title,
-        row.mainVariable,
-        row.datasetKey,
-        this.getDatasetLabel(dataset, row.datasetKey),
-        this.getDatasetTitle(dataset, row.datasetKey),
-        topicText,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(query);
+      return this.rowMatchesQuery(row, this.mobilePickerQuery);
     });
   }
 
@@ -1364,19 +1520,15 @@ export class MetadataController extends BaseController {
     option.classList.toggle("is-selected", selected);
     option.setAttribute("aria-selected", selected ? "true" : "false");
 
-    const titleRow = document.createElement("span");
-    titleRow.className = "mobile-picker-option-title-row";
+    const head = document.createElement("span");
+    head.className = "mobile-picker-option-head";
 
     const title = document.createElement("span");
     title.className = "mobile-picker-option-title";
     title.textContent = row.title;
-    titleRow.appendChild(title);
-
-    const badge = document.createElement("span");
-    badge.className = "variable-option-badge";
-    badge.textContent = this.getDatasetLabel(this.meta.datasets[row.datasetKey], row.datasetKey);
-    titleRow.appendChild(badge);
-    option.appendChild(titleRow);
+    head.appendChild(title);
+    head.appendChild(this.buildDatasetTag(row.datasetKey, "mobile-picker-option-dataset"));
+    option.appendChild(head);
 
     const meta = document.createElement("span");
     meta.className = "mobile-picker-option-meta";
@@ -1440,7 +1592,8 @@ export class MetadataController extends BaseController {
   renderFilterSummary(shownCount) {
     if (!this.filterSummary) return;
     const total = this.getAllVariableRows().length;
-    const filtered = this.activeTopics.size > 0 || this.activeDatasets.size > 0;
+    const searching = this.variableQuery !== "";
+    const filtered = this.activeTopics.size > 0 || this.activeDatasets.size > 0 || searching;
 
     if (!filtered) {
       this.filterSummary.textContent = `${total} variables`;
@@ -1448,7 +1601,13 @@ export class MetadataController extends BaseController {
       return;
     }
     if (shownCount === 0) {
-      this.filterSummary.textContent = "No variables match these filters";
+      // What to go and change is what the empty state has to say. With a chip
+      // lit as well there is no telling which of the two emptied the list, so
+      // only a search on its own gets to quote itself.
+      const chipsOn = this.activeTopics.size > 0 || this.activeDatasets.size > 0;
+      this.filterSummary.textContent = searching && !chipsOn
+        ? `No variables match “${this.variableQuery}”`
+        : "No variables match these filters";
     } else {
       this.filterSummary.textContent = `${shownCount} of ${total} variables`;
     }
@@ -1470,60 +1629,32 @@ export class MetadataController extends BaseController {
     this.mobileSelectedMeta.textContent = [topicLabel, range].filter(Boolean).join(" / ") || variable;
   }
 
-  refreshMobileSourceDialog() {
-    const citation = this.varMetaByDataset[this.state.dataset]?.citation;
-    const datasetTitle = this.getDatasetTitle(this.meta.datasets[this.state.dataset], this.state.dataset);
-    if (citation) {
-      this.mobileSourceContent.textContent = `${datasetTitle}: ${citation}`;
-      this.mobileSourceBtn.disabled = false;
-    } else {
-      this.mobileSourceContent.textContent = "No dataset source is available for the selected variable.";
-      this.mobileSourceBtn.disabled = true;
-    }
-  }
-
-  refreshCitation(datasetKey) {
-    const citation = this.varMetaByDataset[datasetKey]?.citation;
-    if (citation) {
-      this.datasetCitation.textContent = `Dataset source: ${citation}`;
-      this.datasetCitation.hidden = false;
-    } else {
-      this.datasetCitation.hidden = true;
-    }
-    this.refreshMobileSourceDialog();
-  }
-
-  refreshCodebookLink(datasetKey) {
-    const codebookUrl = this.meta.datasets?.[datasetKey]?.codebook;
-    if (typeof codebookUrl === "string" && codebookUrl.length > 0) {
-      this.datasetCodebookLink.href = codebookUrl;
-      this.datasetCodebookWrap.hidden = false;
-      this.mobileCodebookLink.href = codebookUrl;
-      this.mobileCodebookLink.removeAttribute("aria-disabled");
-      this.mobileCodebookLink.hidden = false;
-    } else {
-      this.datasetCodebookLink.removeAttribute("href");
-      this.datasetCodebookWrap.hidden = true;
-      this.mobileCodebookLink.removeAttribute("href");
-      this.mobileCodebookLink.setAttribute("aria-disabled", "true");
-      this.mobileCodebookLink.hidden = true;
-    }
-  }
-
-  appendVariableMetaLink(container, datasetKey) {
-    const codebookUrl = this.meta.datasets?.[datasetKey]?.codebook;
-    if (typeof codebookUrl !== "string" || codebookUrl.length === 0) return;
+  // The card's footer: where a reader goes once the summary has told them what
+  // the variable is. Both links are the dataset's, not the variable's -- the
+  // codebook is one PDF per module, and Demscore's downloader has no address
+  // that names a variable (see `DATASET_META` in web-backend/server.js) -- so a
+  // variable's card offers the module it belongs to, which is the nearest thing
+  // to a download link for the variable that exists.
+  appendVariableMetaLinks(container, datasetKey) {
+    const dataset = this.meta.datasets?.[datasetKey];
+    const links = [
+      { url: dataset?.codebook, text: "Open codebook PDF" },
+      { url: dataset?.download, text: "Download data from Demscore" },
+    ].filter(({ url }) => typeof url === "string" && url.length > 0);
+    if (links.length === 0) return;
 
     const item = document.createElement("p");
-    item.className = "variable-meta-codebook";
+    item.className = "variable-meta-links";
 
-    const link = document.createElement("a");
-    link.href = codebookUrl;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = "Open codebook PDF";
+    for (const { url, text } of links) {
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = text;
+      item.appendChild(link);
+    }
 
-    item.appendChild(link);
     container.appendChild(item);
   }
 

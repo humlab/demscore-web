@@ -54,26 +54,25 @@
               <i data-lucide="info" aria-hidden="true"></i>
               <span>Info</span>
             </button>
-            <button id="mobileSourceBtn" type="button" class="mobile-action-button">
-              <i data-lucide="quote" aria-hidden="true"></i>
-              <span>Source</span>
-            </button>
-            <a
-              id="mobileCodebookLink"
-              class="mobile-action-button mobile-action-link"
-              href="#"
-              target="_blank"
-              rel="noopener noreferrer"
-              hidden
-            >
-              <i data-lucide="file-text" aria-hidden="true"></i>
-              <span>PDF</span>
-            </a>
           </div>
         </section>
 
         <div id="datasetSection" class="dataset-section">
           <section id="datasetPanel" class="dataset-panel" tabindex="0">
+            <!-- Local only: it narrows the same list the chips narrow, over the
+                 rows already in the browser, and never goes to the backend. -->
+            <div class="variable-search-row">
+              <input
+                id="variableSearch"
+                class="variable-search"
+                type="search"
+                autocomplete="off"
+                placeholder="Search variables"
+                aria-label="Search variables"
+                aria-controls="variableList"
+              />
+            </div>
+
             <div class="filter-bar">
               <div class="filter-row">
                 <p id="topicFilterLabel" class="field-label">Filter by topic</p>
@@ -88,15 +87,8 @@
 
             <p id="variableListLabel" class="field-label">Variable</p>
             <div id="variableList" class="variable-list" role="radiogroup" aria-labelledby="variableListLabel" aria-busy="true"><span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span></div>
-
-            <p id="datasetCodebookWrap" class="codebook-link" hidden>
-              <a id="datasetCodebookLink" href="#" target="_blank" rel="noopener noreferrer">Open codebook PDF</a>
-            </p>
           </section>
         </div>
-
-        <p id="datasetCitation" class="citation" hidden></p>
-
 
       </aside>
 
@@ -111,8 +103,15 @@
         <div class="timeline-main">
           <div class="timeline-controls">
             <div class="playback-control">
-              <button id="yearPlayBtn" type="button" class="play-button" aria-label="Play timeline">Animate</button>
+              <button id="yearPlayBtn" type="button" class="play-button" aria-label="Play timeline"><span>Animate</span><i data-lucide="play" aria-hidden="true"></i></button>
+              <!-- The "Speed" caption floats above the reading rather than
+                   sitting beside it: the multiplier stays the prominent,
+                   centred thing and the word is only there so nobody reads
+                   "4x" as a zoom level. Absolutely positioned, so it takes no
+                   room from the row and does not move the multiplier off the
+                   baseline the Animate button sits on. -->
               <div class="speed-button" role="group" aria-label="Timeline speed">
+                <span class="speed-button-label" aria-hidden="true">Speed</span>
                 <button id="speedDownBtn" type="button" aria-label="Decrease speed"><i data-lucide="chevron-left"></i></button>
                 <span id="speedDisplay" aria-live="polite">1x</span>
                 <button id="speedUpBtn" type="button" aria-label="Increase speed"><i data-lucide="chevron-right"></i></button>
@@ -129,6 +128,12 @@
             </div>
           </div>
         </div>
+        <!-- What the map is showing, under the year it is showing it for. The
+             legend dock says the same thing at the foot of the map, which is a
+             long way from the timeline on a tall window. -->
+        <p id="timelineVariableTitle" class="timeline-variable-title">
+          <span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        </p>
         <span id="yearDisplay" class="timeline-year-readout" aria-live="polite"></span>
       </div>
     </div>
@@ -140,8 +145,13 @@
     </div>
 
     <div id="variableTooltip" class="variable-tooltip" role="tooltip" hidden>
-      <p id="variableTooltipTitle" class="variable-tooltip-title"></p>
-      <p id="variableTooltipKey" class="variable-tooltip-key"></p>
+      <div class="variable-tooltip-head">
+        <div class="variable-tooltip-head-text">
+          <p id="variableTooltipTitle" class="variable-tooltip-title"></p>
+          <p id="variableTooltipKey" class="variable-tooltip-key"></p>
+        </div>
+        <span id="variableTooltipDataset" class="variable-tooltip-dataset"></span>
+      </div>
       <div id="variableTooltipBody" class="variable-tooltip-body"></div>
     </div>
 
@@ -162,16 +172,6 @@
       />
       <div id="mobileTopicChips" class="mobile-topic-chips" aria-label="Filter variables by topic"></div>
       <div id="mobileVariablePickerList" class="mobile-picker-list" role="listbox" aria-label="Variables"></div>
-    </dialog>
-
-    <dialog id="mobileSourceDialog" class="mobile-source-dialog">
-      <div class="mobile-dialog-header">
-        <h2>Dataset source</h2>
-        <button id="mobileSourceCloseBtn" type="button" class="mobile-dialog-close-btn" aria-label="Close">
-          <i data-lucide="x" aria-hidden="true"></i>
-        </button>
-      </div>
-      <p id="mobileSourceContent" class="mobile-source-content"></p>
     </dialog>
 
     <!-- The map is drawn in Equal Earth (EPSG:8857), which no mapping library

@@ -4,14 +4,18 @@
 This web app is an OpenLayers frontend for Demscore hex-map WMS tiles. It loads dataset/variable/year config from `web-backend` and renders dynamic map layers from MapServer.
 
 Primary user flows:
-- narrow the variable list with the topic and dataset filter chips above it; both groups are
-  toggles, several may be on at once, and all-off (the opening state) means no filter
+- narrow the variable list by typing in the search box at the top of the panel, or with the
+  topic and dataset filter chips below it; both chip groups are toggles, several may be on at
+  once, and all-off with an empty box (the opening state) means no filter
 - choose variable from the always-visible variable list, which spans *every* dataset at once;
-  each row carries a dataset badge, and picking a row is also what switches the dataset
+  each row carries its dataset's colour on its left edge, and picking a row is also what
+  switches the dataset
 - scrub or animate year timeline
 - compare at a glance which variables cover which years, from the coverage strip under
   each row — the one part of a row that works on touch, where the hover card does not
-- read a variable's codebook description in a hover card, or its full entry in a dialog
+- read a variable's codebook description in a hover card, or its full entry in a dialog,
+  along with how to cite the dataset, and follow that card's footer to the module's codebook
+  PDF or its Demscore download
 - read legend semantics/polarity-aware coloring
 
 ## Architecture (Current)
@@ -25,9 +29,10 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - resolves backend/mapserver base URLs
   - fetches JSON config payloads with unified error handling
 - `src/controllers/MetadataController.js`
-  - topic/dataset filter chips (render, pressed state) and the flat cross-dataset variable list
-  - per-dataset palette, stamped as `--ds-1`..`--ds-5` onto each row, dataset chip and the
-    citation — the panel itself is neutral
+  - the sidebar search box, the topic/dataset filter chips (render, pressed state) and the flat
+    cross-dataset variable list
+  - per-dataset palette, stamped as `--ds-1`..`--ds-5` onto each row, dataset chip and info
+    card — the panel uses the Demscore homepage hero image treatment
   - variable hover card (lazy per-variable metadata fetch, placement, arrow)
   - variable list rendering (a `role="radiogroup"` of hidden radios)
   - metadata caching and dialog content
@@ -44,7 +49,7 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - legend swatch hover card (which value span each colour stands for)
 - `src/DemscoreApp.js`
   - orchestrates app startup and shared state
-  - timeline rendering/scrubbing
+  - timeline rendering/scrubbing, and the variable caption under it
   - autoplay state machine and speed controls
   - cross-controller event coordination
 
@@ -105,7 +110,7 @@ the structural colour, terracotta only as a thin accent, and soft neutral surfac
   scrolls, so its labels pin their own tighter leading; do not let prose leading back into it
 - corners are `--radius-card` / `--radius-control` / `--radius-inline`, deliberately small:
   the brief calls out heavy rounded cards as the thing to avoid. Pills (`999px`) are for
-  chips and badges, which read as toggles by being pill-shaped
+  chips, which read as toggles by being pill-shaped
 - the brief asks for terracotta *sparingly*. Its one use is the rule above the legend dock;
   do not spend it on buttons or active states
 - the per-dataset palettes (`--ds-1`..`--ds-5`, from backend config) and the map's own
@@ -118,10 +123,11 @@ before they hold anything. What stands in for the content is placed so that rend
 content removes it — there is no loading flag to set, and none to forget to unset:
 
 - `.loading-dots` (three dots, `styles.css`) sits *inside* `#topicChips`, `#datasetTabs`,
-  `#variableList` and `#mobileSelectedTitle` in `index.html`. Each of those is cleared by its
-  renderer (`innerHTML = ""`, or `textContent =` for the mobile title) on the first pass, so
-  the placeholder goes with it. Add a new one the same way — a placeholder that lives
-  somewhere its renderer does not clear is a placeholder that has to be swept up by hand
+  `#variableList`, `#mobileSelectedTitle` and `#timelineVariableTitle` in `index.html`. Each of
+  those is cleared by its renderer (`innerHTML = ""`, or `textContent =` for the mobile title)
+  on the first pass, so the placeholder goes with it. Add a new one the same way — a
+  placeholder that lives somewhere its renderer does not clear is a placeholder that has to be
+  swept up by hand
 - the containers also carry `aria-busy="true"`, which the three renderers drop; that is the
   same news for a reader who is not looking at the dots
 - `#timelineWrap` starts `is-awaiting-data`: the marker is hidden and the preload track holds
@@ -150,6 +156,22 @@ Common tasks and where to work:
     that absorbs leftover panel height, so it grows with the viewport before scrolling
   - note `#controls label` styles all labels: option rows reset margin/font explicitly
 
+- Change the variable search box:
+  - `#variableSearch` in `index.html`, at the top of `#datasetPanel` above the chips, and
+    `.variable-search*` in `styles.css`. It is local only and always has been: every row is
+    already in the browser, so nothing here reaches the backend
+  - `MetadataController.setVariableQuery()` stores it lowercased and rebuilds the list;
+    `rowMatchesQuery()` is what a row is tested against, and the phone picker's own box goes
+    through the same method, so the two can never drift
+  - the query is a third filter and ANDs with the two chip groups, the way they AND with each
+    other. `clearFilters()` clears all three
+  - a row matches on its title, its variable key, its dataset key, both dataset names and its
+    topic labels. The topic labels are deliberate — searching "corruption" with no chip lit
+    finds the rows under that chip — and are also why a hit sometimes has none of the typed
+    letters in its title
+  - `renderFilterSummary()` quotes the query back when a search on its own empties the list. It
+    does not when a chip is lit as well, because then there is no telling which of the two did it
+
 - Change the topic grouping:
   - `config/variable_topics.json`, served at `/api/config/variable-topics`. Curated by hand: it is
     *not* derived from the codebook. The codebook section a variable sits under is dataset-scoped
@@ -170,19 +192,20 @@ Common tasks and where to work:
     `overlayDatasetPresentation()` note; a dataset without a palette gets five shades mixed
     from its `color`, so it stays legible before anyone picks any
   - `MetadataController.applyDatasetPalette()` stamps `--ds-accent` and `--ds-1`..`--ds-5` on
-    each variable row, each dataset chip and the citation. **The panel is neutral**: a dataset
-    photo and scrim behind every control coloured the whole sidebar for whichever dataset
-    happened to be selected, which is not what the colour means
+    each variable row, each dataset chip and each info card. The panel uses the Demscore homepage
+    hero image treatment; do not tint it with whichever dataset happens to be selected
   - a row is `--ds-4` mixed 55% toward white, hover is `--ds-4` raw, selection is `--ds-3` plus
     an inset edge in `--ds-1`. The mixing is not decoration: V-Dem's shades are far more
     saturated than QoG's or REPDEM's at the same step, so the raw shade made every V-Dem row
     shout while the other two whispered
   - text stays dark on every state. REPDEM's darkest shade is a light orange, so "dark fill,
-    white text" is not available across all three palettes — that is also why the row badge
-    uses `var(--text)` rather than a tint of `--ds-1`. Worst measured small-text contrast is
-    5.6:1; re-check with a calculator if you change a palette
-  - chips and row badges use the *short* `label` ("V-Dem"), via `getDatasetLabel()`, because both
-    share a line — the full `title` rides along as the chip's tooltip
+    white text" is not available across all three palettes. Worst measured small-text contrast
+    is 5.6:1; re-check with a calculator if you change a palette
+  - which dataset a row belongs to is carried by a 3px left edge in `--ds-1`, not by a label in
+    the row. It costs no width, so a long variable title never has to wrap around it, and the
+    selected row keeps its edge while the rest of it goes accent
+  - chips use the *short* `label` ("V-Dem"), via `getDatasetLabel()`, because they share a
+    row — the full `title` rides along as the chip's tooltip
   - the filter chips are `button`s inside the panel, so the panel's own button styling is
     scoped to `#controls .dataset-panel > button` (direct children). Widening that selector
     repaints the chips
@@ -239,6 +262,11 @@ Common tasks and where to work:
   - `.variable-tooltip*` in `styles.css`; `--tip-accent` (dataset accent) colours the edge and
     arrow, `--arrow-top` keeps the arrow on the hovered row when the card is clamped to an edge
   - the card is `pointer-events: none` on purpose — it must never steal the hover from the row
+  - the *persistent* form of the same card is `openVariableInfoPopover()`, opened by a click
+    rather than a hover and dismissed by Escape or a click outside. Its triggers are the row
+    info buttons (touch only), the phone action button, and the info button in the timeline
+    caption; all three are listed in the `pointerdown` allowlist in `bindVariableTooltip()`,
+    and a fourth has to be listed there too
 
 - Change polarity mapping behavior:
   - `config/variable_polarity.json`
@@ -247,9 +275,56 @@ Common tasks and where to work:
 - Change legend text/rules/colors:
   - `config/legend_semantics.json`
   - rendering in `MapController.refreshLegend()`
+  - the bar is followed by a **No data** swatch (`.legend-nodata`), which is not part of
+    the ramp: a country with no value for this variable and year is not drawn at all, and
+    neither is its outline, so what shows through is the land basemap. It was a colour on
+    the map that the legend did not speak for, which left the cream over Greenland or
+    Antarctica reading as a shade the ramp had run out of. The swatch is painted from
+    `--land-basemap`, which `initializeLegend()` writes onto the legend from the same
+    `LAND_BASEMAP_COLOR` the basemap style uses, so the two cannot drift
+  - it is the one thing in the scale column that survives the phone breakpoint, where
+    `.legend-note` is hidden: the note restates what the ramp already shows, and nothing
+    else on a phone says what the cream means
+  - `.map-legend` is a wrapping flex row, not a grid: the dock is only as wide as the map
+    column, which on a tablet-width window is a good deal narrower than the viewport its
+    padding is sized from. Track minimums are a floor a container cannot push past, so the
+    old grid overflowed there and `#map { overflow: hidden }` cut the scale in half. The copy
+    column shrinks first and the scale drops to its own line when they no longer fit, which
+    is why the dock is taller between roughly 900px and 1080px. Anything added here must keep
+    to that: no `min-width` or track minimum on a legend column
 
 - Change autoplay/timeline behavior:
   - `DemscoreApp` methods: `scheduleAutoPlayTick`, `setYear`, `renderTimelineScale`
+  - the speed stepper carries a `Speed` caption (`.speed-button-label`). It is absolutely
+    positioned over the group on purpose: the multiplier has to stay the prominent, centred
+    reading, and anything in the flow would push it off the line the Animate button's own
+    text sits on. It is `aria-hidden` — the group already carries `aria-label="Timeline speed"`
+
+- Change the variable caption under the timeline:
+  - `#timelineVariableTitle` in `index.html`, `DemscoreApp.renderTimelineVariableTitle()`,
+    `.timeline-variable-*` in `styles.css`
+  - it is rendered from `refreshTimelineForActiveVariable()`, which is the one place the
+    timeline is rebuilt for a new selection and therefore the only place either half of the
+    caption can have changed. Setting it anywhere else means two places to keep in step
+  - it replaces its whole contents, so the boot placeholder in `index.html` goes with the
+    first render — see "Loading placeholders"
+  - the legend dock says the same thing, but it is docked to the foot of the map while the
+    timeline is at the top, so on a tall window the year and the thing being counted were a
+    screen apart. On a phone the caption is hidden instead: the picker button above the
+    timeline already names the variable, and a third printing is not worth the strip of map
+  - the caption ends in an info button (`.timeline-variable-info`) that opens
+    `MetadataController.openVariableInfoPopover()` — the same persistent card a row's own
+    info button opens, for the variable actually on the map. It matters most on a desktop,
+    where `.variable-option-info` is `display: none` above the coarse-pointer breakpoint and
+    the rows only ever show their card on hover: there was no way to open one and keep it
+    open, and none at all without going back to the list
+  - it is bound by delegation on `#timelineVariableTitle`, because the caption is rebuilt on
+    every selection change and a listener on the button would go with the button. The dataset
+    and variable are stamped on the button rather than read from state when it fires, the way
+    `.variable-option-info` does it
+  - **a new trigger for the persistent card must be added to the click-outside allowlist** in
+    `bindVariableTooltip()`'s `pointerdown` handler, or its own opening click counts as a
+    click outside and shuts the card in the same gesture that asked for it
 
 - Change the timeline axis / tile-preload progress bar:
   - the axis *is* the preload track: `#timelinePreloadTrack` is a flex row of
@@ -287,10 +362,35 @@ Common tasks and where to work:
     as a toggle, because comparing the two is the clearest way to see what a
     projection does to the data
   - everything projection-shaped goes through `getMapProjection(key)`, which hands
-    back one plane's OpenLayers projection, world box, tile grid, MapServer layer
-    pair and hex size ladder. Add a third projection there and the toggle, the
+    back one plane's OpenLayers projection, world box, view box, tile grid, MapServer
+    layer pair and hex size ladder. Add a third projection there and the toggle, the
     tile grid, the pan limit, the world fit, the layer names and the mesh sizes
     all follow; nothing else in `MapController` names a projection or a layer
+  - **`extent` and `viewExtent` are two different boxes.** `extent` is the whole plane
+    and is what the tile grid is cut from, so it can never be narrowed: a tile
+    coordinate is a slice of it, and moving it would rename every tile, void the
+    browser cache and the mapcache warm-up alike, and leave the preloader counting
+    tiles nobody asks for. `viewExtent` is the same box with everything south of
+    `VIEW_SOUTH_LIMIT_LAT` (60S) cut off, and it is what `measureWorldFit()` measures
+    and what the view is given as its pan `extent`. Nothing below 60S carries an
+    indicator value — the southernmost land outside Antarctica is Chile at 55.6S, and
+    Antarctica is on the basemap but in no dataset — so that band was a share of the
+    scale spent on cream
+  - cropped, not deleted: `constrainOnlyCenter` bounds where the centre of the window
+    may go, not what may be drawn, so Antarctica is still there to pan down to. It is
+    just no longer budgeted for
+  - what the crop is worth depends on which axis binds, and the two projections answer
+    differently. `worldFitResolution` takes the *larger* of width/window-width and
+    height/window-height, so a shorter box only buys anything where height was the
+    larger. Equal Earth's world is 2.25:1 and almost every window is taller than that,
+    so there the crop is a pan limit and nothing else except on an ultrawide screen
+    (measured: no change at 1440x900, 1920x1080 or 1280x1024; zoom 3.10 to 3.23 at
+    2560x1080). Web Mercator's world is square, so height binds nearly always and the
+    crop is worth 29% of the box — zoom 1.53 to 2.02 at 1440x900, which is the whole
+    empty stretch between Cape Horn and the pole
+  - the two southern limits are written out as projected metres from PROJ, for the same
+    reason `EQUAL_EARTH_HALF_X/_Y` are: the projections are not registered until the
+    first map is built, so nothing can be projected at module scope
   - the view is given an explicit `resolutions` ladder, built by
     `viewResolutions()`: the world fit at the top, halving from there, and
     `MAX_ZOOM`'s resolution exactly at the bottom. Handed only a floor and a
@@ -323,18 +423,28 @@ Common tasks and where to work:
     metres per pixel: the two worlds are different sizes, so keeping the metres would
     turn a world view into a view of the Atlantic
   - **each projection has a mesh of its own**, and the toggle switches MapServer
-    layers, not just the SRS. `hex_variable`/`hex_outline` are cut in Equal Earth,
-    `hex_variable_mercator`/`hex_outline_mercator` in Web Mercator. Reprojecting
+    layers, not just the SRS. `hex_variable`/`hex_inset`/`hex_outline` are cut in
+    Equal Earth, the `_mercator` three in Web Mercator. Reprojecting
     one mesh into the other plane is what this replaced: a hexagon is a hexagon
     only where it was cut, and an Equal Earth cell pushed into Mercator is twice
     as tall as it is wide by 60N and a sliver by 80N. What the toggle compares is
     what a cell *means* — a fixed amount of ground against a fixed amount of
     screen — not how well one mesh survives being stretched
-  - the Mercator hex sizes are exactly twice the Equal Earth ones, which is what
-    makes the two the same grain to look at; both ladders match increments
-    precomputed in the database, so a size not on the ladder renders nothing.
-    See `hexResolutionStops` in `core/projection.js` and
+  - both projections use the **same** hex sizes (200k/100k/50k). A cell is drawn
+    `hexSizeM / resolution` pixels across in either plane, so equal sizes are equal
+    grain on screen and the toggle changes the shape of the world, not the weave of
+    the mesh. Mercator's sizes used to be doubled to equalize the worldwide cell
+    *count*; that made every Mercator cell twice as wide on screen. The differing
+    counts are the point, not a defect. Both sizes must exist in the database or the
+    layer renders nothing. See `hexResolutionStops` in `core/projection.js` and
     `sql/mapserver_hex_mercator.sql`
+  - `wmsLayerNames()` returns the layers **in drawing order**, because MapServer
+    draws them in the order they are named. The inset layer carries the half-size
+    hexagons given to countries too small to be dealt a cell at this size and
+    *overlaps* the cell under it, so it has to come after the fills; the outline
+    layer comes last. A layer added to a GetMap must also be added to
+    `CACHEABLE_WMS_LAYERS` in `sw.js` — that set is closed, and one unknown name
+    makes the whole tile fall through uncached
   - the land basemap is *not* densified before projecting. Equal Earth curves the
     meridians, so a long straight lat/lon edge is drawn as a chord of the curve it
     should follow, but measured against Natural Earth 110m the worst segment in the
@@ -394,6 +504,11 @@ Common tasks and where to work:
     of its own — the price of it drawing every layer into one canvas rather than into
     stacked panes — so that control replaces what Leaflet spread over `L.control.layers`
     and a custom one
+  - only the projection radios are on screen by default. The zoom reading, this checkbox
+    and the layer toggles carry `.map-display-extra`, which `styles.css` hides until
+    Shift+D puts `shows-extras` on the stack (`installDisplayExtrasShortcut()`). They are
+    hidden, not absent: their inputs still exist, so `syncDisplayOptions()` and the
+    cookie-backed state work whether or not anyone has pressed Shift+D
   - `MapController.setAreaOutlinesEnabled()` stores the choice in a cookie
     (`core/preferences.js`) and calls `onLayerParamsChange`, which `DemscoreApp` wires to
     `restartPreload` — the preload marks count tiles under the old URL and would
@@ -440,16 +555,25 @@ After edits, run at minimum:
 
 Then do a manual smoke test in browser:
 - boot state (throttle the network or delay `/api/config/**`): three dots under "Filter by
-  topic", "Filter by dataset" and in the Variable well; the timeline shows its backdrop and a
-  placeholder rule with no year marker; all of it is gone once the config lands, with no
-  `.loading-dots`, `[aria-busy]` or `.is-awaiting-data` left in the DOM
+  topic", "Filter by dataset", in the Variable well and in the caption under the timeline; the
+  timeline shows its backdrop and a placeholder rule with no year marker; all of it is gone
+  once the config lands, with no `.loading-dots`, `[aria-busy]` or `.is-awaiting-data` left in
+  the DOM
+- search box: typing narrows the list across datasets and the summary reads "n of N
+  variables"; a query that matches nothing is quoted back; a query plus a lit chip that match
+  nothing reads "No variables match these filters" instead; Escape in the box empties it and
+  restores the full list; the box ANDs with the chips rather than replacing them
 - panel is white and the rows carry the dataset colour, not the sidebar; a dataset chip, the
-  rows it matches and the citation are recognisably the same colour
+  rows it matches and that dataset's info card are recognisably the same colour
 - filter chips: a topic chip narrows the list across datasets, a dataset chip narrows it further
   (the two groups AND), clicking a lit chip clears it, and an impossible pair such as
   Gender + V-Dem reports "No variables match these filters" without disturbing the map
-- cross-dataset pick: choose a row whose badge is not the current dataset; the panel photo,
-  accent, citation, codebook link, legend and map all follow it
+- cross-dataset pick: choose a row whose left edge is not the current dataset's colour; the
+  accent, legend and map all follow it. How to cite the dataset and where to get it are only
+  in the info cards now — no sidebar citation line, no phone Source or PDF action: a card
+  carries a SOURCE item and a footer with the codebook PDF beside a "Download data from
+  Demscore" link to that dataset's download ID, and the dataset chip's own hover card carries
+  the same pair. On a phone those two footer links are full-width buttons rather than text
 - variable list: click a row, arrow-key through the list (which crosses dataset boundaries),
   and Tab out in one stop — including while a filter hides the selected row
 - coverage strips: every row has one and they all start and end at the same x; a
@@ -457,12 +581,25 @@ Then do a manual smoke test in browser:
   The axis is shared by *all* datasets and clipped at 1900, so a REPDEM row and a V-Dem row
   put the same year at the same x, and a series reaching back further than 1900 shows the
   clipped chevron at the left edge rather than appearing to start in 1900
-- year scrub + autoplay
+- year scrub + autoplay; the caption under the timeline names the variable the map is drawing
+  and follows every way of changing it — a row, a filter that changes the selection, a
+  remembered choice on reload
+- the caption's info button opens the full variable card (question, overview, scale, coverage
+  strip, source, codebook and download links), the card closes on Escape and on a click
+  anywhere outside it but *not* on the opening click, and after switching variable the button
+  opens the new one's card
+- southern crop: at the widest zoom no more than a sliver of Antarctica is in frame, and
+  dragging south stops with 60S at the middle of the window rather than running on into empty
+  ocean. Both projections; Mercator is where it shows most
 - variable hover card: description appears beside the hovered row, follows arrow-key focus,
   and disappears on scroll, Escape and dataset switch; its COVERAGE strip matches the one
   in the row it points at, and its end years are the shared axis, not the variable's own
 - metadata dialog open/close
 - legend update and map tile refresh
+- legend containment: drag the window across the whole range — every width must show the
+  title, the bar, both end labels and the note inside the dock, with nothing clipped. The
+  in-between widths (a window wide enough to keep the sidebar but not to sit the two columns
+  side by side) are the ones that used to fail
 - projection toggle: Equal Earth and Mercator both draw land and hexagons, the view keeps
   looking at the same place and the same fraction of the world, the zoom readout means the
   same thing in both, and switching back leaves no stale tiles. **Every cell is a regular

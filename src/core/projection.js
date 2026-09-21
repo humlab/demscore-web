@@ -23,12 +23,24 @@
 // projections. A zoom level therefore denotes the same metres per pixel it
 // always did, in either projection, so the hex resolution stops, the zoom
 // readout and the +/- step all carry over unchanged and mean the same thing on
-// both sides of the toggle. The WMS tile grid is denser than the readout's
-// whole levels so fractional zooms do not scale MapServer's raster strokes far
-// enough to make outlines visibly change weight.
+// both sides of the toggle.
 const ZOOM_ZERO_RESOLUTION = 156543.03392804097;
 const TILE_GRID_MAX_ZOOM = 9;
-const TILE_GRID_ZOOM_STEP = 0.25;
+// The WMS tile grid is denser than the readout's whole levels, because zoom is
+// continuous and between stops the grid keeps asking for one stop's tiles and
+// scales what comes back -- far enough, at whole levels, to make MapServer's
+// strokes visibly change weight.
+//
+// Half-levels rather than the quarter-levels this was: every stop is a tile set
+// of its own, with its own z and its own BBOXes, so nothing cached at one stop
+// is of any use at the next. A zoom from the world view to MAX_ZOOM crossed
+// 14-19 of them, each one a full preload of every year, and the mesh underneath
+// only changes three times in that span (see HEX_SIZES_M) -- the rest was the
+// same hexagons rendered again at a slightly different scale. Halving the
+// ladder halves that, at the price of up to +/-19% raster scaling between
+// stops against +/-9% before. Going coarser still is the same trade again, but
+// whole levels are where the strokes start to show it.
+const TILE_GRID_ZOOM_STEP = 0.5;
 const TILE_SIZE = 512;
 
 export const EQUAL_EARTH_CODE = "EPSG:8857";
@@ -51,17 +63,59 @@ export const EQUAL_EARTH_HALF_Y = 8392927.598466456;
 // Web Mercator's square world, pi * 6378137.
 const WEB_MERCATOR_HALF = 20037508.342789244;
 
+// How far south the map is worth budgeting for.
+//
+// The world box and the *view* box are two different things. The world box is
+// the plane the tiles are cut in and the projection is defined over, and it has
+// to stay whole: a tile coordinate is a slice of it, so narrowing it would
+// rename every tile and throw away the cache along with the preloader's
+// reckoning. The view box is what the map promises to show -- what the world
+// fit is measured against and what a pan may bring to the centre of the screen.
+//
+// Nothing south of 60S carries an indicator value. The southernmost land in
+// Natural Earth 110m outside Antarctica is Chile at 55.6S, and Antarctica is on
+// the basemap but in no dataset, so every pixel below this is cream and empty.
+// It cost 9% of the canvas in Equal Earth and 29% in Web Mercator -- Mercator's
+// world is square and its southern half is almost entirely the stretched
+// nothing between Cape Horn and the pole -- which is 9% and 29% of the scale
+// the populated half is drawn at.
+//
+// Cropped, not deleted: `constrainOnlyCenter` bounds where the centre of the
+// window may go, not what may be drawn, so Antarctica is still there to pan
+// down to. It is just no longer budgeted for.
+export const VIEW_SOUTH_LIMIT_LAT = -60;
+
+// VIEW_SOUTH_LIMIT_LAT in each plane, from PROJ (gdaltransform), for the same
+// reason the Equal Earth half-extents above are written out: the projections
+// are not registered until the first map is built, so this file cannot project
+// anything at module scope.
+const EQUAL_EARTH_SOUTH_LIMIT_Y = -6924035.1375529;
+const WEB_MERCATOR_SOUTH_LIMIT_Y = -8399737.88981836;
+
 // Keep the hex layer generalized at the broadest world views, then step into
 // denser meshes as soon as the world is large enough for Denmark-scale
 // countries to read. Both ladders match increments precomputed in the database,
-// and the Mercator sizes are exactly twice the Equal Earth ones: a Mercator
-// cell of a given size covers ground area proportional to cos^2(latitude), so
-// its mesh carries a surplus towards the poles and reaching the same cell count
-// takes a nominally larger cell. Measured at the sizes this ladder used to
-// start from, Mercator 200k gives 5 917 cells against Equal Earth 100k's 5 690.
+// so a size not on the ladder renders nothing.
 //
-// Those are the middle stop now: the whole ladder is deliberately one doubling
-// coarser than that measurement, because a cell small enough to resolve a
+// The two ladders are the same sizes, and that is what makes the toggle a
+// comparison. Both projections count in Web Mercator's resolution ladder, so a
+// cell is drawn hexSizeM / resolution pixels across in either plane: equal
+// sizes are equal grain on screen, and flipping the toggle changes the shape of
+// the world under a mesh of the same weave rather than changing the weave.
+//
+// They used to differ, Mercator's being twice Equal Earth's, to make the two
+// meshes hold the same *number* of cells worldwide. That was the wrong target.
+// A Mercator cell covers ground area proportional to cos^2(latitude), so its
+// mesh carries a surplus towards the poles, and equalizing the total only
+// spends that surplus on making every cell twice as wide on screen -- coarse
+// blobs over Brazil to pay for the confetti over Russia. The surplus is the
+// distortion the toggle exists to show, so it is left in the cell count, where
+// it can be seen, instead of being hidden in the cell size. Measured at the
+// coarsest stop below: 1 396 cells in Equal Earth against 5 917 in Mercator,
+// across 129 and 133 countries.
+//
+// The ladder is also deliberately one doubling coarser than the grain that
+// matches these counts one-for-one, because a cell small enough to resolve a
 // country's interior is smaller than anything the map is actually read at. A
 // hexagon is a unit of "this country's score here", not a pixel, and at the
 // world view a few thousand of them is noise in the shape of detail.
@@ -75,13 +129,17 @@ const WEB_MERCATOR_HALF = 20037508.342789244;
 //
 // The coarsest stop is also what the mapcache preloader warms and what the
 // mapfile falls back to (default_hex_size), so moving it means moving those
-// together or the warm cache is warm for a size nothing asks for.
+// together or the warm cache is warm for a size nothing asks for. Both
+// projections' defaults are that one size.
 //
 // The zoom thresholds are shared, and can be, because both projections use Web
 // Mercator's resolution ladder -- a zoom level means the same scale in either,
 // so the same threshold picks the same grain. They divide the 0-6 range evenly,
 // so no single grain carries a disproportionate stretch of the zoom.
 const HEX_ZOOM_THRESHOLDS = [0, 2, 4];
+
+// One ladder, used by both projections. See the note above.
+const HEX_SIZES_M = [200000, 100000, 50000];
 
 function hexResolutionStops(sizes) {
   return HEX_ZOOM_THRESHOLDS.map((minZoom, index) => ({ minZoom, hexSizeM: sizes[index] }));
@@ -162,11 +220,17 @@ const PROJECTION_DEFINITIONS = {
     code: EQUAL_EARTH_CODE,
     label: "Equal Earth",
     title: "Equal Earth (EPSG:8857) — every hexagon covers the same real area",
-    wmsLayers: { fill: "hex_variable", outline: "hex_outline" },
-    hexResolutionStops: hexResolutionStops([200000, 100000, 50000]),
+    wmsLayers: { fill: "hex_variable", inset: "hex_inset", outline: "hex_outline" },
+    hexResolutionStops: hexResolutionStops(HEX_SIZES_M),
     extent: [
       -EQUAL_EARTH_HALF_X,
       -EQUAL_EARTH_HALF_Y,
+      EQUAL_EARTH_HALF_X,
+      EQUAL_EARTH_HALF_Y,
+    ],
+    viewExtent: [
+      -EQUAL_EARTH_HALF_X,
+      EQUAL_EARTH_SOUTH_LIMIT_Y,
       EQUAL_EARTH_HALF_X,
       EQUAL_EARTH_HALF_Y,
     ],
@@ -178,11 +242,21 @@ const PROJECTION_DEFINITIONS = {
     title: "Web Mercator (EPSG:3857) — hexagons swell towards the poles",
     // A second set of layers over a second mesh, not the first mesh reprojected.
     // See the note above hex_variable_mercator in mapserver/mapserver.map.
-    wmsLayers: { fill: "hex_variable_mercator", outline: "hex_outline_mercator" },
-    hexResolutionStops: hexResolutionStops([400000, 200000, 100000]),
+    wmsLayers: {
+      fill: "hex_variable_mercator",
+      inset: "hex_inset_mercator",
+      outline: "hex_outline_mercator",
+    },
+    hexResolutionStops: hexResolutionStops(HEX_SIZES_M),
     extent: [
       -WEB_MERCATOR_HALF,
       -WEB_MERCATOR_HALF,
+      WEB_MERCATOR_HALF,
+      WEB_MERCATOR_HALF,
+    ],
+    viewExtent: [
+      -WEB_MERCATOR_HALF,
+      WEB_MERCATOR_SOUTH_LIMIT_Y,
       WEB_MERCATOR_HALF,
       WEB_MERCATOR_HALF,
     ],
@@ -195,9 +269,10 @@ export const PROJECTION_KEYS = Object.keys(PROJECTION_DEFINITIONS);
 const resolved = new Map();
 
 // Everything the map needs to be drawn in one projection: the OpenLayers
-// projection, the world box the view and the tile grid are cut to, and the tile
-// grid itself. Built once per projection and reused, so a toggle back and forth
-// does not hand the WMS source a new grid each time.
+// projection, the world box the tile grid is cut to, the smaller view box the
+// world fit and the pan limit are measured against, and the tile grid itself.
+// Built once per projection and reused, so a toggle back and forth does not
+// hand the WMS source a new grid each time.
 export function getMapProjection(key) {
   registerProjections();
 

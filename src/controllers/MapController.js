@@ -66,8 +66,18 @@ const PENDING_LAYER_QUIET_MS = 120;
 // waited for; a year with a tile that is not coming back is shown as far as it
 // got, and the missing tiles paint in behind it once the layer is the live one.
 const PENDING_LAYER_STALL_MS = 3000;
+// A cap on the whole wait once a layer has begun arriving, where the stall timer
+// above caps only the gap between two arrivals. A layer being fed a tile at a
+// time -- which is what a swap competing with the read-ahead for the connection
+// pool looks like -- resets the stall timer forever and never trips it, so
+// without this the only thing left to land the swap is the deadline: ten seconds
+// of a blank map, and then the whole year at once. Past this the year is shown
+// as far as it got and the rest paints in behind it, which is what the stall
+// timer already does for the year that stops arriving.
+const PENDING_LAYER_REVEAL_MS = 2000;
 // The ceiling for a layer that has not answered at all, where there is no
 // arrival rate to judge it by and nothing to show even if it is given up on.
+// Only this case reaches it now: one tile back arms the reveal cap above.
 const PENDING_LAYER_DEADLINE_MS = 10000;
 // Which way the tile grid rounds a continuous resolution to a discrete tile
 // resolution. Zero means nearest, which is what ol/layer/Tile asks for by
@@ -190,6 +200,7 @@ export class MapController extends BaseController {
     this.legendLowEl = null;
     this.legendHighEl = null;
     this.legendNoteEl = null;
+    this.legendNoDataEl = null;
     this.legendSwatchEls = [];
 
     // Keyed dataset|variable|year. A value of null is a remembered failure, so a
@@ -276,10 +287,15 @@ export class MapController extends BaseController {
   // map it stands 1484px high, so nothing north of about 35N could ever be
   // centred and the only way to look straight at Europe would be to zoom in
   // until it happened to land in the middle.
+  //
+  // The box is `viewExtent`, not the world box: everything south of 60S is
+  // cream and dataless, so it is not worth a share of the scale. See
+  // VIEW_SOUTH_LIMIT_LAT in core/projection.js. Antarctica can still be panned
+  // to -- this bounds the centre of the window, not what gets drawn.
   createView({ center, resolution }) {
     return new ol.View({
       projection: this.projection.projection,
-      extent: this.projection.extent,
+      extent: this.projection.viewExtent,
       resolutions: this.viewResolutions(),
       constrainOnlyCenter: true,
       // The edge of the world is a wall, not a rubber band: a drag that reaches
@@ -351,12 +367,14 @@ export class MapController extends BaseController {
     this.bindViewEvents();
   }
 
-  // The resolution at which the whole of this projection's world fits the
-  // window, or 0 before the map has a size to measure.
+  // The resolution at which the whole of this projection's view box fits the
+  // window, or 0 before the map has a size to measure. The view box is the
+  // world with the empty south cropped off, so this is the zoom the populated
+  // part of the world is fitted at.
   measureWorldFit() {
     const size = this.map?.getSize();
     if (!size || !size[0] || !size[1]) return 0;
-    return worldFitResolution(this.projection.extent, size);
+    return worldFitResolution(this.projection.viewExtent, size);
   }
 
   // Web Mercator metres per pixel, read off the resolution rather than taken
@@ -472,21 +490,33 @@ export class MapController extends BaseController {
     this.loadNextLayer();
   }
 
+  // The tile-grid stop the visible tiles are cut at.
+  //
+  // Zoom is continuous, so between tile-grid stops the grid keeps asking for one
+  // discrete resolution and scales what comes back. Rounding the map's own zoom
+  // here would name tiles it never asks for, and the preload marks would then be
+  // reporting on the wrong ones -- so the grid is asked exactly the question the
+  // tile renderer asks it.
+  getVisibleTileZoom() {
+    if (!this.map) return null;
+
+    const resolution = this.map.getView().getResolution();
+    if (!Number.isFinite(resolution)) return null;
+
+    return this.projection.tileGrid.getZForResolution(resolution, TILE_Z_DIRECTION);
+  }
+
   getVisibleTileCoords() {
     if (!this.map) return [];
 
     const view = this.map.getView();
     const size = this.map.getSize();
-    const resolution = view.getResolution();
-    if (!size || !size[0] || !size[1] || !Number.isFinite(resolution)) return [];
+    if (!size || !size[0] || !size[1]) return [];
 
-    // Zoom is continuous, so between tile-grid stops the grid keeps asking for
-    // one discrete resolution and scales what comes back. Rounding the map's own
-    // zoom here would name tiles it never asks for, and the preload marks would
-    // then be reporting on the wrong ones -- so the grid is asked exactly the
-    // question the tile renderer asks it.
+    const z = this.getVisibleTileZoom();
+    if (z === null) return [];
+
     const tileGrid = this.projection.tileGrid;
-    const z = tileGrid.getZForResolution(resolution, TILE_Z_DIRECTION);
     // The grid's own tile range at this zoom, which is what keeps the preload
     // off tiles that fall outside the world box.
     const worldRange = tileGrid.getFullTileRange(z);
@@ -547,6 +577,14 @@ export class MapController extends BaseController {
     const cleanups = this.pendingLayerCleanups;
     this.pendingLayerCleanups = [];
     for (const cleanup of cleanups) cleanup();
+  }
+
+  // Whether the map is part-way through putting a year on screen. The read-ahead
+  // asks before every request that would have to go to MapServer, because those
+  // are the moments its requests are in the way of the map's own -- see
+  // DemscoreApp.takePreloadNetworkTurn.
+  hasPendingLayerSwap() {
+    return this.pendingWmsLayer !== null;
   }
 
   // Resolves as soon as no swap is in flight. The preloader holds its next
@@ -612,14 +650,20 @@ export class MapController extends BaseController {
     });
   }
 
-  // Which pair of MapServer layers this projection's mesh lives in. The outline
-  // layer is drawn over the fills from a precomputed edge table; asking for it
-  // in the same GetMap keeps the two in step -- one image, one cache entry, and
-  // no window where outlines from the previous year sit over this year's
-  // colours.
+  // Which MapServer layers this projection's mesh lives in, in drawing order --
+  // MapServer draws them in the order they are named here.
+  //
+  // The inset layer carries the half-size hexagons given to countries too small
+  // to be dealt a cell of their own at this size, and it has to come after the
+  // fills because those hexagons overlap the cell they sit on. The outline layer
+  // is drawn over both from a precomputed edge table; asking for all of them in
+  // the same GetMap keeps them in step -- one image, one cache entry, and no
+  // window where outlines from the previous year sit over this year's colours.
   wmsLayerNames() {
-    const { fill, outline } = this.projection.wmsLayers;
-    return this.areaOutlinesEnabled ? `${fill},${outline}` : fill;
+    const { fill, inset, outline } = this.projection.wmsLayers;
+    const names = [fill, inset];
+    if (this.areaOutlinesEnabled) names.push(outline);
+    return names.join(",");
   }
 
   getAreaOutlinesEnabled() {
@@ -649,7 +693,7 @@ export class MapController extends BaseController {
     const container = document.createElement("div");
     container.className = "ol-unselectable map-display-stack";
     container.innerHTML = `
-      <div class="zoom-display"></div>
+      <div class="zoom-display map-display-extra"></div>
       <div class="map-display-options">
         <p class="map-display-heading">Projection</p>
         ${PROJECTION_KEYS.map((key) => {
@@ -661,13 +705,13 @@ export class MapController extends BaseController {
             </label>`;
         }).join("")}
       </div>
-      <div class="map-display-options">
+      <div class="map-display-options map-display-extra">
         <label class="map-display-option">
           <input id="areaOutlineToggle" type="checkbox" />
           <span>Outline equal-colour areas</span>
         </label>
       </div>
-      <div class="map-display-options">
+      <div class="map-display-options map-display-extra">
         <label class="map-display-option">
           <input type="checkbox" data-layer="land" />
           <span>Landmasses</span>
@@ -696,11 +740,29 @@ export class MapController extends BaseController {
 
     this.displayOptionsEl = container;
     this.syncDisplayOptions();
+    this.installDisplayExtrasShortcut();
 
     // The control sits over the map, and OpenLayers only holds a click back from
     // the map when the element is in the stop-event container, which is what
     // ol.control.Control puts it in.
     this.map.addControl(new ol.control.Control({ element: container }));
+  }
+
+  // Projection is the only choice the map offers for everyday use; the zoom
+  // reading, the outline toggle and the layer switches are there for whoever is
+  // working on the map, and stay out of the way until Shift+D asks for them.
+  installDisplayExtrasShortcut() {
+    document.addEventListener("keydown", (event) => {
+      if (!event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key !== "D" && event.key !== "d") return;
+      // Not while a field has the caret: Shift+D is a capital D there.
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        if (target.isContentEditable || target.closest("input, textarea, select")) return;
+      }
+      event.preventDefault();
+      this.displayOptionsEl.classList.toggle("shows-extras");
+    });
   }
 
   syncDisplayOptions() {
@@ -820,6 +882,7 @@ export class MapController extends BaseController {
     let reported = 0;
     let quietTimer = null;
     let stallTimer = null;
+    let revealTimer = null;
 
     const land = () => {
       if (landed) return;
@@ -843,6 +906,13 @@ export class MapController extends BaseController {
       stallTimer = window.setTimeout(land, PENDING_LAYER_STALL_MS);
     };
 
+    // Armed by the first tile to come back and never pushed forward after that:
+    // it measures the whole wait, not the gap the stall timer measures.
+    const armRevealTimer = () => {
+      if (revealTimer !== null) return;
+      revealTimer = window.setTimeout(land, PENDING_LAYER_REVEAL_MS);
+    };
+
     const listeners = [
       this.map.on("postrender", () => {
         drawnSinceAdded = true;
@@ -859,6 +929,7 @@ export class MapController extends BaseController {
         source.on(type, () => {
           reported += 1;
           restartStallTimer();
+          armRevealTimer();
           if (expectedTiles === 0 || started < expectedTiles || reported < started) return;
           clearQuietTimer();
           quietTimer = window.setTimeout(() => {
@@ -875,6 +946,7 @@ export class MapController extends BaseController {
       ol.Observable.unByKey(listeners);
       clearQuietTimer();
       if (stallTimer !== null) window.clearTimeout(stallTimer);
+      if (revealTimer !== null) window.clearTimeout(revealTimer);
       window.clearTimeout(deadline);
     });
   }
@@ -904,6 +976,10 @@ export class MapController extends BaseController {
       <div class="legend-scale">
         <div class="legend-bar"></div>
         <div class="legend-labels"><span></span><span></span></div>
+        <p class="legend-nodata">
+          <span class="legend-nodata-swatch" aria-hidden="true"></span>
+          <span>No data</span>
+        </p>
         <div class="legend-note"></div>
       </div>`;
 
@@ -913,8 +989,18 @@ export class MapController extends BaseController {
     this.legendLowEl = div.querySelector(".legend-labels span:first-child");
     this.legendHighEl = div.querySelector(".legend-labels span:last-child");
     this.legendNoteEl = div.querySelector(".legend-note");
-    this.legendDock.append(div);
+    this.legendNoDataEl = div.querySelector(".legend-nodata");
+    // A country with no value for this variable and year is simply not drawn,
+    // and neither is its outline, so what shows through is the land basemap.
+    // That reads as a colour on the map but was not one the legend spoke for,
+    // which left the cream over Greenland or Antarctica looking like a shade
+    // the ramp had run out of. The swatch is painted from the basemap's own
+    // colour so the two cannot drift apart.
+    this.legendNoDataEl.title =
+      "Countries with no value for this variable and year keep the plain land colour — no hexagons and no outline.";
     this.legend = div;
+    this.legend.style.setProperty("--land-basemap", LAND_BASEMAP_COLOR);
+    this.legendDock.append(div);
 
     // The swatches are built once and only recoloured afterwards: rebuilding the
     // bar per refresh would drop the focus and the hover the tooltip hangs off.

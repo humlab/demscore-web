@@ -120,22 +120,6 @@ textarea {
   display: none;
 }
 
-.mobile-action-link[hidden] {
-  display: none;
-}
-
-.citation,
-.codebook-link {
-  margin: 8px 0 10px;
-  font-size: 0.88rem;
-  color: var(--muted);
-}
-
-.codebook-link a {
-  color: var(--accent);
-  text-decoration: underline;
-}
-
 /* ---- Loading placeholders ---- */
 /* Three dots standing where a list is about to be. Each one lives inside the
    container it speaks for, so the first render clears it by clearing the
@@ -154,6 +138,11 @@ textarea {
   background: var(--accent);
   opacity: 0.25;
   animation: demscore-dots 1.05s ease-in-out infinite;
+}
+
+/* Navy dots vanish against the panel's navy-blended photo. */
+.dataset-panel .loading-dots i {
+  background: #fff;
 }
 
 .loading-dots i:nth-child(2) {
@@ -201,12 +190,12 @@ textarea {
 }
 
 /* ---- Filter chips + variable panel ---- */
-/* The panel is neutral. Dataset colour belongs to the individual things that
-   are of one dataset — a variable row, a dataset chip, the citation — not to
-   the sidebar as a whole, which only ever showed whichever dataset happened to
-   be selected. Palette shades arrive per element as --ds-1 (darkest, used for
-   marks) through --ds-5 (lightest); defaults here keep anything unstamped
-   readable. */
+/* The panel uses the Demscore homepage hero treatment. Dataset colour belongs
+  to the individual things that are of one dataset — a variable row, a dataset
+  chip, an info card — not to the sidebar as a whole, which only ever showed
+  whichever dataset happened to be selected. Palette shades arrive per element
+  as --ds-1 (darkest, used for marks) through --ds-5 (lightest); defaults here
+  keep anything unstamped readable. */
 .dataset-section {
   --ds-accent: var(--accent);
   --ds-1: var(--accent);
@@ -219,6 +208,41 @@ textarea {
   flex-direction: column;
   min-height: 0;
   margin: 4px 0 10px;
+}
+
+/* Free-text search over the rows already in the browser, above the two chip
+   groups because it is the quickest way into a list of this size. It sits on
+   the panel's photo, so it needs a well of its own for the same reason the
+   variable list does. */
+.variable-search-row {
+  margin-bottom: 10px;
+}
+
+#controls .variable-search {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: var(--radius-control);
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.3;
+  /* Safari draws a search field as a pill with an inner shadow whatever else
+     is asked of it. */
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+#controls .variable-search::placeholder {
+  color: var(--muted);
+}
+
+#controls .variable-search:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+  background: #fff;
 }
 
 /* Filters, not tabs: the variable list spans every dataset at once, so nothing
@@ -273,9 +297,9 @@ textarea {
   outline-offset: 1px;
 }
 
-/* An active topic chip is the app accent; an active dataset chip is that
-   dataset's own darkest shade, so the chip and the rows it leaves on screen
-   are recognisably the same colour. */
+/* The navy fill an on chip takes: the app accent, one "on" colour for the
+   interface. Dataset chips override it below with their own colour; topic chips
+   keep it and only add a keyline. */
 #controls .dataset-panel .chip.is-active,
 #controls .dataset-panel .chip.is-active:hover {
   border-color: var(--accent);
@@ -283,29 +307,56 @@ textarea {
   color: #fff;
 }
 
-/* A dataset chip carries its palette at rest too, so the three are
-   distinguishable before any is switched on — mixed toward white for the same
-   reason the rows are, or V-Dem's lightest shade alone reads as switched on
-   next to QoG's. */
+/* A topic chip keeps a white keyline in every state. At rest it is white on the
+   chip's own white and does nothing; on a switched-on chip it is the whole point,
+   holding the navy fill off the navy the panel photo is washed with. Hover says
+   what it has to say through the fill, so the keyline does not move there. */
+#controls .dataset-panel .chip-topic,
+#controls .dataset-panel .chip-topic:hover {
+  border-color: #fff;
+}
+
+#controls .dataset-panel .chip-topic.is-active,
+#controls .dataset-panel .chip-topic.is-active:hover {
+  border-color: #fff;
+  background: var(--accent);
+  color: #fff;
+}
+
+/* A dataset chip is a squared-off pale tag whose left edge is the dataset's
+   colour at full strength. Variable rows reuse this small tag treatment, while
+   row-level borders stay in the shared interface blue. The colour lives in the
+   edge rather than in the fill, so every dataset shows the identical value and
+   none of them has to find an ink that works over it. */
 #controls .dataset-panel .chip-dataset {
-  border-color: color-mix(in srgb, var(--ds-3) 60%, #fff);
-  background: color-mix(in srgb, var(--ds-5) 45%, #fff);
+  padding-left: 8px;
+  border-color: var(--panel-border);
+  border-left: 3px solid var(--ds-1);
+  border-radius: var(--radius-control);
+  background: var(--muted-surface);
+  color: var(--text);
 }
 
 #controls .dataset-panel .chip-dataset:hover {
-  border-color: var(--ds-3);
-  background: color-mix(in srgb, var(--ds-4) 60%, #fff);
+  border-color: var(--muted);
+  border-left-color: var(--ds-1);
+  background: #fff;
 }
 
-/* REPDEM's darkest shade is a light orange, so white-on-accent is not safe for
-   every dataset; an active dataset chip keeps dark text over its own mid shade
-   and marks itself with a heavier border instead. */
+/* Switched on, the chip becomes its left edge: the whole tag floods with the
+   dataset's colour, so what the edge says at rest is what the chip is when it is
+   on. The ink cannot be fixed here — white is unreadable on REPDEM's sand and
+   black on V-Dem's magenta — so `--ds-ink` arrives per dataset from
+   `MetadataController.applyDatasetPalette()`, chosen from that colour's
+   luminance. The keyline stays a pale hairline rather than the fill: QoG's steel
+   blue is close enough to the panel's navy that an edge-to-edge fill would lose
+   the chip's silhouette against the photo behind it. */
 #controls .dataset-panel .chip-dataset.is-active,
 #controls .dataset-panel .chip-dataset.is-active:hover {
-  border-color: var(--ds-1);
-  box-shadow: inset 0 0 0 1px var(--ds-1);
-  background: var(--ds-3);
-  color: color-mix(in srgb, var(--ds-1) 72%, #000);
+  border-color: rgba(255, 255, 255, 0.55);
+  border-left-color: var(--ds-1);
+  background: var(--ds-1);
+  color: var(--ds-ink, #fff);
 }
 
 .filter-summary {
@@ -316,34 +367,63 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-/* Each dataset carries its own photo, veiled by an accent-tinted scrim tuned to
-   keep white text at >= 5:1 contrast over the busiest part of every image. */
+/* The Demscore homepage colorizes its hero photo with a navy color blend and
+   a second navy wash. The taller panel uses the same treatment with a centered
+   cover crop, while its controls stay on paper-like wells for readability. */
 .dataset-panel {
   box-sizing: border-box;
   display: flex;
+  position: relative;
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
   padding: 10px 12px 14px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid rgba(255, 255, 255, 0.62);
   border-radius: var(--radius-card);
-  background: #fff;
+  background-color: #1e3c50;
+  background-image: url("assets/images/adrien-ledoux-mBHuEkka5wM-unspla.2e16d0ba.fill-2500x1000.jpg");
+  background-position: center;
+  background-size: cover;
   color: var(--text);
+  isolation: isolate;
+}
+
+.dataset-panel::before,
+.dataset-panel::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  background: #1e3c50;
+}
+
+.dataset-panel::before {
+  mix-blend-mode: color;
+}
+
+.dataset-panel::after {
+  opacity: 0.8;
+}
+
+.dataset-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+@supports not (mix-blend-mode: color) {
+  .dataset-panel::before {
+    display: none;
+  }
+
+  .dataset-panel::after {
+    opacity: 0.9;
+  }
 }
 
 .dataset-panel:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -3px;
-}
-
-.dataset-panel .codebook-link {
-  margin: 10px 0 0;
-  text-align: center;
-  color: var(--muted);
-}
-
-.dataset-panel .codebook-link a {
-  color: var(--accent);
 }
 
 .dataset-panel select:focus-visible {
@@ -360,47 +440,65 @@ textarea {
   color: var(--muted);
 }
 
+.dataset-panel .field-label {
+  color: #fff;
+}
+
+.dataset-panel .filter-summary {
+  color: rgba(255, 255, 255, 0.86);
+}
+
 /* Radio group styled as a list: every variable stays visible, and the list
    takes whatever vertical space the panel has left before scrolling. */
 .variable-list {
   box-sizing: border-box;
   flex: 1 1 auto;
-  min-height: 116px;
+  /* Two whole rows at the taller row height (each ~79px: two lines of title, the
+     strip, and the padding around them), so the floor never shows a row cut
+     through the middle and reading as clipped. The sidebar scrolls, so a short
+     window takes this out of the page rather than out of the row. */
+  min-height: 174px;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 4px;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-control);
-  /* A faint grey well, so rows tinted with their dataset's palest shades still
-     read as sitting on something rather than floating on the white panel. */
-  background: var(--surface-well);
+  /* The panel's photo runs on through the well: the only fill here is a thin
+     dark tint, enough to hold the white rows off whatever the image is doing
+     behind them without closing the picture off. */
+  border-color: rgba(255, 255, 255, 0.42);
+  background: rgba(14, 33, 45, 0.3);
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.28) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.45) transparent;
 }
 
 /* A row is a label wrapping a hidden radio. Reset the generic `#controls label`
    styling on the inner label: these are list items, not field captions.
-   The row itself is neutral — only its badge carries the dataset colour. Tinting
-   the whole row meant selection had to be read in three different colours, and
-   whichever dataset had the most saturated palette dominated the list. */
+   Dataset identity now rides in the small tag on the title line, so the row
+   edge can stay the same Demscore navy throughout the list. */
 #controls .variable-option {
   display: flex;
   position: relative;
   align-items: stretch;
   margin: 0;
-  border-radius: var(--radius-inline);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-control);
   font-size: 1rem;
   font-weight: 400;
   background: #fff;
   color: var(--text);
 }
 
+/* A row holds a title over a coverage strip, and at 6px of padding those two
+   lines sat almost on the row's edges — a list of them read as one dense block.
+   The bottom is the deepest side: the strip's baseline is drawn at the very
+   bottom of its box, so it needs the room that the title's descenders do not. */
 #controls .variable-option-pick {
   display: block;
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
-  padding: 6px 9px;
+  padding: 10px 13px 11px;
   font-size: inherit;
   font-weight: inherit;
   color: inherit;
@@ -415,7 +513,7 @@ textarea {
   justify-content: center;
   width: 28px;
   height: 28px;
-  margin: 0 6px 0 0;
+  margin: 0 9px 0 0;
   padding: 0;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -451,8 +549,11 @@ textarea {
   }
 }
 
+/* The gap between rows is what separates one from the next — 2px read as a
+   hairline seam and let the list run together into a block. Over the tinted
+   well it is also where the panel's photo shows between the rows. */
 #controls .variable-option + .variable-option {
-  margin-top: 2px;
+  margin-top: 8px;
 }
 
 .variable-option input {
@@ -472,17 +573,16 @@ textarea {
   outline-offset: -2px;
 }
 
-/* Selection has to survive rows that are already coloured, so it is not colour
-   alone: the fill steps up one shade and the row gains a solid edge in the
-   dataset's darkest shade. REPDEM's palette is light enough that a dark fill
-   with white text is not available across all three datasets, which is why the
-   text stays dark throughout. */
 /* One selection colour for every row, whichever dataset it came from: the same
-   thing looking the same everywhere is what makes the selected row findable. */
+   thing looking the same everywhere is what makes the selected row findable.
+   A light steel blue wash rather than a dark fill — the rows around it are white,
+   so what marks this one out is hue, not weight, and the row keeps reading as
+   paper. The left edge stays navy, matching the rest of the variable list. */
 #controls .variable-option.is-selected,
 #controls .variable-option.is-selected:hover {
-  background: var(--accent);
-  color: #fff;
+  border-left-color: var(--accent);
+  background: #d7e3ee;
+  color: var(--accent);
 }
 
 #controls .variable-option.is-selected .variable-option-name {
@@ -490,22 +590,58 @@ textarea {
 }
 
 #controls .variable-option.is-selected .variable-option-info {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--accent);
 }
 
 #controls .variable-option.is-selected .variable-option-info:hover:not(:disabled),
 #controls .variable-option.is-selected .variable-option-info:focus-visible {
-  border-color: rgba(255, 255, 255, 0.62);
-  background: rgba(255, 255, 255, 0.22);
-  color: #fff;
+  border-color: color-mix(in srgb, var(--accent) 55%, #fff);
+  background: #fff;
+  color: var(--accent);
 }
 
+.variable-option-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.variable-option-dataset {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  padding: 1px 6px;
+  border: 1px solid var(--panel-border);
+  border-left: 3px solid var(--ds-1);
+  border-radius: var(--radius-control);
+  background: var(--muted-surface);
+  color: var(--text);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
+/* Two lines, always: the title box holds the same height whether the name runs
+   to one line or two, so the coverage strips stay on one rhythm down the list
+   instead of stepping up and down with the length of each name. Anything longer
+   is clamped with an ellipsis — the full title is the hover card's heading and
+   the dialog's, so nothing is lost by cutting it here.
+   2 × 1.35em of leading = 2.7em; `em` so it tracks the font-size above. */
 .variable-option-name {
-  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  min-height: 2.7em;
+  overflow: hidden;
   font-size: 0.9rem;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.35;
 }
 
 /* Last line: a sparkline of the years this variable covers. The track spans the
@@ -513,45 +649,11 @@ textarea {
    down the list and spans can be compared without reading a single number.
    Bar height carries how much data is there — sampling frequency and country
    coverage folded together by scripts/build_variable_coverage.sh. */
-.variable-option-title-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-/* The badge is now the only thing carrying the dataset's colour, so it takes the
-   palette at full strength rather than a wash of it. It rides on the title line,
-   shrinking last so a long title wraps before the badge does. */
-.variable-option-badge {
-  flex: 0 0 auto;
-  align-self: flex-start;
-  padding: 1px 6px;
-  border-radius: 999px;
-  border: 1px solid var(--ds-2);
-  background: var(--ds-4);
-  /* Fixed dark ink, not a tint of `--ds-1`: REPDEM's darkest shade is a light
-     orange, so there is no one text colour derived from the palette that reads
-     on all three badges. */
-  color: var(--text);
-  font-size: 0.64rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  line-height: 1.5;
-  white-space: nowrap;
-}
-
-/* The selected row goes dark, so its badge keeps its own light fill and gains a
-   white edge to separate it from the accent behind. */
-.variable-option.is-selected .variable-option-badge {
-  border-color: #fff;
-}
-
 .variable-option-coverage {
   --coverage-track-height: 10px;
   display: block;
   position: relative;
-  margin-top: 4px;
+  margin-top: 8px;
   height: var(--coverage-track-height);
 }
 
@@ -599,15 +701,16 @@ textarea {
   opacity: 0.9;
 }
 
-/* A selected row flips to the dark accent, where the inherited white text is
-   already the right ink for both the bars and the baseline. The bars keep a
-   little transparency so they read as a strip rather than as solid blocks. */
+/* On the tinted fill the ink is navy rather than the row's usual grey, which is
+   darker than the strip wants to be against a pale ground — so the bars sit a
+   little below the hover opacity and the baseline only just above the resting
+   one, and the strip reads the same weight as it does on a white row. */
 .variable-option.is-selected .variable-option-coverage-svg {
-  opacity: 0.9;
+  opacity: 0.8;
 }
 
 .variable-option.is-selected .variable-option-coverage::before {
-  opacity: 0.45;
+  opacity: 0.32;
 }
 
 /* Direct children only: the filter chips and per-row info icons are
@@ -631,14 +734,12 @@ textarea {
   cursor: not-allowed;
 }
 
-#datasetCitation {
-  margin-top: auto;
-}
-
 /* Variable hover card: sits on <body> and is placed in viewport coordinates by
    `MetadataController.positionVariableTooltip()`, because both the sidebar and
    the variable list scroll and would otherwise clip it. The accent edge and the
-   arrow share `--tip-accent`, written per dataset when the card is filled. */
+   arrow share `--tip-accent`, written per dataset when the card is filled — the
+   frame carries the dataset colour and the dataset tag names it, while what is
+   inside stays in the app's own ink. */
 .variable-tooltip {
   position: fixed;
   z-index: 1200;
@@ -703,6 +804,47 @@ textarea {
   border-left-color: #fff;
 }
 
+/* Title and key on the left, the dataset tag parked in the corner opposite the
+   accent edge. A flex row rather than an absolutely positioned tag: a long title
+   wraps against the tag instead of running underneath it. */
+.variable-tooltip-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.variable-tooltip-head-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Says which dataset the row came from, using the same pale tag treatment as the
+   dataset filter chips. The colour cannot be the fill or the text: at full
+   strength REPDEM's sand takes black ink only and V-Dem's magenta white ink
+   only, so any tag painted in the dataset colour is unreadable for one of the
+   three. Keeping the colour in an edge is what lets every dataset show the
+   identical value.
+   Not uppercased: these are proper names, and "QoG" is not "QOG". */
+.variable-tooltip-dataset {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  padding: 2px 8px;
+  border: 1px solid var(--panel-border);
+  border-left: 3px solid var(--ds-1, var(--tip-accent, var(--accent)));
+  border-radius: var(--radius-control);
+  background: var(--muted-surface);
+  color: var(--text);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.variable-tooltip-dataset:empty {
+  display: none;
+}
+
 .variable-tooltip-title {
   margin: 0;
   font-size: 0.95rem;
@@ -740,13 +882,17 @@ textarea {
   color: var(--muted);
 }
 
+/* The app accent, not the dataset's: inside the card the dataset colour is what
+   the frame and the tag are for. Section labels and the coverage strip are the
+   same furniture on every card, so painting them per dataset made the card's
+   whole palette swing with the row the pointer happened to be over. */
 .variable-tooltip-item-label {
   margin-right: 6px;
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--tip-accent, var(--accent));
+  color: var(--accent);
 }
 
 /* The row's strip again, with the context a row has no space for: the years its
@@ -762,7 +908,7 @@ textarea {
   position: relative;
   height: 22px;
   margin-top: 7px;
-  color: var(--tip-accent, var(--accent));
+  color: var(--accent);
 }
 
 /* Same baseline as the row: it draws the dataset's whole span, so a variable
@@ -804,23 +950,27 @@ textarea {
   color: var(--muted);
 }
 
-.variable-meta-codebook {
+/* Two links on one line where the card is wide enough for them and on two
+   where it is not, rather than a fixed row that would clip the longer label. */
+.variable-meta-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
   margin: 14px 0 0;
   font-size: 0.86rem;
 }
 
-.variable-meta-codebook a {
+.variable-meta-links a {
   color: var(--accent);
   font-weight: 700;
   text-decoration: none;
 }
 
-.variable-meta-codebook a:hover {
+.variable-meta-links a:hover {
   text-decoration: underline;
 }
 
-.mobile-picker-dialog,
-.mobile-source-dialog {
+.mobile-picker-dialog {
   width: min(720px, calc(100vw - 24px));
   max-height: calc(100vh - 40px);
   border: 1px solid var(--panel-border);
@@ -830,8 +980,7 @@ textarea {
   color: var(--text);
 }
 
-.mobile-picker-dialog::backdrop,
-.mobile-source-dialog::backdrop {
+.mobile-picker-dialog::backdrop {
   background: color-mix(in srgb, var(--navy-deep) 48%, transparent);
 }
 
@@ -936,31 +1085,34 @@ textarea {
   width: 100%;
   padding: 8px 9px 7px;
   border: 1px solid transparent;
+  border-left: 3px solid var(--accent);
   border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--ds-5) 24%, #fff);
+  background: #fff;
   color: var(--text);
   text-align: left;
 }
 
 .mobile-picker-option + .mobile-picker-option {
-  margin-top: 4px;
+  margin-top: 8px;
 }
 
+/* Selection takes the outline and the fill; the left edge stays the shared
+   navy row accent while the dataset is named by the corner tag. */
 .mobile-picker-option.is-selected {
   border-color: var(--accent);
+  border-left-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, #fff);
-  box-shadow: inset 3px 0 0 var(--accent);
 }
 
-.mobile-picker-option-title-row {
+.mobile-picker-option-head {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 8px;
   min-width: 0;
 }
 
 .mobile-picker-option-title {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   font-size: 0.9rem;
@@ -969,6 +1121,22 @@ textarea {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.mobile-picker-option-dataset {
+  flex: 0 0 auto;
+  margin-top: 0;
+  padding: 1px 6px;
+  border: 1px solid var(--panel-border);
+  border-left: 3px solid var(--ds-1);
+  border-radius: var(--radius-control);
+  background: var(--muted-surface);
+  color: var(--text);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  white-space: nowrap;
 }
 
 .mobile-picker-option-meta {
@@ -985,11 +1153,10 @@ textarea {
 .mobile-picker-option-coverage {
   --coverage-track-height: 4px;
   margin-top: 5px;
-  color: var(--ds-1);
+  color: var(--accent);
 }
 
-.mobile-picker-empty,
-.mobile-source-content {
+.mobile-picker-empty {
   margin: 0;
   padding: 14px;
   color: var(--muted);
@@ -1042,38 +1209,49 @@ textarea {
 }
 
 .timeline-main {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0;
+  min-height: 72px;
+  padding: 0 22px 0 0;
+}
+
+.timeline-main::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0 0 auto;
+  height: 72px;
+  content: "";
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 14px 36px rgba(23, 56, 75, 0.1);
+  backdrop-filter: blur(3px);
+  pointer-events: none;
+}
+
+.timeline-controls,
+.timeline-slider-wrap {
+  z-index: 1;
 }
 
 .timeline-slider-wrap {
   --selected-pct: 50%;
-  --axis-y: 34px;
+  --axis-y: 36px;
   --track-height: 12px;
-  /* set from JS once the boxes are sized; the backdrop has to know it too, so it
-     lives on the wrap and the track inherits it */
+  /* Set from JS once the boxes are sized; the track inherits it for every
+     preloaded year bucket. */
   --preload-box-width: 12px;
-  /* the outermost box is centred on the wrap's edge and so hangs half its width
-     past it -- the backdrop has to clear that, not a fixed guess */
-  --backdrop-overhang: calc(var(--preload-box-width) / 2 + 10px);
   position: relative;
+  flex: 1 1 auto;
   height: var(--timeline-size);
   min-width: 0;
+  margin-left: 22px;
 }
 
 .timeline-slider-wrap::before {
-  position: absolute;
-  top: calc(var(--axis-y) - 24px);
-  left: calc(-1 * var(--backdrop-overhang));
-  right: calc(-1 * var(--backdrop-overhang));
-  height: 54px;
-  content: "";
-  z-index: 0;
-  border-radius: var(--radius-control);
-  background: rgba(255, 255, 255, 0.74);
-  pointer-events: none;
+  display: none;
 }
 
 .timeline-preload-track {
@@ -1103,8 +1281,8 @@ textarea {
 
 /* Before a variable's years are in there is nothing to put on the axis, and a
    marker parked on a year nothing has been read for is a reading of data that
-   does not exist yet. The wrap's backdrop stays -- that is what says the
-   timeline is coming -- and a single rule stands in for the scale. */
+   does not exist yet. The shared timeline surface stays, and a single rule
+   stands in for the scale. */
 .timeline-slider-wrap.is-awaiting-data .timeline-selected-marker {
   display: none;
 }
@@ -1304,70 +1482,111 @@ textarea {
 .timeline-controls {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
+  min-height: 72px;
 }
 
 .playback-control {
   display: inline-flex;
-  border: 2px solid var(--timeline-ink);
-  border-radius: var(--radius-control);
-  overflow: hidden;
-  background: var(--timeline-paper);
+  min-height: 72px;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
 }
 
 .playback-control button {
   border: 0;
   background: transparent;
   color: var(--timeline-ink);
-  font-weight: 700;
+  font-weight: 400;
   cursor: pointer;
   line-height: 1;
 }
 
 .playback-control .play-button {
-  border-right: 2px solid var(--timeline-ink);
-  padding: 6px 18px;
-  min-width: 64px;
+  border-right: 0;
+  border-radius: 16px 0 0 16px;
+  padding: 0 20px 0 24px;
+  min-width: 166px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 10px;
+  background: var(--timeline-ink);
+  color: var(--timeline-paper);
+  font-size: 1.32rem;
+  font-weight: 700;
 }
 
 .playback-control .play-button svg {
-  width: 14px;
-  height: 14px;
-  stroke-width: 2.25;
+  width: 22px;
+  height: 22px;
+  stroke-width: 2.1;
 }
 
 .speed-button {
+  position: relative;
   display: inline-flex;
-  gap: 6px;
   align-items: center;
-  padding: 0 4px;
+  min-height: 72px;
+  padding: 0 16px;
+  border-left: 2px solid color-mix(in srgb, var(--timeline-ink) 18%, transparent);
+  border-right: 2px solid color-mix(in srgb, var(--timeline-ink) 18%, transparent);
+  gap: 12px;
+}
+
+/* Fine print hovering over the multiplier, not a label beside it: "4x" stays
+   the prominent, centred reading and this only keeps it from being taken for a
+   zoom level. Out of flow on purpose — it must not shift the multiplier off the
+   line the Animate button's own text sits on. */
+.speed-button-label {
+  position: absolute;
+  top: 11px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: color-mix(in srgb, var(--timeline-ink) 62%, transparent);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
 }
 
 .speed-button button {
-  padding: 6px 8px;
+  padding: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 38px;
 }
 
 .speed-button svg {
-  width: 15px;
-  height: 15px;
-  stroke-width: 2.5;
+  width: 22px;
+  height: 22px;
+  stroke-width: 2.25;
 }
 
 #speedDisplay {
-  min-width: 2em;
+  min-width: 1.25em;
   text-align: center;
   font-family: var(--font-numeric);
-  font-size: 0.86rem;
+  font-size: 1.28rem;
   font-weight: 700;
   color: var(--timeline-ink);
 }
 
 .playback-control button:hover {
   background: #ebebeb;
+}
+
+.playback-control .play-button:hover,
+.playback-control .play-button:focus {
+  background: var(--accent-strong);
+  color: var(--timeline-paper);
 }
 
 .playback-control button:active {
@@ -1380,9 +1599,8 @@ textarea {
   left: calc(340px + ((100vw - 340px) / 2));
   transform: translateX(-50%);
   z-index: 1200;
-  /* the gutter has to clear the slider backdrop, which reaches --backdrop-overhang
-     past the wrap on each side; `left` already centres it, so no margin shift */
-  width: min(760px, calc(100vw - 340px - 48px));
+  /* Centred over the map pane, leaving a small gutter to both map edges. */
+  width: min(1180px, calc(100vw - 340px - 48px));
   margin: 0;
   background: transparent;
   border: none;
@@ -1390,6 +1608,95 @@ textarea {
   padding: 0;
   box-sizing: border-box;
   pointer-events: auto;
+}
+
+/* The caption under the timeline. It floats over the map like everything else
+   in this overlay, so it carries its own backdrop rather than borrowing the
+   card's — the card is only 72px tall and this sits well below it, under the
+   year label and the tick scale. */
+.timeline-variable-title {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 2px auto 0;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 6px 18px rgba(23, 56, 75, 0.1);
+  backdrop-filter: blur(3px);
+  color: var(--timeline-ink);
+  font-size: 0.95rem;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.timeline-variable-name {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Which module it came from, kept quiet: the row in the sidebar carries the
+   same tag, and this line is read for the variable. */
+.timeline-variable-dataset {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--timeline-ink) 65%, transparent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.timeline-variable-dataset::before {
+  content: "\2022";
+  margin-right: 8px;
+}
+
+/* Opens the same card the sidebar rows carry, for the variable on the map.
+   Centred against the line rather than sitting on its baseline — a round
+   button aligned by baseline rides visibly high next to text. */
+.timeline-variable-info {
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: -4px -6px -4px 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--timeline-ink) 55%, transparent);
+  cursor: pointer;
+}
+
+.timeline-variable-info svg {
+  width: 16px;
+  height: 16px;
+}
+
+.timeline-variable-info:hover:not(:disabled),
+.timeline-variable-info:focus-visible {
+  border-color: color-mix(in srgb, var(--timeline-ink) 30%, transparent);
+  background: color-mix(in srgb, var(--timeline-ink) 8%, transparent);
+  color: var(--timeline-ink);
+}
+
+.timeline-variable-info:focus-visible {
+  outline: 2px solid var(--timeline-ink);
+  outline-offset: 1px;
+}
+
+.timeline-variable-info:disabled {
+  color: color-mix(in srgb, var(--timeline-ink) 28%, transparent);
+  cursor: not-allowed;
 }
 
 .timeline-year-readout {
@@ -1409,17 +1716,6 @@ textarea {
   color: var(--muted);
   font-size: 0.9rem;
   line-height: 1.4;
-}
-
-.citation {
-  margin: 6px 0 0;
-  padding: 6px 8px;
-  border-left: 3px solid var(--ds-accent, var(--accent));
-  background: color-mix(in srgb, var(--ds-accent, var(--accent)) 7%, #fff);
-  color: var(--muted);
-  font-size: 0.82rem;
-  line-height: 1.4;
-  border-radius: 0 4px 4px 0;
 }
 
 #map {
@@ -1456,18 +1752,28 @@ textarea {
   align-items: center;
   min-height: var(--map-legend-height);
   min-width: 0;
-  padding: 24px clamp(28px, 6vw, 74px);
+  padding: 24px clamp(20px, 5vw, 74px);
   border-top: 12px solid var(--map-cover-brown);
   background: var(--map-cover-blue);
   color: #ffffff;
 }
 
 /* ---- Quantile legend ---- */
+/* Two columns where they both fit and two rows where they do not. It has to be
+   flex and not a grid of `minmax()` tracks: a track minimum is a floor the
+   container cannot push past, so on an in-between width -- a tablet window wide
+   enough to keep the sidebar, leaving the dock a good deal narrower than the
+   viewport its padding is sized from -- the row overflowed and `#map`'s
+   `overflow: hidden` sliced the scale down the middle. Here the copy gives way
+   first, and once the two can no longer share a line the scale takes one of its
+   own, so the whole legend is on screen at every width. */
 .map-legend {
-  display: grid;
-  grid-template-columns: minmax(270px, 0.9fr) minmax(360px, 1.35fr);
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: clamp(22px, 4vw, 56px);
+  /* A wide gutter between the columns, a narrow one between the rows they
+     become — 4vw of air under the title would push the map out for nothing. */
+  gap: 12px clamp(14px, 4vw, 56px);
   width: min(980px, 100%);
   min-width: 0;
   padding: 0;
@@ -1478,8 +1784,15 @@ textarea {
   box-shadow: none;
 }
 
-.legend-copy,
+/* The grow factors are the old `0.9fr`/`1.35fr` split; the bases are what the
+   two need before wrapping is the better answer. */
+.legend-copy {
+  flex: 0.9 1 240px;
+  min-width: 0;
+}
+
 .legend-scale {
+  flex: 1.35 1 340px;
   min-width: 0;
 }
 
@@ -1613,6 +1926,30 @@ textarea {
   line-height: 1.2;
 }
 
+/* Off the end of the ramp, not part of it: a country with no value for this
+   variable and year is not drawn at all, so what shows is the land basemap.
+   `--land-basemap` is written onto the legend by MapController from the same
+   constant the basemap style uses, so the swatch cannot drift from the map. */
+.legend-nodata {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 7px 0 0;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.78rem;
+  line-height: 1.2;
+  cursor: help;
+}
+
+.legend-nodata-swatch {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 2px;
+  background: var(--land-basemap, #fffaf0);
+}
+
 .legend-note {
   margin-top: 7px;
   color: rgba(255, 255, 255, 0.74);
@@ -1634,11 +1971,21 @@ textarea {
   gap: 6px;
 }
 
+/* Everything in the stack but the projection choice is for working on the map
+   rather than reading it, so it is folded away until Shift+D unfolds it. */
+.map-display-extra {
+  display: none;
+}
+
+.map-display-stack.shows-extras .map-display-extra {
+  display: block;
+}
+
 /* OpenLayers' own zoom buttons, dressed as the square white pair the map had
    before. Its default is a pill of brand-blue buttons, which belongs to no
    other control on this page. */
 .ol-zoom {
-  top: 10px;
+  top: 104px;
   left: 10px;
   display: flex;
   flex-direction: column;
@@ -1744,10 +2091,13 @@ textarea {
   pointer-events: none;
 }
 
-/* Loading indicator */
+/* Loading indicator. Bottom-right rather than top-right: the timeline overlay
+   is fixed to the top of the map pane at a higher z-index, and on a wide
+   viewport its 1180px cap still reaches far enough right to cover a spinner
+   sitting up there. The offset clears the attribution strip below it. */
 #loading-indicator {
   position: absolute;
-  top: 12px;
+  bottom: 28px;
   right: 12px;
   z-index: 1150;
   width: 28px;
@@ -1795,8 +2145,7 @@ textarea {
     max-width: 148px;
   }
 
-  #datasetSection,
-  #datasetCitation {
+  #datasetSection {
     display: none;
   }
 
@@ -1877,12 +2226,11 @@ textarea {
 
   .mobile-action-row {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 6px;
   }
 
-  #controls .mobile-action-button,
-  #controls .mobile-action-link {
+  #controls .mobile-action-button {
     box-sizing: border-box;
     display: inline-flex;
     align-items: center;
@@ -1902,8 +2250,7 @@ textarea {
     text-decoration: none;
   }
 
-  #controls .mobile-action-button:hover,
-  #controls .mobile-action-link:hover {
+  #controls .mobile-action-button:hover {
     border-color: var(--muted);
     background: var(--surface-hover);
   }
@@ -1914,14 +2261,30 @@ textarea {
     background: var(--muted-surface);
   }
 
-  #controls .mobile-action-link[hidden] {
-    display: none;
-  }
-
-  .mobile-action-button svg,
-  .mobile-action-link svg {
+  .mobile-action-button svg {
     width: 15px;
     height: 15px;
+  }
+
+  /* On a phone the info card's footer is the only way to the codebook and the
+     download, and a word of text is a small thing to hit: stack the two as
+     full-width buttons instead. */
+  .variable-meta-links {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .variable-meta-links a {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--accent) 38%, #fff);
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--accent) 7%, #fff);
+    text-align: center;
   }
 
   #map {
@@ -1935,9 +2298,22 @@ textarea {
     border-top-width: 6px;
   }
 
+  /* Stacked outright, and `nowrap` with it: a column that wraps sizes its one
+     line to the items' own width rather than to the dock, which put both of
+     them 24px -- the dock's gutters -- past its right edge. */
   .map-legend {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
     gap: 6px;
+  }
+
+  /* Down the column a `flex-basis` is a height, and the dock stretches the
+     legend to its own, so the two would grow to 240px and 340px of empty band.
+     Stacked, each is simply as tall as what is in it. */
+  .legend-copy,
+  .legend-scale {
+    flex: 0 0 auto;
   }
 
   .legend-title {
@@ -1962,12 +2338,28 @@ textarea {
     font-size: 0.7rem;
   }
 
+  /* The note goes and this stays: the note restates what the ramp already
+     shows, while nothing else on a phone says what the cream means. */
+  .legend-nodata {
+    gap: 5px;
+    margin-top: 4px;
+    font-size: 0.7rem;
+  }
+
+  .legend-nodata-swatch {
+    width: 14px;
+    height: 9px;
+  }
+
   .legend-note {
     display: none;
   }
 
-  .mobile-picker-dialog,
-  .mobile-source-dialog {
+  .ol-zoom {
+    top: 132px;
+  }
+
+  .mobile-picker-dialog {
     inset: auto 0 0;
     width: 100%;
     max-width: none;
@@ -1997,7 +2389,79 @@ textarea {
   .timeline-slider-wrap {
     --axis-y: 34px;
     --track-height: 10px;
+    flex-basis: 100%;
     height: 164px;
+    margin: 0 16px;
+  }
+
+  .timeline-main {
+    flex-wrap: wrap;
+    min-height: 58px;
+    padding: 0 0 6px;
+  }
+
+  .timeline-main::before {
+    height: 58px;
+  }
+
+  .timeline-controls {
+    width: 100%;
+    min-height: 58px;
+  }
+
+  .playback-control {
+    width: 100%;
+    min-height: 58px;
+  }
+
+  .playback-control .play-button {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 16px;
+    gap: 9px;
+    font-size: 1.14rem;
+  }
+
+  .playback-control .play-button svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .speed-button {
+    min-height: 58px;
+    padding: 0 12px;
+    border-left: 0;
+    border-right: 0;
+    gap: 8px;
+  }
+
+  .speed-button button {
+    width: 24px;
+    height: 40px;
+  }
+
+  .speed-button svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  #speedDisplay {
+    min-width: 1.2em;
+    font-size: 1.02rem;
+  }
+
+  /* The group is 58px here rather than 72px, so the caption comes down with it. */
+  .speed-button-label {
+    top: 7px;
+    font-size: 0.56rem;
+  }
+
+  /* The phone header is the variable picker, and it already reads "V-Dem /
+     Electoral Democracy Index / Democracy / 1789-2025" a finger's width above
+     the timeline. A caption under it would be the third time on one screen, for
+     a strip of map a phone can least afford to give up. */
+  .timeline-variable-title {
+    display: none;
   }
 
   .timeline-year-label {
@@ -2018,6 +2482,6 @@ textarea {
   }
 
   .timeline-controls {
-    justify-content: flex-end;
+    justify-content: stretch;
   }
 }

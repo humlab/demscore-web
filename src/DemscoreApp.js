@@ -23,6 +23,7 @@ export class DemscoreApp extends BaseController {
     this.timelineScale = null;
     this.timelinePreloadTrack = null;
     this.timelineWrap = null;
+    this.timelineVariableTitle = null;
     this.yearPlayBtn = null;
     this.speedDownBtn = null;
     this.speedUpBtn = null;
@@ -37,8 +38,8 @@ export class DemscoreApp extends BaseController {
 
     this.autoPlayTicket = 0;
     this.autoPlayWatchdog = null;
-    // The tail of the read-ahead queue while the animation is running; see
-    // takePreloadNetworkTurn.
+    // The tail of the read-ahead queue while it is standing aside for the map;
+    // see takePreloadNetworkTurn.
     this.preloadNetworkTurn = Promise.resolve();
 
     this.AUTO_PLAY_MIN_SPEED = 1;
@@ -145,6 +146,7 @@ export class DemscoreApp extends BaseController {
     this.timelineScale = this.getEl("timelineScale");
     this.timelinePreloadTrack = this.getEl("timelinePreloadTrack");
     this.timelineWrap = this.getEl("timelineWrap");
+    this.timelineVariableTitle = this.getEl("timelineVariableTitle");
     this.yearPlayBtn = this.getEl("yearPlayBtn");
     this.speedDownBtn = this.getEl("speedDownBtn");
     this.speedUpBtn = this.getEl("speedUpBtn");
@@ -208,6 +210,18 @@ export class DemscoreApp extends BaseController {
     this.timelineSelectedMarker.addEventListener("pointerup", (event) => this.endMarkerDrag(event));
     this.timelineSelectedMarker.addEventListener("pointercancel", (event) => this.endMarkerDrag(event));
 
+    // Delegated, because the caption is rebuilt whenever the selection changes
+    // and a listener bound to the button would go with the button.
+    this.timelineVariableTitle.addEventListener("click", (event) => {
+      const button = event.target.closest(".timeline-variable-info");
+      if (!button || !this.timelineVariableTitle.contains(button)) return;
+      event.preventDefault();
+      void this.metadataController.openVariableInfoPopover(button.dataset.dataset, button.dataset.variable, {
+        anchor: button,
+        triggerButton: button,
+      });
+    });
+
     this.speedDownBtn.addEventListener("click", () => {
       this.setAutoPlaySpeed(this.state.autoPlaySpeed - 1);
     });
@@ -255,6 +269,64 @@ export class DemscoreApp extends BaseController {
   refreshTimelineForActiveVariable() {
     const coverage = this.getActiveTimelineCoverage();
     this.setTimelineBounds(coverage);
+    this.renderTimelineVariableTitle();
+  }
+
+  // The caption under the timeline: which variable the colours on the map
+  // stand for, and which dataset it came from. The legend dock carries the
+  // same pair, but it is docked to the foot of the map and the timeline is at
+  // the top, so on anything taller than a laptop the year and the thing being
+  // counted were a screen apart.
+  //
+  // Called from the one place the timeline is rebuilt for a new selection,
+  // which is also the only place either half of this can have changed. It
+  // replaces the whole contents, so the boot placeholder in index.html goes
+  // with the first render rather than having to be swept up.
+  renderTimelineVariableTitle() {
+    if (!this.timelineVariableTitle) return;
+
+    const { dataset, variable } = this.state;
+    const title = this.metadataController.getVariableTitle(dataset, variable);
+    const datasetMeta = this.meta.datasets?.[dataset];
+    const datasetLabel = datasetMeta?.label || datasetMeta?.title || dataset;
+
+    this.timelineVariableTitle.innerHTML = "";
+
+    const name = document.createElement("span");
+    name.className = "timeline-variable-name";
+    name.textContent = title;
+    this.timelineVariableTitle.appendChild(name);
+
+    const source = document.createElement("span");
+    source.className = "timeline-variable-dataset";
+    source.textContent = datasetLabel;
+    // The full dataset name and the variable key are both a hover away rather
+    // than on the line: this caption has one line over the map and the title
+    // is the part that has to survive a narrow window.
+    this.timelineVariableTitle.title = `${title} (${variable}) — ${this.metadataController.getDatasetTitle(datasetMeta, dataset)}`;
+    this.timelineVariableTitle.appendChild(source);
+
+    // The same card the sidebar rows open, for the variable actually on the
+    // map. On a desktop the rows only ever show theirs on hover -- their own
+    // info buttons are `display: none` above the coarse-pointer breakpoint --
+    // so until now there was no way to open the card and keep it open, and no
+    // way at all to reach it without going back to the list. The dataset and
+    // variable are stamped on the button rather than read from state when it
+    // fires, exactly as `.variable-option-info` does it.
+    const info = document.createElement("button");
+    info.type = "button";
+    info.className = "timeline-variable-info";
+    info.dataset.dataset = dataset;
+    info.dataset.variable = variable;
+    info.disabled = !this.metadataController.hasVariableMetadataSummary(dataset, variable);
+    info.title = info.disabled ? "No variable information available" : `Variable information: ${title}`;
+    info.setAttribute("aria-label", `Variable information: ${title}`);
+    info.innerHTML = '<i data-lucide="info" aria-hidden="true"></i>';
+    this.timelineVariableTitle.appendChild(info);
+
+    if (window.lucide && typeof window.lucide.createIcons === "function") {
+      window.lucide.createIcons();
+    }
   }
 
   setTimelineBounds(coverage) {
@@ -392,7 +464,7 @@ export class DemscoreApp extends BaseController {
     const iconName = this.state.isAutoPlaying ? "pause" : "play";
     const label = this.state.isAutoPlaying ? "Pause" : "Animate";
 
-    this.yearPlayBtn.innerHTML = `<i data-lucide="${iconName}" aria-hidden="true"></i><span>${label}</span>`;
+    this.yearPlayBtn.innerHTML = `<span>${label}</span><i data-lucide="${iconName}" aria-hidden="true"></i>`;
     if (window.lucide && typeof window.lucide.createIcons === "function") {
       window.lucide.createIcons();
     }
@@ -402,15 +474,31 @@ export class DemscoreApp extends BaseController {
 
   // What the preloader asks before every request it has to go to MapServer for.
   //
-  // Outside autoplay nothing is waiting on the map, so there is no queue to join
-  // and the read-ahead runs flat out. While the animation is running the year on
-  // its way to the screen comes first: a request waits for the frame to land,
-  // and for whatever read-ahead request is already out, so at most one year
-  // nobody is looking at yet is ever being rendered ahead of the one they are.
-  // Reading a year the cache already holds is not a request and never waits,
-  // which is how the animation runs at full speed across what was preloaded.
+  // The year on its way to the screen comes first: a request waits for the swap
+  // to land, and for whatever read-ahead request is already out, so at most one
+  // year nobody is looking at yet is ever being rendered ahead of the one they
+  // are. Reading a year the cache already holds is not a request and never
+  // waits, which is how the animation runs at full speed across what was
+  // preloaded.
+  //
+  // Two things make a swap worth standing aside for, and they cover different
+  // stretches of time. Every autoplay frame is one, so the whole animation is
+  // held to a single read-ahead request at a time. Outside autoplay there are
+  // only the occasional ones -- a variable, a dataset, a year, a zoom crossing a
+  // hex stop -- and between them the read-ahead should run flat out, so the
+  // question is asked of the map rather than assumed.
+  //
+  // It used to be assumed: outside autoplay the read-ahead never stood aside at
+  // all. A variable change starts a run over every year in coverage, and its
+  // requests go out before the map's, because loadNextLayer only reaches the
+  // network on the next render frame where the run reaches it within a few
+  // microtasks. Twelve fetches then held the connection pool -- six per origin
+  // on HTTP/1.1 -- against tile loads the browser already ranks below them,
+  // because OpenLayers loads tiles as detached Images. The year the user had
+  // just asked for arrived a tile at a time behind a hundred-odd requests a
+  // second for years they had not, and did not finish until the run did.
   async takePreloadNetworkTurn() {
-    if (!this.state.isAutoPlaying) return null;
+    if (!this.state.isAutoPlaying && !this.mapController.hasPendingLayerSwap()) return null;
 
     const ahead = this.preloadNetworkTurn;
     let releaseTurn;
@@ -670,8 +758,8 @@ export class DemscoreApp extends BaseController {
 
     const { segments, boxWidth, sparse } = this.buildPreloadSegments(yearMin, yearMax, availableYearSet);
     this.timelinePreloadTrack.classList.toggle("is-sparse", sparse);
-    // on the wrap, not the track: the wrap's backdrop is sized off it too, so the
-    // edge boxes keep a margin instead of grazing the rounded corner
+    // on the wrap, not the track: marker positioning and segment sizing both
+    // read this same value.
     this.timelineWrap.style.setProperty("--preload-box-width", `${boxWidth}px`);
 
     for (const segment of segments) {

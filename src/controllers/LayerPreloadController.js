@@ -1,7 +1,15 @@
 // Must match WMS_TILE_CACHE in sw.js, which is what evicts the older versions.
-const PRELOAD_CACHE_NAME = "demscore-wms-tile-cache-v6";
+const PRELOAD_CACHE_NAME = "demscore-wms-tile-cache-v8";
 const MAX_CONCURRENT_YEARS = 3;
 const MAX_CONCURRENT_REQUESTS = 4;
+// How many targets keep their marks. The tiles themselves are kept by the
+// browser cache and outlive the page; this only spares a revisited target the
+// sweep from empty back to full while the run re-reads them. A zoom from the
+// world view to MAX_ZOOM crosses 8 to 11 tile-grid stops (see
+// TILE_GRID_ZOOM_STEP), and a target is also a dataset, a variable and a
+// projection, so the number is set above a full zoom sweep rather than at it --
+// an entry is two small Maps of years and costs nothing to keep.
+const MAX_REMEMBERED_TARGETS = 16;
 
 function isServiceWorkerSafeOrigin() {
   return (
@@ -49,6 +57,12 @@ export class LayerPreloadController {
     // only because the visible tile range moved — resumes the statuses it already
     // established instead of declaring every year uncached again.
     this.targetSignature = null;
+    // The marks of targets seen earlier, keyed by the same signature, oldest
+    // first. Zooming away and back asks for tiles the cache still holds, so the
+    // marks are still true and are put back as they were rather than counted out
+    // again from nothing. What is put back is still checked by the run that
+    // follows, which is what catches a tile the cache has since evicted.
+    this.marksByTarget = new Map();
   }
 
   async initialize() {
@@ -140,21 +154,31 @@ export class LayerPreloadController {
     // switch means a different SRS and a different BBOX, so none of the marks
     // from before it describe a tile that is still being asked for.
     const projection = this.mapController.getProjectionKey();
+    // The tile-grid stop is in the signature for the same reason: every tile URL
+    // names its own zoom and its own BBOX, so a zoom that lands on a different
+    // stop leaves no tile from before it cached. Resuming there would show marks
+    // for tiles nobody will ask for again, and they would be rewritten one year
+    // at a time as the run caught up with them. The hex size alone does not
+    // catch it -- one mesh size spans several stops. Zooming within a stop does
+    // not change the tiles, so it still resumes, as a pan does.
+    const tileZoom = this.mapController.getVisibleTileZoom();
 
-    // Without a tile cache nothing survives a restart, so there is nothing to
-    // resume: every tile is fetched again and every year genuinely starts over.
-    const signature = `${dataset}|${variable}|${polarity}|${hexSize}|${areaOutlines}|${projection}|${yearMin}-${yearMax}|${years.length}`;
-    const resume = Boolean(this.cache) && signature === this.targetSignature;
+    const signature = `${dataset}|${variable}|${polarity}|${hexSize}|${areaOutlines}|${projection}|${tileZoom}|${yearMin}-${yearMax}|${years.length}`;
+
+    this.rememberMarks();
     this.targetSignature = signature;
+    // Without a tile cache nothing survives a restart, so there is nothing to
+    // put back: every tile is fetched again and every year genuinely starts over.
+    const remembered = this.cache ? this.marksByTarget.get(signature) : null;
 
     this.abortController = new AbortController();
     const runId = ++this.runId;
     // Years that dropped out of coverage drop out of the marks with it.
     this.statusByYear = new Map(
-      years.map((year) => [year, (resume && this.statusByYear.get(year)) || "pending"]),
+      years.map((year) => [year, remembered?.statusByYear.get(year) || "pending"]),
     );
     this.progressByYear = new Map(
-      years.map((year) => [year, (resume && this.progressByYear.get(year)) || 0]),
+      years.map((year) => [year, remembered?.progressByYear.get(year) || 0]),
     );
     this.emitUpdate();
 
@@ -169,6 +193,22 @@ export class LayerPreloadController {
       this.abortController.signal,
       runId,
     );
+  }
+
+  // Puts what the run has established so far away under the target it was for,
+  // as the newest entry, and drops the oldest once there are too many.
+  rememberMarks() {
+    if (!this.cache || !this.targetSignature || this.statusByYear.size === 0) return;
+
+    this.marksByTarget.delete(this.targetSignature);
+    this.marksByTarget.set(this.targetSignature, {
+      statusByYear: new Map(this.statusByYear),
+      progressByYear: new Map(this.progressByYear),
+    });
+
+    while (this.marksByTarget.size > MAX_REMEMBERED_TARGETS) {
+      this.marksByTarget.delete(this.marksByTarget.keys().next().value);
+    }
   }
 
   cancel() {

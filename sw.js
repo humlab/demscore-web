@@ -1,3 +1,16 @@
+// v8: the WMS tile grid is half-levels rather than quarter-levels. Half of the
+// v7 entries -- the ones at the stops that survived -- spell exactly the URL the
+// app still asks for, because a resolution is the same number under either
+// ladder. They are not the problem. The other half sit at stops nothing will
+// ever ask for again, and a cache the browser keeps until its name changes has
+// no way to shed them: they would stay for the life of the origin, taking up
+// the quota that decides which live tiles get evicted. Dropping the good half
+// along with them costs returning users one warm-up and is the only way to be
+// rid of the rest.
+//
+// v7: every GetMap now names an inset layer as well, so no request the app makes
+// spells a LAYERS value any v6 entry was stored under.
+//
 // v6: WMS tile resolutions are quarter-zoom stops now, reducing raster scaling
 // so MapServer strokes keep a steadier apparent weight between continuous zooms.
 //
@@ -20,7 +33,7 @@
 // meshes. Nothing below needs to tell them apart: the layer names, the SRS and
 // the BBOX all ride along in the URL that is the cache key, so the two caches
 // are the same cache and can never collide.
-const WMS_TILE_CACHE = "demscore-wms-tile-cache-v6";
+const WMS_TILE_CACHE = "demscore-wms-tile-cache-v8";
 
 // The fills may be asked for alone or together with the outline layer that rides
 // along in the same GetMap (see MapController.wmsLayerNames), and the two spell
@@ -29,10 +42,15 @@ const WMS_TILE_CACHE = "demscore-wms-tile-cache-v6";
 // and nothing was ever served out of it, so every autoplay frame paid for a fresh
 // MapServer render. Hence a set, not a string -- but still a closed one, so this
 // never becomes a cache for arbitrary layers.
+// The set is closed, so a layer added to a GetMap has to be added here too or
+// every request naming it stops being recognised -- `every` fails on the one
+// unknown name and the whole tile falls through uncached.
 const CACHEABLE_WMS_LAYERS = new Set([
   "hex_variable",
+  "hex_inset",
   "hex_outline",
   "hex_variable_mercator",
+  "hex_inset_mercator",
   "hex_outline_mercator",
 ]);
 
