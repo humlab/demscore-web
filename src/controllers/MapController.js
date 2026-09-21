@@ -35,8 +35,27 @@ const LEGEND_TIP_ARROW_INSET_PX = 14;
 // the cache keeps the hovered ones, not the whole timeline.
 const CLASS_BREAKS_CACHE_LIMIT = 120;
 
+// The same two ramps mapserver/hex_classes.inc paints the hexagons with, and
+// they have to stay the same: this bar is the key to that map.
+// scripts/check_palette_contrast.mjs reads both files and fails if they drift,
+// as well as measuring every adjacent pair in greyscale and under simulated
+// protanopia, deuteranopia and tritanopia.
+//
+// Diverging (ColorBrewer RdYlBu), used for signed polarity: blue is one end of
+// the scale and red the other, which is the direction the polarity is there to
+// carry. Every adjacent pair clears the CVD thresholds, but the ramp is *not*
+// monotonic in lightness -- class 2 and class 7 are the same grey -- so a
+// reader who cannot use hue at all needs the area outlines (on by default) or
+// the data table to order the classes. That is a deliberate trade for keeping
+// direction in the colour; the neutral ramp below makes the other trade.
 const LEGEND_COLORS_NEGATIVE = ["#313695", "#4575b4", "#74add1", "#abd9e9", "#fdae61", "#f46d43", "#d73027"];
-const LEGEND_COLORS_NEUTRAL = ["#d1fae5", "#a7f3d0", "#6ee7b7", "#34d399", "#10b981", "#059669", "#047857"];
+// Neutral (viridis, trimmed to 0.15-0.85). Perceptually uniform and monotonic
+// in lightness, so it orders correctly in greyscale and under every simulated
+// CVD. It replaced a seven-step emerald ramp that failed twice over: its two
+// lightest classes were delta-E 6 apart under protanopia and deuteranopia, and
+// its lightest shade sat delta-E 17 from the cream no-data land, so a country
+// with no value read as the bottom class.
+const LEGEND_COLORS_NEUTRAL = ["#472d7b", "#3b528b", "#2c728e", "#21918c", "#28ae80", "#5ec962", "#addc30"];
 const MIN_ZOOM_FLOOR = 0;
 const MAX_ZOOM = 6;
 const INITIAL_CENTER_LON_LAT = [10, 20];
@@ -89,6 +108,10 @@ const TILE_Z_DIRECTION = 0;
 // coarse a jump to frame a region with.
 const ZOOM_DELTA = 0.25;
 const ZOOM_DURATION_MS = 250;
+// How long a swap has to be taking before it is worth showing, and the longer
+// fuse before it is worth *saying*. See showLoadingIndicator.
+const LOADING_SPINNER_REVEAL_MS = 500;
+const LOADING_ANNOUNCE_MS = 1500;
 // Zoom is continuous, and "Zoom: 3.2500000000000004" is not a reading anyone
 // wants.
 function formatZoom(zoom) {
@@ -98,7 +121,7 @@ function formatZoom(zoom) {
 // Variables range from shares in [0, 1] to GDP figures in the millions, and the
 // legend has one narrow line to say where a class starts and ends, so the
 // magnitude picks the form rather than a single fixed precision.
-function formatLegendValue(value) {
+export function formatLegendValue(value) {
   if (!Number.isFinite(value)) return "n/a";
   const magnitude = Math.abs(value);
   if (magnitude >= 1e6) {
@@ -119,6 +142,20 @@ function formatLegendRange(classBreak) {
   const high = formatLegendValue(classBreak?.max);
   // A class can hold a single country, or several that share a value.
   return low === high ? low : `${low} \u2013 ${high}`;
+}
+
+// The same span written for a reader rather than for a narrow line. An en dash
+// is a dash on screen and anything from "en dash" to silence in a screen
+// reader, so the word is spelled out where the text is only ever spoken.
+export function speakLegendRange(classBreak) {
+  const low = formatLegendValue(classBreak?.min);
+  const high = formatLegendValue(classBreak?.max);
+  return low === high ? low : `${low} to ${high}`;
+}
+
+export function speakCountryCount(count) {
+  if (!Number.isFinite(count)) return "";
+  return count === 1 ? "1 country" : `${count} countries`;
 }
 
 function compileLegendMeaning(legendMeta) {
@@ -157,7 +194,7 @@ function compileLegendMeaning(legendMeta) {
 }
 
 export class MapController extends BaseController {
-  constructor({ state, meta, legendMeta, mapServerBase, metadataController, onLayerParamsChange }) {
+  constructor({ state, meta, legendMeta, mapServerBase, metadataController, onLayerParamsChange, onStateChange }) {
     super();
     this.state = state;
     this.meta = meta;
@@ -165,10 +202,15 @@ export class MapController extends BaseController {
     this.metadataController = metadataController;
     this.legendMeaning = compileLegendMeaning(legendMeta);
     this.onLayerParamsChange = typeof onLayerParamsChange === "function" ? onLayerParamsChange : () => {};
+    // Fired from refreshLegend, which is the one place every change of what the
+    // map is showing passes through. MapDataController hangs the spoken summary
+    // off it.
+    this.onStateChange = typeof onStateChange === "function" ? onStateChange : () => {};
     this.areaOutlinesEnabled = readAreaOutlinesEnabled(AREA_OUTLINES_DEFAULT);
     this.projectionKey = readMapProjection(PROJECTION_KEYS, DEFAULT_PROJECTION_KEY);
 
     this.loadingIndicator = this.getEl("loading-indicator");
+    this.loadingStatusEl = this.getEl("mapLoadingStatus");
     this.legendDock = this.getEl("mapLegendDock");
     this.legendTip = this.getEl("legendTooltip");
     this.legendTipClassEl = this.getEl("legendTooltipClass");
@@ -211,6 +253,7 @@ export class MapController extends BaseController {
     this.legendTipKey = null;
 
     this.loadingRevealTimer = null;
+    this.loadingAnnounceTimer = null;
   }
 
   initialize() {
@@ -705,7 +748,15 @@ export class MapController extends BaseController {
             </label>`;
         }).join("")}
       </div>
-      <div class="map-display-options map-display-extra">
+      <!-- On screen rather than behind Shift+D with the rest of the extras.
+           The outlines are what separates two adjacent classes a shade apart,
+           and for a reader who cannot use hue at all -- the diverging ramp has
+           two classes that print as the same grey -- they are the only thing
+           that does. A control that carries that much is not a developer
+           affordance, and leaving it behind an undocumented shortcut meant
+           anyone who turned the outlines off (the choice is remembered in a
+           cookie) had no way of finding out how to turn them back on. -->
+      <div class="map-display-options">
         <label class="map-display-option">
           <input id="areaOutlineToggle" type="checkbox" />
           <span>Outline equal-colour areas</span>
@@ -796,22 +847,46 @@ export class MapController extends BaseController {
     return hexSize;
   }
 
+  // The spinner is `aria-hidden`, which is right for the ordinary case: most
+  // swaps land inside the half second before it is even shown, and a reader
+  // does not want "loading, loaded" between every year. The spoken status is
+  // therefore on a longer fuse than the spinner -- past LOADING_ANNOUNCE_MS the
+  // wait has stopped being a flicker and started being a question -- and it is
+  // never armed during an animation, where a year a second is the point.
   showLoadingIndicator() {
-    if (this.loadingRevealTimer !== null) {
-      window.clearTimeout(this.loadingRevealTimer);
-    }
+    this.clearLoadingTimers();
     this.loadingRevealTimer = window.setTimeout(() => {
       this.loadingRevealTimer = null;
       this.loadingIndicator.classList.add("is-loading");
-    }, 500);
+    }, LOADING_SPINNER_REVEAL_MS);
+
+    if (this.state.isAutoPlaying) return;
+    this.loadingAnnounceTimer = window.setTimeout(() => {
+      this.loadingAnnounceTimer = null;
+      this.setLoadingStatus("Loading map…");
+    }, LOADING_ANNOUNCE_MS);
   }
 
   hideLoadingIndicator() {
-    if (this.loadingRevealTimer !== null) {
-      window.clearTimeout(this.loadingRevealTimer);
-      this.loadingRevealTimer = null;
-    }
+    const wasAnnounced = this.loadingStatusEl?.textContent !== "";
+    this.clearLoadingTimers();
     this.loadingIndicator.classList.remove("is-loading");
+    // Only worth saying if the start of the wait was worth saying; otherwise
+    // "Map updated" arrives out of nowhere for a swap nobody was told about.
+    this.setLoadingStatus(wasAnnounced ? "Map updated." : "");
+  }
+
+  clearLoadingTimers() {
+    for (const key of ["loadingRevealTimer", "loadingAnnounceTimer"]) {
+      if (this[key] === null) continue;
+      window.clearTimeout(this[key]);
+      this[key] = null;
+    }
+  }
+
+  setLoadingStatus(text) {
+    if (!this.loadingStatusEl || this.loadingStatusEl.textContent === text) return;
+    this.loadingStatusEl.textContent = text;
   }
 
   loadNextLayer(onReady) {
@@ -972,6 +1047,12 @@ export class MapController extends BaseController {
       <div class="legend-copy">
         <div class="legend-title"></div>
         <div class="legend-subtitle"></div>
+        <!-- The way into the map's contents that does not go through the
+             picture. MapDataController binds it; the button lives here because
+             the legend is where "what am I looking at" already is. -->
+        <button id="mapDataTableBtn" type="button" class="legend-data-button" aria-haspopup="dialog">
+          Data table
+        </button>
       </div>
       <div class="legend-scale">
         <div class="legend-bar"></div>
@@ -996,14 +1077,31 @@ export class MapController extends BaseController {
     // which left the cream over Greenland or Antarctica looking like a shade
     // the ramp had run out of. The swatch is painted from the basemap's own
     // colour so the two cannot drift apart.
-    this.legendNoDataEl.title =
+    const noDataNote =
       "Countries with no value for this variable and year keep the plain land colour — no hexagons and no outline.";
+    this.legendNoDataEl.title = noDataNote;
+    // A `title` is a mouse affordance: it never reaches the keyboard, and this
+    // element is not focusable to begin with. The sentence is the only thing
+    // that says what the cream on the map means, so it is in the text as well.
+    const noDataText = document.createElement("span");
+    noDataText.className = "visually-hidden";
+    noDataText.textContent = ` — ${noDataNote}`;
+    this.legendNoDataEl.appendChild(noDataText);
     this.legend = div;
     this.legend.style.setProperty("--land-basemap", LAND_BASEMAP_COLOR);
     this.legendDock.append(div);
 
     // The swatches are built once and only recoloured afterwards: rebuilding the
     // bar per refresh would drop the focus and the hover the tooltip hangs off.
+    //
+    // `role="img"` with a tab stop rather than a button: there is nothing to
+    // activate, the card is a reading of the swatch and not an action on it.
+    // What that costs is that the card cannot be the swatch's only voice — a
+    // reader arriving on one hears its `aria-label` and nothing else — so the
+    // label carries the class number, the value span and the country count in
+    // full, and `applyLegendSwatchLabels` rewrites it as soon as the numbers
+    // land. `aria-describedby` pointing at the card was the other way round and
+    // would have described an element that is `hidden` most of the time.
     this.legendBarEl.innerHTML = Array.from({ length: LEGEND_CLASS_COUNT }, (_, index) =>
       `<span class="legend-swatch" data-class-index="${index + 1}" role="img" tabindex="0"></span>`)
       .join("");
@@ -1055,18 +1153,18 @@ export class MapController extends BaseController {
     const tipKey = `${breaksKey}#${classIndex}`;
     this.legendTipKey = tipKey;
 
-    let classes = this.classBreaksCache.get(breaksKey);
-    if (classes === undefined) {
+    let breaks = this.classBreaksCache.get(breaksKey);
+    if (breaks === undefined) {
       // Show the class straight away and let the numbers arrive; the first hover
       // on a year is the only one that waits, the rest are served from cache.
       this.renderLegendTip(classIndex, undefined);
       this.placeLegendTip(swatch);
-      classes = await this.ensureClassBreaks(breaksKey);
+      breaks = await this.ensureClassBreaks(breaksKey);
       // The pointer may have left the bar, or the year moved on, while we waited.
       if (this.legendTipKey !== tipKey) return;
     }
 
-    this.renderLegendTip(classIndex, classes);
+    this.renderLegendTip(classIndex, breaks);
     this.placeLegendTip(swatch);
   }
 
@@ -1077,11 +1175,11 @@ export class MapController extends BaseController {
     this.legendTip.hidden = true;
   }
 
-  renderLegendTip(classIndex, classes) {
-    const classBreak = this.findClassBreak(classes, classIndex);
+  renderLegendTip(classIndex, breaks) {
+    const classBreak = this.findClassBreak(breaks, classIndex);
     this.legendTipClassEl.textContent = `Class ${classIndex} of ${LEGEND_CLASS_COUNT}`;
 
-    if (classes === undefined) {
+    if (breaks === undefined) {
       this.legendTipRangeEl.textContent = "Loading\u2026";
       this.legendTipCountEl.hidden = true;
     } else if (!classBreak) {
@@ -1128,14 +1226,24 @@ export class MapController extends BaseController {
     return `${dataset}|${variable}|${year}`;
   }
 
-  findClassBreak(classes, classIndex) {
-    if (!Array.isArray(classes)) return null;
-    return classes.find((entry) => entry.classIndex === classIndex) || null;
+  findClassBreak(breaks, classIndex) {
+    if (!Array.isArray(breaks?.classes)) return null;
+    return breaks.classes.find((entry) => entry.classIndex === classIndex) || null;
+  }
+
+  // Whatever has already been answered for this key, without asking: `undefined`
+  // for a key never fetched, `null` for one whose fetch failed. The map summary
+  // reads through this so that a year going past during autoplay never starts a
+  // request of its own.
+  getCachedClassBreaks(key = this.classBreaksKey()) {
+    return this.classBreaksCache.get(key);
   }
 
   // The map colours by quantile, which says nothing about where a class starts
   // and ends; these are those edges, from the same country_scores() call the WMS
-  // layer classes on.
+  // layer classes on. The two country totals come back with them, because the
+  // spoken summary of the map needs to say how much of the world this year
+  // actually covers and this is the request already being made for it.
   ensureClassBreaks(key) {
     if (this.classBreaksCache.has(key)) return Promise.resolve(this.classBreaksCache.get(key));
     const inFlight = this.classBreaksRequests.get(key);
@@ -1148,14 +1256,23 @@ export class MapController extends BaseController {
         if (!response.ok) throw new Error(`Could not load class breaks: ${response.status}`);
         return response.json();
       })
-      .then((payload) => (Array.isArray(payload?.classes) ? payload.classes : []))
+      .then((payload) => ({
+        classes: Array.isArray(payload?.classes) ? payload.classes : [],
+        countriesWithData: Number.isFinite(payload?.countriesWithData) ? payload.countriesWithData : null,
+        countriesTotal: Number.isFinite(payload?.countriesTotal) ? payload.countriesTotal : null,
+      }))
       .catch((error) => {
         console.error(error);
         return null;
       })
-      .then((classes) => {
-        this.rememberClassBreaks(key, classes);
-        return classes;
+      .then((breaks) => {
+        this.rememberClassBreaks(key, breaks);
+        // The swatches carry their spans in their accessible names, so the
+        // names can only be complete once this has landed. Only for the key the
+        // map is actually on: a stale year's numbers on the live bar would be
+        // worse than none.
+        if (key === this.classBreaksKey()) this.applyLegendSwatchLabels(breaks);
+        return breaks;
       })
       .finally(() => this.classBreaksRequests.delete(key));
 
@@ -1189,8 +1306,10 @@ export class MapController extends BaseController {
     // keeps the bar reading left-to-right low-to-high whichever way it does.
     this.legendSwatchEls.forEach((swatch, index) => {
       swatch.style.background = legendColors[index];
-      swatch.setAttribute("aria-label", `Quantile class ${index + 1} of ${LEGEND_CLASS_COUNT}`);
     });
+    // Whatever is already known for this variable-year; the request started
+    // below (or an earlier hover's) rewrites them when it lands.
+    this.applyLegendSwatchLabels(this.getCachedClassBreaks());
     if (this.legendLowEl) this.legendLowEl.textContent = text.low;
     if (this.legendHighEl) this.legendHighEl.textContent = text.high;
     if (this.legendNoteEl) {
@@ -1207,6 +1326,51 @@ export class MapController extends BaseController {
     }
 
     window.requestAnimationFrame(() => this.rebalanceLegendPosition());
+    // Everything that reads the map without looking at it hangs off this one
+    // call, because refreshLegend is the single place every change of dataset,
+    // variable, year or polarity passes through — including an autoplay frame.
+    this.onStateChange();
+  }
+
+  // A swatch has to say what it stands for on its own: it is a coloured box,
+  // the card that explains it is only there while it is hovered or focused, and
+  // a colour is exactly the thing some readers of this page cannot use. Until
+  // the class breaks land there is only the class number to give, which is
+  // still better than "image".
+  applyLegendSwatchLabels(breaks) {
+    this.legendSwatchEls.forEach((swatch, index) => {
+      const classIndex = index + 1;
+      const base = `Quantile class ${classIndex} of ${LEGEND_CLASS_COUNT}`;
+      const classBreak = this.findClassBreak(breaks, classIndex);
+      if (!classBreak) {
+        swatch.setAttribute("aria-label", base);
+        return;
+      }
+      const countries = speakCountryCount(classBreak.countryCount);
+      swatch.setAttribute(
+        "aria-label",
+        `${base}: ${speakLegendRange(classBreak)}${countries ? `, ${countries}` : ""}`,
+      );
+    });
+  }
+
+  // How the colours on the map are to be read, in words, for whoever is
+  // building the map's non-visual equivalent. Everything here is already on the
+  // legend; this is the one place it can be had as data rather than as DOM.
+  describeLegend() {
+    const polarity = this.metadataController.getActivePolarity();
+    const text = this.resolveLegendMeaning(this.state.dataset, this.state.variable);
+    return {
+      title: text.title,
+      low: text.low,
+      high: text.high,
+      note: text.note,
+      directionHint: this.legendDirectionHint(polarity),
+      polarity,
+      classCount: LEGEND_CLASS_COUNT,
+      projectionTitle: this.projection?.title || this.projectionKey,
+      noDataNote: "Countries with no value for this variable and year are drawn as plain land, with no hexagons.",
+    };
   }
 
   legendColorsForPolarity(polarity) {
@@ -1215,7 +1379,7 @@ export class MapController extends BaseController {
   }
 
   legendDirectionHint(polarity) {
-    if (polarity === POLARITY_NEUTRAL) return "Higher values are mapped to darker green tones.";
+    if (polarity === POLARITY_NEUTRAL) return "Higher values run from deep purple through teal to light green.";
     return polarity === POLARITY_POSITIVE
       ? "Higher values are mapped to blue tones."
       : "Higher values are mapped to red tones.";

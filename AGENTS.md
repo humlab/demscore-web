@@ -47,6 +47,10 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - WMS layer lifecycle (active layer + pending layer for smooth swaps)
   - legend rendering and overlap rebalancing
   - legend swatch hover card (which value span each colour stands for)
+- `src/controllers/MapDataController.js`
+  - the map's non-visual equivalent: the standing summary (`#mapSummary`), the one-sentence
+    live announcement (`#mapAnnouncer`), and the data table dialog with its CSV download
+  - hangs off `MapController`'s `onStateChange`, fired from `refreshLegend()`
 - `src/DemscoreApp.js`
   - orchestrates app startup and shared state
   - timeline rendering/scrubbing, and the variable caption under it
@@ -84,9 +88,14 @@ Runtime endpoints:
 - `GET /api/config/variable-metadata/:dataset`
 - `GET /api/config/variable-metadata/:dataset/:variable`
 - `GET /api/class-breaks?dataset=&variable=&year=` — the seven quantile class spans behind the
-  legend bar, from the same `demscore.country_scores()` call the WMS layer classes on. Not a
-  config file: it is per year, so it is queried live and cached per dataset|variable|year in
-  `MapController`
+  legend bar, from the same `demscore.country_scores()` call the WMS layer classes on, plus
+  `countriesWithData` / `countriesTotal`. Not a config file: it is per year, so it is queried
+  live and cached per dataset|variable|year in `MapController`. Everything that reads the map
+  without looking at it — the swatch labels, the summary, the announcement — comes from this
+  one response, so none of them costs a request of its own
+- `GET /api/map-data?dataset=&variable=&year=` — one row per country on the map (name, ISO3,
+  value, class, no-data), for the data table. Fetched only when the dialog is opened, and not
+  cached: a stale table is worse than a second request
 
 WMS source:
 - Same-origin `/mapserver` route through the Demscore router. Server/browser tile caching is
@@ -534,6 +543,61 @@ Common tasks and where to work:
   - what the outlines are drawn from, and why they follow areas rather than hexagons,
     is in the repository root `AGENTS.md` and `mapserver/README.md`
 
+- Change anything about how the map reads without sight:
+  - `src/controllers/MapDataController.js`. The map is a WMS image, so there is no feature
+    under the pointer to interrogate and nothing inside the tiles an assistive technology can
+    be asked about. These three are its equivalent, not a description of it:
+    - `#mapSummary` — the standing reading: dataset, variable, year, projection, how the
+      colours run, how much of the world carries a value, and each class's span. A `region`,
+      **not** a live one: it is several sentences plus seven list items and it is rewritten
+      on every frame of an animation
+    - `#mapAnnouncer` — the live one, `role="status"`. One sentence, only once the selection
+      has stopped moving (`ANNOUNCE_SETTLE_MS`), and never during autoplay. A polite region
+      that fires per keystroke is worse than none: the reader hears the first word of each
+      announcement and none of the rest
+    - `#mapDataDialog` — the countries as sortable rows, with the same rows as a CSV built in
+      the browser from what was already fetched
+  - the trigger button is built into the legend by `MapController.initializeLegend()`, so
+    `MapDataController` is constructed *after* `MapController.initialize()`
+  - a change that colours the map from anything other than `demscore.country_scores()` has to
+    bring all of this with it; nothing enforces that the picture and the text agree beyond
+    their both being read from that function
+
+- Change a control's focus behaviour, a dialog, or the hover card:
+  - `:focus-visible` at the top of `styles.css` is the floor every control falls back to.
+    A rule that sets `outline: none` has to put something at least as visible in its place
+    in the same block — `#yearSlider` is the worked example: the input is transparent and
+    stretched over the whole wrap, so its ring is drawn on `.timeline-marker-line` and
+    `.timeline-year-label` through `.timeline-slider-wrap:has(#yearSlider:focus-visible)`
+  - `#variableTooltip` is two cards in one element. Hovering a row shows it as a `tooltip`;
+    clicking an info button shows the same content as a non-modal `dialog` with a close
+    button, a focus moved into it and a focus given back.
+    `MetadataController.openVariableInfoPopover()` and `hideVariableTooltip()` switch the
+    role, the close button and the trigger's `aria-expanded` together — none of the three can
+    move without the other two. A new trigger needs `aria-haspopup="dialog"`,
+    `aria-expanded`, `aria-controls="variableTooltip"`, *and* an entry in the `pointerdown`
+    allowlist (see below)
+  - the card's `focusout` closes it, except when the focus is going to the trigger that
+    opened it: focus lands on a button before its click handler runs, so closing there would
+    beat the toggle to it and the click would reopen what it meant to shut
+  - **anything given `display:` in a rule of its own needs a matching `[hidden]` rule**, or
+    the `hidden` attribute stops working on it — `.variable-tooltip-close[hidden]` is there
+    because it did
+  - the phone picker is a grouped list of buttons, not a listbox. It used to claim
+    `role="listbox"` over `role="option"` children with none of the keyboard behaviour that
+    promises. Restoring the listbox would mean arrow keys, Home/End, typeahead and
+    `aria-activedescendant`; nothing here wants to mimic a native select, so it says what it
+    is and marks the current one with `aria-current`
+
+- Change the coverage strip's text:
+  - `MetadataController.describeCoverage()`. `renderCoverageStrip()` draws the strip and
+    hands back what it drew rather than placing the text itself, because the two callers need
+    it in different places: in the sidebar the row is a `<label>` wrapping a radio, so text
+    put inside it lands in the radio's *name* and, with `aria-describedby` pointing at the
+    same span, is then read a second time as its description
+  - the phone picker option *is* the button, so its text joins the button's name and only the
+    part the visible meta line does not already give is added
+
 ## Guardrails
 - Keep responsibilities separated:
   - data/selection logic in `MetadataController`
@@ -551,7 +615,10 @@ After edits, run at minimum:
 - `node --check src/controllers/MapController.js`
 - `node --check src/core/BaseController.js`
 - `node --check src/core/BackendClient.js`
+- `node --check src/controllers/MapDataController.js`
 - `node --check src/core/projection.js`
+- `node ../scripts/check_palette_contrast.mjs` if any colour moved — it also checks that the
+  legend ramps still match `mapserver/hex_classes.inc`
 
 Then do a manual smoke test in browser:
 - boot state (throttle the network or delay `/api/config/**`): three dots under "Filter by
@@ -600,6 +667,10 @@ Then do a manual smoke test in browser:
   title, the bar, both end labels and the note inside the dock, with nothing clipped. The
   in-between widths (a window wide enough to keep the sidebar but not to sit the two columns
   side by side) are the ones that used to fail
+- keyboard: the pass in the repository root's `ACCESSIBILITY.md`. Tab order should run
+  sidebar -> timeline -> map controls -> legend, which is the visible layout and the reason
+  `#timeline-overlay` sits before `<main id="map">` in the source despite being painted over
+  it
 - projection toggle: Equal Earth and Mercator both draw land and hexagons, the view keeps
   looking at the same place and the same fraction of the world, the zoom readout means the
   same thing in both, and switching back leaves no stale tiles. **Every cell is a regular

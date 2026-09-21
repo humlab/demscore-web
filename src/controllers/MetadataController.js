@@ -268,8 +268,12 @@ export class MetadataController extends BaseController {
     this.variableTooltipKey = this.getEl("variableTooltipKey");
     this.variableTooltipDataset = this.getEl("variableTooltipDataset");
     this.variableTooltipBody = this.getEl("variableTooltipBody");
+    this.variableTooltipCloseBtn = this.getEl("variableTooltipCloseBtn");
     this.tooltipHideTimer = null;
     this.tooltipPersistent = false;
+    // Which button opened the persistent card, so its `aria-expanded` can be
+    // put back and the focus returned to it when the card closes.
+    this.tooltipTrigger = null;
     this.mobilePickerTopics = new Set();
     this.mobilePickerQuery = "";
   }
@@ -483,12 +487,23 @@ export class MetadataController extends BaseController {
 
     this.mobileVariablePickerBtn.addEventListener("click", () => {
       this.openDialog(this.mobileVariablePickerDialog);
+      this.mobileVariablePickerBtn.setAttribute("aria-expanded", "true");
       this.refreshMobilePicker();
       window.setTimeout(() => this.mobileVariableSearch.focus(), 0);
     });
 
     this.mobileVariablePickerCloseBtn.addEventListener("click", () => {
       this.closeDialog(this.mobileVariablePickerDialog);
+    });
+
+    // One place for everything that shuts the dialog: the close button, Escape
+    // (which `showModal` handles itself), and picking a variable. `<dialog>`
+    // returns the focus to the opener on its own in current browsers, but not
+    // in the `open` attribute fallback below it, and the opener's state has to
+    // be put back either way.
+    this.mobileVariablePickerDialog.addEventListener("close", () => {
+      this.mobileVariablePickerBtn.setAttribute("aria-expanded", "false");
+      this.mobileVariablePickerBtn.focus();
     });
 
     this.mobileVariableSearch.addEventListener("input", () => {
@@ -538,6 +553,9 @@ export class MetadataController extends BaseController {
       return;
     }
     dialog.removeAttribute("open");
+    // `close` only fires for the real thing, so the fallback path has to say so
+    // itself or nothing puts the opener back.
+    dialog.dispatchEvent(new Event("close"));
   }
 
   async openVariableInfoPopover(
@@ -546,6 +564,18 @@ export class MetadataController extends BaseController {
     { anchor = null, triggerButton = null } = {},
   ) {
     if (!this.hasVariableMetadataSummary(datasetKey, variableKey)) return;
+    // A trigger with `aria-expanded="true"` has promised that pressing it again
+    // will close what it opened, so it does.
+    const alreadyOpen =
+      this.tooltipPersistent &&
+      !this.variableTooltip.hidden &&
+      this.tooltipVariable === `${datasetKey}:${variableKey}` &&
+      (!triggerButton || this.tooltipTrigger === triggerButton);
+    if (alreadyOpen) {
+      this.hideVariableTooltip({ restoreFocus: true });
+      return;
+    }
+
     this.hideVariableTooltip();
     const opensSelectedVariable = datasetKey === this.state.dataset && variableKey === this.state.variable;
     if (opensSelectedVariable && this.mobileVariableInfoBtn.disabled) return;
@@ -555,7 +585,10 @@ export class MetadataController extends BaseController {
     await this.ensureVariableFullMetadata(datasetKey, variableKey);
     if (opensSelectedVariable && (this.state.dataset !== datasetKey || this.state.variable !== variableKey)) {
       this.refreshVariableMetadataPanel();
-      if (triggerButton) triggerButton.disabled = false;
+      if (triggerButton) {
+        triggerButton.disabled = false;
+        if (document.activeElement === document.body) triggerButton.focus();
+      }
       return;
     }
 
@@ -570,11 +603,37 @@ export class MetadataController extends BaseController {
         !this.hasVariableMetadataSummary(datasetKey, variableKey) ||
         this.getCachedFullVariableMetadata(datasetKey, variableKey) === null;
     }
-    if (!hasContent) return;
+    // Disabling the trigger for the length of the fetch drops the focus onto
+    // the body, so every way out of here has to put it somewhere. When the card
+    // opens that is the card; when it does not, it is the button that asked.
+    if (!hasContent) {
+      if (triggerButton && !triggerButton.disabled && document.activeElement === document.body) {
+        triggerButton.focus();
+      }
+      return;
+    }
     this.tooltipPersistent = true;
+    this.tooltipTrigger = triggerButton || null;
     this.tooltipVariable = `${datasetKey}:${variableKey}`;
+
+    // A tooltip is a passing description of whatever the pointer is on. This
+    // one stays until it is dismissed, holds several paragraphs and two links,
+    // and now has a close button, so it is a dialog and says so. Not modal: the
+    // page behind it stays usable, which is the point of a card you can leave
+    // open while you carry on reading the list.
+    this.variableTooltip.setAttribute("role", "dialog");
+    this.variableTooltip.setAttribute("aria-modal", "false");
+    this.variableTooltip.tabIndex = -1;
+    this.variableTooltipCloseBtn.hidden = false;
+    if (triggerButton) triggerButton.setAttribute("aria-expanded", "true");
+
     this.variableTooltip.hidden = false;
     this.positionVariableTooltip(anchor || triggerButton || this.mobileVariableInfoBtn || this.variableList);
+    // Into the card rather than onto its close button: the card is what was
+    // asked for, and landing on Close would read the way out before reading
+    // anything to come out of. Tab from here reaches the close button and the
+    // two footer links, and Escape closes from anywhere.
+    this.variableTooltip.focus();
   }
 
   async changeDataset(datasetKey, { onBeforeDatasetChange, onDatasetChange } = {}) {
@@ -838,10 +897,22 @@ export class MetadataController extends BaseController {
     infoButton.disabled = !this.hasVariableMetadataSummary(datasetKey, variable);
     infoButton.title = infoButton.disabled ? "No variable information available" : `Variable information: ${title}`;
     infoButton.setAttribute("aria-label", `Variable information: ${title}`);
+    // The card it opens is a dialog that stays put, so the button reports
+    // whether it is open — see openVariableInfoPopover.
+    infoButton.setAttribute("aria-haspopup", "dialog");
+    infoButton.setAttribute("aria-expanded", "false");
+    infoButton.setAttribute("aria-controls", "variableTooltip");
     infoButton.innerHTML = '<i data-lucide="info" aria-hidden="true"></i>';
     option.appendChild(infoButton);
 
-    this.renderCoverageStrip(datasetKey, option, variable);
+    // Outside the `<label>`, so it describes the radio instead of becoming part
+    // of its name. A list read row by row should be read by variable title.
+    const coverageDrawn = this.renderCoverageStrip(datasetKey, option, variable);
+    if (coverageDrawn) {
+      const id = `coverage-${datasetKey}-${variable}`;
+      option.appendChild(this.buildCoverageText(this.describeCoverage(coverageDrawn.entry, coverageDrawn.axis), id));
+      input.setAttribute("aria-describedby", id);
+    }
     return option;
   }
 
@@ -892,6 +963,30 @@ export class MetadataController extends BaseController {
     return this.coverageAxis;
   }
 
+  // What the strip says in words.
+  //
+  // The strip itself is an `aria-hidden` SVG plus a `title`, and neither of
+  // those reaches anyone who is not pointing a mouse at it: `title` is not
+  // exposed to the keyboard at all and is not dependable in a screen reader
+  // either. Which years, and how many countries, is the entire content of the
+  // strip, so this is not a reduced version of it -- it is the same thing said
+  // in words.
+  describeCoverage(entry, axis) {
+    const range = entry.yearMin === entry.yearMax ? `${entry.yearMin} only` : `${entry.yearMin} to ${entry.yearMax}`;
+    const clipped = entry.yearMin < axis.yearMin ? `, continuing before ${axis.yearMin}` : "";
+    return `Data ${range}, up to ${this.describeCoverageCountries(entry)}${clipped}`;
+  }
+
+  describeCoverageCountries(entry) {
+    return entry.maxCountries === 1 ? "1 country" : `${entry.maxCountries} countries`;
+  }
+
+  // Draws the strip and hands back what it drew, so the caller can say it in
+  // words wherever that text belongs. It cannot be placed from here: in the
+  // sidebar the row is a `<label>` wrapping a radio, so text put inside it
+  // lands in the radio's *name* and, with `aria-describedby` pointing at the
+  // same span, is then read a second time as its description. The two callers
+  // want it in two different places for that reason.
   renderCoverageStrip(datasetKey, option, variable) {
     const target = option.querySelector(".variable-option-coverage");
     if (!target) return;
@@ -903,7 +998,7 @@ export class MetadataController extends BaseController {
       // track, which would read as "this variable has no data anywhere".
       target.innerHTML = "";
       target.hidden = true;
-      return;
+      return null;
     }
 
     const { dataset, entry } = data;
@@ -917,6 +1012,18 @@ export class MetadataController extends BaseController {
       `, up to ${entry.maxCountries} countries` +
       ` (axis: ${axis.yearMin}\u2013${axis.yearMax}` +
       `${entry.yearMin < axis.yearMin ? `, continues before ${axis.yearMin}` : ""})`;
+
+    return { entry, axis };
+  }
+
+  // A run of off-screen text, for the two places a strip has to be said rather
+  // than seen.
+  buildCoverageText(text, id = null) {
+    const el = document.createElement("span");
+    el.className = "visually-hidden";
+    if (id) el.id = id;
+    el.textContent = text;
+    return el;
   }
 
   // One <svg> holding one <path>, for the row strip and the hover card alike:
@@ -1012,9 +1119,19 @@ export class MetadataController extends BaseController {
       true,
     );
     window.addEventListener("resize", () => this.hideVariableTooltip());
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") this.hideVariableTooltip();
+
+    this.variableTooltipCloseBtn.addEventListener("click", () => {
+      this.hideVariableTooltip({ restoreFocus: true });
     });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      // Escape out of the persistent card puts the focus back where it came
+      // from; Escape while a hover card happens to be up is just a dismissal
+      // and must not move anyone's focus.
+      this.hideVariableTooltip({ restoreFocus: this.tooltipPersistent });
+    });
+
     document.addEventListener("pointerdown", (event) => {
       if (!this.tooltipPersistent || this.variableTooltip.hidden) return;
       if (this.variableTooltip.contains(event.target)) return;
@@ -1022,6 +1139,26 @@ export class MetadataController extends BaseController {
       // its own opening click is read as a click outside and shuts the card in
       // the same gesture that asked for it.
       if (event.target.closest(".variable-option-info, .timeline-variable-info, #mobileVariableInfoBtn")) return;
+      this.hideVariableTooltip();
+    });
+
+    // Tab past the last thing in the card and the focus lands somewhere behind
+    // it with the card still open and still claiming to be a dialog. It is not
+    // modal, so the focus is not trapped -- it is simply closed instead, which
+    // is what leaving it means.
+    this.variableTooltip.addEventListener("focusout", (event) => {
+      if (!this.tooltipPersistent) return;
+      if (event.relatedTarget && this.variableTooltip.contains(event.relatedTarget)) return;
+      // The button that opened it is not "somewhere behind it": it is the card's
+      // own control, it says `aria-expanded="true"`, and pressing it is how the
+      // card is meant to be closed. Closing here instead would beat the toggle
+      // to it -- focus lands on the button before its click runs, so the card
+      // would shut and the click would open it straight back up.
+      if (event.relatedTarget === this.tooltipTrigger) return;
+      // A focusout with no relatedTarget is the focus leaving the document
+      // (another window, the URL bar); the card should still be there on the
+      // way back.
+      if (!event.relatedTarget) return;
       this.hideVariableTooltip();
     });
   }
@@ -1063,15 +1200,38 @@ export class MetadataController extends BaseController {
     }, 120);
   }
 
-  hideVariableTooltip() {
+  // Closing covers both cards, and the persistent one has an undo to run: it
+  // was a dialog with a name and a focus inside it, and it has to go back to
+  // being a tooltip with neither.
+  //
+  // `{ restoreFocus }` is false for the paths that close the card without the
+  // reader asking -- a scroll, a resize, a dataset switch, a hover moving on.
+  // Pulling the focus back to a button in those is worse than leaving it: the
+  // reader may be somewhere else entirely by then. The focus is also only ever
+  // taken back if it is still inside the card, for the same reason.
+  hideVariableTooltip({ restoreFocus = false } = {}) {
     window.clearTimeout(this.tooltipTimer);
     window.clearTimeout(this.tooltipHideTimer);
     this.tooltipTimer = null;
     this.tooltipHideTimer = null;
     this.tooltipVariable = null;
+
+    const wasPersistent = this.tooltipPersistent;
+    const trigger = this.tooltipTrigger;
+    const heldFocus = this.variableTooltip.contains(document.activeElement);
+
     this.tooltipPersistent = false;
+    this.tooltipTrigger = null;
     this.variableTooltip.hidden = true;
     this.variableTooltip.classList.remove("is-persistent");
+
+    if (!wasPersistent) return;
+    this.variableTooltip.setAttribute("role", "tooltip");
+    this.variableTooltip.removeAttribute("aria-modal");
+    this.variableTooltip.removeAttribute("tabindex");
+    this.variableTooltipCloseBtn.hidden = true;
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+    if (trigger && (restoreFocus || heldFocus) && trigger.isConnected) trigger.focus();
   }
 
   async showVariableTooltip(option, datasetKey, variable) {
@@ -1513,12 +1673,15 @@ export class MetadataController extends BaseController {
     option.className = "mobile-picker-option";
     option.dataset.dataset = row.datasetKey;
     option.dataset.variable = row.mainVariable;
-    option.setAttribute("role", "option");
     this.applyDatasetPalette(option, row.datasetKey);
 
+    // A plain button, not an `option`: see the note on #mobileVariablePickerList
+    // in index.html. `aria-current` is what marks the one already on the map —
+    // `aria-selected` belongs to a listbox and says nothing on a button.
     const selected = row.datasetKey === this.state.dataset && row.mainVariable === this.state.variable;
     option.classList.toggle("is-selected", selected);
-    option.setAttribute("aria-selected", selected ? "true" : "false");
+    if (selected) option.setAttribute("aria-current", "true");
+    else option.removeAttribute("aria-current");
 
     const head = document.createElement("span");
     head.className = "mobile-picker-option-head";
@@ -1539,7 +1702,15 @@ export class MetadataController extends BaseController {
     const coverage = document.createElement("span");
     coverage.className = "variable-option-coverage mobile-picker-option-coverage";
     option.appendChild(coverage);
-    this.renderCoverageStrip(row.datasetKey, option, row.mainVariable);
+    // The option is the button, so anything put inside it joins the button's
+    // name -- there is nowhere here to hang a separate description without
+    // breaking the `.mobile-picker-option + .mobile-picker-option` spacing. The
+    // meta line above already gives the year range, so only the country count
+    // is added, rather than the whole sentence twice over.
+    const coverageDrawn = this.renderCoverageStrip(row.datasetKey, option, row.mainVariable);
+    if (coverageDrawn) {
+      option.appendChild(this.buildCoverageText(`, up to ${this.describeCoverageCountries(coverageDrawn.entry)}`));
+    }
 
     return option;
   }
@@ -1575,7 +1746,11 @@ export class MetadataController extends BaseController {
 
       const heading = document.createElement("h3");
       heading.className = "mobile-picker-group-title";
+      // The heading is visible, so the group takes its name from it rather than
+      // repeating it in an aria-label that could drift from what is on screen.
+      heading.id = `mobilePickerGroup-${group.id || "other"}`;
       heading.textContent = group.label;
+      section.setAttribute("aria-labelledby", heading.id);
       section.appendChild(heading);
 
       for (const row of group.rows) {

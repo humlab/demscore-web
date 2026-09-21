@@ -3,6 +3,7 @@ import { BackendClient } from "./core/BackendClient.js";
 import { MetadataController } from "./controllers/MetadataController.js";
 import { LayerPreloadController } from "./controllers/LayerPreloadController.js";
 import { MapController } from "./controllers/MapController.js";
+import { MapDataController } from "./controllers/MapDataController.js";
 
 export class DemscoreApp extends BaseController {
   constructor() {
@@ -14,6 +15,7 @@ export class DemscoreApp extends BaseController {
     this.state = null;
     this.metadataController = null;
     this.mapController = null;
+    this.mapDataController = null;
     this.layerPreloadController = null;
 
     this.yearSlider = null;
@@ -111,8 +113,22 @@ export class DemscoreApp extends BaseController {
       // Toggling the area outlines rewrites the tile URLs, so the preload has to
       // start over against the request the map is now making.
       onLayerParamsChange: () => this.restartPreload?.(),
+      // refreshLegend() is the one place every change of what the map draws
+      // passes through, which is why the non-visual reading of the map hangs
+      // off it rather than off each of the half-dozen callers.
+      onStateChange: () => this.mapDataController?.refresh(),
     });
     this.mapController.initialize();
+
+    // After the map, because the "Data table" button it binds is built by
+    // MapController.initializeLegend().
+    this.mapDataController = new MapDataController({
+      state: this.state,
+      meta,
+      metadataController: this.metadataController,
+      mapController: this.mapController,
+    });
+    this.mapDataController.initialize();
 
     this.layerPreloadController = new LayerPreloadController({
       state: this.state,
@@ -321,6 +337,9 @@ export class DemscoreApp extends BaseController {
     info.disabled = !this.metadataController.hasVariableMetadataSummary(dataset, variable);
     info.title = info.disabled ? "No variable information available" : `Variable information: ${title}`;
     info.setAttribute("aria-label", `Variable information: ${title}`);
+    info.setAttribute("aria-haspopup", "dialog");
+    info.setAttribute("aria-expanded", "false");
+    info.setAttribute("aria-controls", "variableTooltip");
     info.innerHTML = '<i data-lucide="info" aria-hidden="true"></i>';
     this.timelineVariableTitle.appendChild(info);
 
@@ -346,7 +365,7 @@ export class DemscoreApp extends BaseController {
 
     this.yearSlider.value = String(this.state.year);
     this.renderTimelineScale(yearMin, yearMax, availableYears, coverage.countryCountsByYear);
-    this.refreshYearDisplay();
+    this.refreshYearDisplay({ coverage });
 
     if (this.state.isAutoPlaying && this.findNextAvailableYear(this.state.year, availableYears) === null) {
       this.stopAutoPlay();
@@ -361,7 +380,9 @@ export class DemscoreApp extends BaseController {
 
     this.state.year = clamped;
     this.yearSlider.value = String(this.state.year);
-    this.refreshYearDisplay();
+    // `bounded` is the year that was actually asked for; where it is not the
+    // year we landed on, the slider says so instead of silently skipping.
+    this.refreshYearDisplay({ coverage, requestedYear: bounded });
 
     if (immediate) {
       this.mapController.refresh();
@@ -547,7 +568,7 @@ export class DemscoreApp extends BaseController {
 
       this.state.year = nextYear;
       this.yearSlider.value = String(this.state.year);
-      this.refreshYearDisplay();
+      this.refreshYearDisplay({ coverage });
       this.mapController.refreshLegend();
 
       // The frame this tick is about to ask for. A scrub, a pause or a later
@@ -588,12 +609,31 @@ export class DemscoreApp extends BaseController {
     this.scheduleAutoPlayTick();
   }
 
-  refreshYearDisplay() {
+  refreshYearDisplay({ coverage = null, requestedYear = null } = {}) {
     const yearText = String(this.state.year);
     this.yearDisplay.textContent = yearText;
     this.yearDisplayHero.textContent = yearText;
+    this.yearSlider.setAttribute("aria-valuetext", this.describeYear(this.state.year, coverage, requestedYear));
     this.updateTimelineMarker();
     this.highlightTimelineTick(this.state.year);
+  }
+
+  // What the slider says its value is, rather than the bare number a range
+  // input announces on its own.
+  //
+  // The year axis runs over the whole dataset span while a variable often
+  // covers a fraction of it, so a step of one on the slider can be a jump of
+  // five on the map: `setYear` snaps to the nearest year that has data. On
+  // screen the preload track shows which years those are; from the keyboard
+  // there was nothing at all, and the value simply skipped. Saying that the
+  // year moved further than asked is the whole point of this string.
+  describeYear(year, coverage = null, requestedYear = null) {
+    const available = (coverage || this.getActiveTimelineCoverage()).availableYears;
+    if (!available.includes(year)) return `${year}, no data`;
+    if (Number.isInteger(requestedYear) && requestedYear !== year) {
+      return `${year}, nearest year with data`;
+    }
+    return String(year);
   }
 
   updateTimelineMarker() {

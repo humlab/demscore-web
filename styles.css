@@ -67,6 +67,36 @@ textarea {
   font-family: inherit;
 }
 
+/* Text that is only ever read aloud: the map's spoken summary, a row's coverage
+   range, a table caption. Off screen rather than `display: none`, which would
+   take it out of the accessibility tree along with the layout. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The floor. Several controls on this page draw their own focus ring and a few
+   used to draw none at all — a transparent range input, the OpenLayers zoom
+   buttons, the playback row — which left a keyboard user moving an invisible
+   caret around the page. This is what anything unstyled gets; the rules that
+   follow only ever *replace* it with something at least as visible, never with
+   `outline: none` on its own.
+
+   `:focus-visible` rather than `:focus`, so a mouse click on a button does not
+   leave a ring behind it. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 #app {
   position: relative;
   display: grid;
@@ -421,11 +451,9 @@ textarea {
   }
 }
 
-.dataset-panel:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -3px;
-}
-
+/* The panel itself is no longer a tab stop, so it has no focus state; what used
+   to be a rule for `.dataset-panel:focus-visible` went with the `tabindex="0"`
+   that made it focusable. */
 .dataset-panel select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -845,6 +873,50 @@ textarea {
   display: none;
 }
 
+/* Only on the persistent card, which is a dialog: a hover card has nothing to
+   close and no way to be clicked. `hidden` on the button is what switches
+   between the two, set alongside the role in MetadataController. */
+.variable-tooltip-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin: -2px -4px 0 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* `display: inline-flex` above beats the user agent's `[hidden] { display:
+   none }` on specificity, so without this the close button shows on the hover
+   card too — where there is nothing to close and nothing that can be clicked. */
+.variable-tooltip-close[hidden] {
+  display: none;
+}
+
+.variable-tooltip-close svg {
+  width: 15px;
+  height: 15px;
+}
+
+.variable-tooltip-close:hover {
+  border-color: var(--panel-border);
+  background: var(--muted-surface);
+  color: var(--text);
+}
+
+/* The card takes focus itself when it opens, so it needs a ring of its own —
+   otherwise opening it moves the focus somewhere with nothing to show for it. */
+.variable-tooltip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .variable-tooltip-title {
   margin: 0;
   font-size: 0.95rem;
@@ -966,8 +1038,145 @@ textarea {
   text-decoration: none;
 }
 
-.variable-meta-links a:hover {
+.variable-meta-links a:hover,
+.variable-meta-links a:focus-visible {
   text-decoration: underline;
+}
+
+/* ---- Data table dialog ----
+   The map's contents as rows. Modal, so the browser traps the focus and
+   handles Escape; everything here is layout. */
+.map-data-dialog {
+  box-sizing: border-box;
+  width: min(760px, calc(100vw - 24px));
+  max-height: calc(100vh - 40px);
+  padding: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-card);
+  background: #fff;
+  color: var(--text);
+}
+
+.map-data-dialog::backdrop {
+  background: color-mix(in srgb, var(--navy-deep) 48%, transparent);
+}
+
+.map-data-summary {
+  margin: 0;
+  padding: 11px 14px 9px;
+  color: var(--text);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.map-data-table-wrap {
+  max-height: min(58vh, 560px);
+  margin: 0 14px;
+  overflow: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
+}
+
+.map-data-table-wrap:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.map-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.map-data-table th,
+.map-data-table td {
+  padding: 5px 9px;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.map-data-table tbody th {
+  font-weight: 400;
+}
+
+.map-data-table .is-numeric {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.map-data-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0;
+  background: var(--muted-surface);
+}
+
+.map-data-sort {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.map-data-table .is-numeric .map-data-sort {
+  text-align: right;
+}
+
+.map-data-sort:hover {
+  background: var(--surface-hover);
+}
+
+.map-data-sort:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* Which way the column is sorted, as a mark as well as in `aria-sort`: the
+   arrow is what a sighted reader has, the attribute is what a screen reader
+   has, and neither stands in for the other. */
+.map-data-sort.is-asc::after {
+  content: " \25B2";
+  font-size: 0.72em;
+}
+
+.map-data-sort.is-desc::after {
+  content: " \25BC";
+  font-size: 0.72em;
+}
+
+.map-data-footer {
+  margin: 0;
+  padding: 11px 14px 13px;
+}
+
+.map-data-download {
+  padding: 7px 13px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
+  background: #fff;
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.map-data-download:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.map-data-download:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .mobile-picker-dialog {
@@ -1378,8 +1587,40 @@ textarea {
   cursor: ew-resize;
 }
 
+/* The input itself is transparent and stretched over the whole wrap, so a ring
+   on it would be a rectangle around the entire timeline with no relation to the
+   year it is on. The ring goes on the marker instead -- the thing that actually
+   moves when the arrow keys are pressed -- and the track under it picks up a
+   halo so the focus is findable even where the marker has been dragged to an
+   edge. Removing the input's own outline is only sound because of the two rules
+   below it; the pair has to move together. */
 #yearSlider:focus-visible {
   outline: none;
+}
+
+.timeline-slider-wrap:has(#yearSlider:focus-visible) .timeline-marker-line,
+.timeline-selected-marker:focus-visible .timeline-marker-line {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  /* The marker line is navy on a white backdrop over a map that may be any
+     colour; the white keeps the ring visible against the dark line itself. */
+  box-shadow: 0 0 0 4px var(--timeline-paper);
+}
+
+.timeline-slider-wrap:has(#yearSlider:focus-visible) .timeline-year-label,
+.timeline-selected-marker:focus-visible .timeline-year-label {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px var(--timeline-paper);
+}
+
+/* Browsers without `:has()` still get the input's own ring rather than nothing,
+   since the rule above only fires where `:has()` is understood. */
+@supports not selector(:has(*)) {
+  #yearSlider:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
 }
 
 .timeline-scale {
@@ -1584,9 +1825,18 @@ textarea {
 }
 
 .playback-control .play-button:hover,
-.playback-control .play-button:focus {
+.playback-control .play-button:focus-visible {
   background: var(--accent-strong);
   color: var(--timeline-paper);
+}
+
+/* The row is a dark navy button against a pair of light ones, both over the
+   map, so the ring is drawn in white with a navy edge outside it: whichever of
+   the two the button is, one half of the ring has contrast against it. */
+.playback-control button:focus-visible {
+  outline: 2px solid var(--timeline-paper);
+  outline-offset: -3px;
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 .playback-control button:active {
@@ -1814,6 +2064,34 @@ textarea {
   line-height: 1.35;
 }
 
+/* The way into the map's contents that is not the picture: opens the same
+   country values the hexagons were coloured by, as a table. It sits in the
+   legend because the legend is already the key to the map, and it survives the
+   phone breakpoint where `.legend-note` does not -- on a phone it is the only
+   way to read an exact value at all. */
+.legend-data-button {
+  margin-top: 9px;
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--paper);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.legend-data-button:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: var(--paper);
+}
+
+.legend-data-button:focus-visible {
+  outline: 2px solid var(--paper);
+  outline-offset: 2px;
+}
+
 .legend-bar {
   display: flex;
   height: 18px;
@@ -1829,10 +2107,14 @@ textarea {
 }
 
 /* The bar is one solid ramp, so the focus ring has to sit inside the swatch to
-   be visible at all; on the dark dock white reads better than the accent. */
+   be visible at all. A swatch can be any colour in either ramp -- near-black
+   purple at one end, pale blue at the other -- so the ring is white with a dark
+   edge inside it, and one of the two always has contrast against whatever it is
+   drawn on. */
 .legend-swatch:focus-visible {
   outline: 2px solid #ffffff;
   outline-offset: -3px;
+  box-shadow: inset 0 0 0 5px rgba(0, 0, 0, 0.7);
 }
 
 /* Legend swatch hover card: like `.variable-tooltip` it sits on <body> and is
@@ -2015,11 +2297,20 @@ textarea {
   border-top: 1px solid var(--panel-border);
 }
 
-.ol-zoom button:hover,
-.ol-zoom button:focus {
+.ol-zoom button:hover {
   background: #f4f4f4;
   color: #000;
-  outline: none;
+}
+
+/* OpenLayers' own stylesheet sets `outline: none` on these, and the rule that
+   replaced it here kept doing the same: the two buttons were reachable by
+   keyboard and gave no sign of it. The ring is inset because the pair sits in
+   an `overflow: hidden` box that would clip an outer one. */
+.ol-zoom button:focus-visible {
+  background: #f4f4f4;
+  color: #000;
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
 }
 
 .ol-zoom button:disabled {
@@ -2077,6 +2368,22 @@ textarea {
   cursor: pointer;
 }
 
+/* The ring goes round the whole label, not round the radio dot: the dot is
+   12px of native widget and the words beside it are what is being chosen. The
+   card is white over the map, so the accent reads against it. */
+.map-display-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-inline);
+}
+
+@supports not selector(:has(*)) {
+  .map-display-option input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
 .zoom-display {
   font-family: var(--font-numeric);
   /* the reading follows a continuous zoom now, so it is sized and spaced for a
@@ -2117,6 +2424,23 @@ textarea {
 
 @keyframes demscore-spin {
   to { transform: rotate(360deg); }
+}
+
+/* Nothing on this page should spin, pulse or slide for someone who has asked
+   the system not to animate. The spinner still has to say "still working", so
+   it keeps its ring and drops the rotation; the preload boxes still have to
+   fill, so they fill in one step rather than sliding. */
+@media (prefers-reduced-motion: reduce) {
+  #loading-indicator {
+    animation: none;
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+    border-top-color: var(--accent);
+    transition: none;
+  }
+
+  .timeline-preload-segment::after {
+    transition: none;
+  }
 }
 
 @media (max-width: 900px) {

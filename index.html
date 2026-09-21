@@ -39,6 +39,7 @@
             type="button"
             class="mobile-picker-trigger"
             aria-haspopup="dialog"
+            aria-expanded="false"
             aria-controls="mobileVariablePickerDialog"
           >
             <span id="mobileSelectedDataset" class="mobile-selected-dataset"></span>
@@ -49,8 +50,15 @@
             <i data-lucide="chevron-down" aria-hidden="true"></i>
           </button>
 
-          <div class="mobile-action-row" aria-label="Variable actions">
-            <button id="mobileVariableInfoBtn" type="button" class="mobile-action-button">
+          <div class="mobile-action-row" role="group" aria-label="Variable actions">
+            <button
+              id="mobileVariableInfoBtn"
+              type="button"
+              class="mobile-action-button"
+              aria-haspopup="dialog"
+              aria-expanded="false"
+              aria-controls="variableTooltip"
+            >
               <i data-lucide="info" aria-hidden="true"></i>
               <span>Info</span>
             </button>
@@ -58,7 +66,11 @@
         </section>
 
         <div id="datasetSection" class="dataset-section">
-          <section id="datasetPanel" class="dataset-panel" tabindex="0">
+          <!-- No tabindex: the panel is a container, everything inside it that
+               can be operated is already a tab stop, and a stop on the box
+               itself was one more press between the search field and the list
+               with nothing to do at it. -->
+          <section id="datasetPanel" class="dataset-panel" aria-label="Variable picker">
             <!-- Local only: it narrows the same list the chips narrow, over the
                  rows already in the browser, and never goes to the backend. -->
             <div class="variable-search-row">
@@ -92,13 +104,12 @@
 
       </aside>
 
-      <main id="map">
-        <div id="mapCanvas" class="map-canvas">
-          <div id="loading-indicator" aria-hidden="true"></div>
-        </div>
-        <div id="mapLegendDock" class="map-legend-dock" aria-label="Map legend"></div>
-      </main>
-
+      <!-- Before the map in the source, though it is painted over it: the
+           timeline is fixed to the *top* of the map pane and the legend dock is
+           at its foot, so a tab order following the source used to run sidebar
+           -> zoom -> legend (bottom) -> timeline (top). It is `position: fixed`
+           and takes no grid cell either way, so where it sits among its
+           siblings is a question of reading order and nothing else. -->
       <div id="timeline-overlay">
         <div class="timeline-main">
           <div class="timeline-controls">
@@ -120,7 +131,15 @@
           </div>
           <div class="timeline-slider-wrap is-awaiting-data" id="timelineWrap">
             <div id="timelinePreloadTrack" class="timeline-preload-track" aria-hidden="true"></div>
-            <input id="yearSlider" type="range" step="1" aria-label="Year timeline" />
+            <!-- The visible timeline is drawn around this input rather than by
+                 it: the range is transparent and stretched over the whole wrap,
+                 and the marker, the scale and the preload track are what is
+                 seen. So the focus ring has to be drawn on the wrap instead —
+                 `.timeline-slider-wrap:has(#yearSlider:focus-visible)` in
+                 styles.css — and the value has to be spoken as more than a
+                 number, which is what `aria-valuetext` is for
+                 (DemscoreApp.refreshYearDisplay). -->
+            <input id="yearSlider" type="range" step="1" aria-label="Year" />
             <div id="timelineScale" class="timeline-scale" aria-hidden="true"></div>
             <div id="timelineSelectedMarker" class="timeline-selected-marker" aria-hidden="true">
               <div class="timeline-marker-line"></div>
@@ -134,8 +153,50 @@
         <p id="timelineVariableTitle" class="timeline-variable-title">
           <span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span>
         </p>
-        <span id="yearDisplay" class="timeline-year-readout" aria-live="polite"></span>
+        <!-- Not a live region any more. The slider announces its own value (and
+             `aria-valuetext` makes that value say how many countries the year
+             covers), so a second announcement was the year twice over — and
+             during an animation it was the year twice over per frame, which is
+             exactly the high-frequency chatter a polite region should never
+             carry. It stays as a readout for anything that wants to read the
+             current year out of the DOM. -->
+        <span id="yearDisplay" class="timeline-year-readout"></span>
       </div>
+
+      <main id="map" aria-labelledby="mapRegionHeading">
+        <h2 id="mapRegionHeading" class="visually-hidden">Hex map</h2>
+
+        <!-- The map itself is a WMS image: there is nothing in it an assistive
+             technology can be asked about, so the two blocks below are its
+             equivalent rather than a description of it.
+
+             `#mapSummary` is the standing reading — dataset, variable, year,
+             projection, how the colours are to be read, how much of the world
+             carries a value, and each class's span. It is deliberately NOT a
+             live region: it is long, and it is rewritten on every year of an
+             animation. `#mapAnnouncer` is the live one, and only ever holds a
+             sentence. See src/controllers/MapDataController.js. -->
+        <div
+          id="mapSummary"
+          class="visually-hidden"
+          role="region"
+          aria-labelledby="mapSummaryHeading"
+        >
+          <h3 id="mapSummaryHeading">What the map is showing</h3>
+          <p id="mapSummaryText"></p>
+          <ul id="mapSummaryClasses"></ul>
+        </div>
+        <p id="mapAnnouncer" class="visually-hidden" role="status" aria-live="polite"></p>
+
+        <div id="mapCanvas" class="map-canvas">
+          <div id="loading-indicator" aria-hidden="true"></div>
+        </div>
+        <!-- Spoken counterpart to the spinner, and only for loads slow enough
+             to be worth interrupting a reader over. -->
+        <p id="mapLoadingStatus" class="visually-hidden" role="status" aria-live="polite"></p>
+        <div id="mapLegendDock" class="map-legend-dock" role="group" aria-label="Map legend"></div>
+      </main>
+
     </div>
 
     <div id="legendTooltip" class="legend-tip" role="tooltip" hidden>
@@ -144,21 +205,79 @@
       <p id="legendTooltipCount" class="legend-tip-count"></p>
     </div>
 
-    <div id="variableTooltip" class="variable-tooltip" role="tooltip" hidden>
+    <!-- Two cards in one element. Hovering a row shows it as a `tooltip`:
+         transient, tied to the pointer, nothing to operate inside it. Clicking
+         an info button shows the same content as a non-modal `dialog`: it stays
+         until it is dismissed, it can be read through, and it has a close
+         button — so it needs a name, a focus to move into, and a focus to give
+         back. `MetadataController.openVariableInfoPopover()` /
+         `hideVariableTooltip()` switch the role and the close button together;
+         neither may be changed without the other. -->
+    <div id="variableTooltip" class="variable-tooltip" role="tooltip" aria-labelledby="variableTooltipTitle" hidden>
       <div class="variable-tooltip-head">
         <div class="variable-tooltip-head-text">
           <p id="variableTooltipTitle" class="variable-tooltip-title"></p>
           <p id="variableTooltipKey" class="variable-tooltip-key"></p>
         </div>
         <span id="variableTooltipDataset" class="variable-tooltip-dataset"></span>
+        <button
+          id="variableTooltipCloseBtn"
+          type="button"
+          class="variable-tooltip-close"
+          aria-label="Close variable information"
+          hidden
+        >
+          <i data-lucide="x" aria-hidden="true"></i>
+        </button>
       </div>
       <div id="variableTooltipBody" class="variable-tooltip-body"></div>
     </div>
 
-    <dialog id="mobileVariablePickerDialog" class="mobile-picker-dialog">
+    <!-- The map as rows, for anyone who cannot be shown a picture of it, and
+         for anyone who wants the number rather than the shade. Modal, so the
+         browser handles the focus trap and Escape; see MapDataController. -->
+    <dialog id="mapDataDialog" class="map-data-dialog" aria-labelledby="mapDataDialogTitle">
       <div class="mobile-dialog-header">
-        <h2>Choose variable</h2>
-        <button id="mobileVariablePickerCloseBtn" type="button" class="mobile-dialog-close-btn" aria-label="Close">
+        <h2 id="mapDataDialogTitle">Data table</h2>
+        <button id="mapDataCloseBtn" type="button" class="mobile-dialog-close-btn" aria-label="Close data table">
+          <i data-lucide="x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <p id="mapDataSummary" class="map-data-summary"></p>
+      <!-- Focusable on purpose, and one of the few things that should be: it
+           scrolls, and a scrollable box with no tab stop cannot be scrolled
+           from the keyboard at all. It has a role and a name to go with it. -->
+      <div
+        id="mapDataTableWrap"
+        class="map-data-table-wrap"
+        role="region"
+        aria-labelledby="mapDataDialogTitle"
+        tabindex="0"
+      >
+        <table class="map-data-table">
+          <caption id="mapDataTableCaption" class="visually-hidden"></caption>
+          <thead id="mapDataTableHead"></thead>
+          <tbody id="mapDataTableBody"></tbody>
+        </table>
+      </div>
+      <p class="map-data-footer">
+        <button id="mapDataDownloadBtn" type="button" class="map-data-download">Download this table as CSV</button>
+      </p>
+    </dialog>
+
+    <dialog
+      id="mobileVariablePickerDialog"
+      class="mobile-picker-dialog"
+      aria-labelledby="mobileVariablePickerTitle"
+    >
+      <div class="mobile-dialog-header">
+        <h2 id="mobileVariablePickerTitle">Choose variable</h2>
+        <button
+          id="mobileVariablePickerCloseBtn"
+          type="button"
+          class="mobile-dialog-close-btn"
+          aria-label="Close variable picker"
+        >
           <i data-lucide="x" aria-hidden="true"></i>
         </button>
       </div>
@@ -170,8 +289,16 @@
         placeholder="Search variables"
         aria-label="Search variables"
       />
-      <div id="mobileTopicChips" class="mobile-topic-chips" aria-label="Filter variables by topic"></div>
-      <div id="mobileVariablePickerList" class="mobile-picker-list" role="listbox" aria-label="Variables"></div>
+      <div id="mobileTopicChips" class="mobile-topic-chips" role="group" aria-label="Filter variables by topic"></div>
+      <!-- A grouped list of buttons, not a listbox. It was marked up as one —
+           `role="listbox"` over children with `role="option"` — without any of
+           the keyboard behaviour that promise carries: no arrow keys, no
+           Home/End, no typeahead, no `aria-activedescendant`. A reader was told
+           to expect a select and got a stack of buttons. Buttons are what it
+           is, so buttons are what it now says; the selected one carries
+           `aria-current`. Implementing the full listbox pattern would be the
+           other way out, but nothing here wants to mimic a native select. -->
+      <div id="mobileVariablePickerList" class="mobile-picker-list" aria-label="Variables"></div>
     </dialog>
 
     <!-- The map is drawn in Equal Earth (EPSG:8857), which no mapping library
