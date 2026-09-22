@@ -50,6 +50,14 @@ const VIRIDIS = ["#472d7b", "#3b528b", "#2c728e", "#21918c", "#28ae80", "#5ec962
 // is centred on a mid-tone for that reason, and separates far better than
 // RdYlBu under simulated deficiency (worst adjacent pair 18.1 against 12.8).
 const INDIGO_AMBER = ["#2b2a70", "#4a54a8", "#8b93cf", "#c4bdb0", "#e0a33c", "#b2700f", "#7a4703"];
+// magma, trimmed before its almost-white end so it remains distinct from the
+// cream no-data land. This is Default's sequential ramp for variables where
+// neither end is favourable or unfavourable.
+const MAGMA = ["#000004", "#4b1177", "#7c2386", "#b73779", "#ed7953", "#fbba72", "#fcfdbf"];
+// Indigo to amber with steadily increasing lightness. Unlike INDIGO_AMBER,
+// which is diverging and darkens again at its amber end, this gives neutral
+// variables an unambiguous low-to-high reading.
+const INDIGO_AMBER_SEQUENTIAL = ["#2b2a70", "#4a54a8", "#7889c0", "#aeb6c9", "#d7c291", "#edaa45", "#f4df6a"];
 // cividis, trimmed at the dark end to clear the greyscale floor. Built so that
 // a protan or deutan viewer sees very nearly what everyone else does, rather
 // than something merely distinguishable.
@@ -59,31 +67,28 @@ export const CLASS_COUNT = 7;
 
 export const MAP_PALETTES = {
   default: {
-    label: "Default",
+    label: "Blue–red",
     // Shown in the picker and in the map's spoken summary.
     description: "Blue to red, with red at the unfavourable end.",
     honoursPolarity: true,
     signed: { base: 0, colors: RD_YL_BU },
-    neutral: { base: 10, colors: VIRIDIS },
+    neutral: { base: 40, colors: MAGMA },
     directionHint: {
       positive: "Higher values are mapped to blue tones.",
       negative: "Higher values are mapped to red tones.",
-      neutral: "Higher values run from deep purple through teal to light green.",
+      neutral: "Higher values run from black-purple through rose to pale gold.",
     },
   },
   indigo_amber: {
     label: "Indigo–amber",
     description: "Indigo to amber, with amber at the unfavourable end. Keeps the direction the default carries, and separates further apart for red-green colour blindness.",
     honoursPolarity: true,
-    // Shares viridis for unsigned variables: this scheme replaces the diverging
-    // ramp, and there is nothing wrong with viridis for a variable that has no
-    // favourable end to begin with.
     signed: { base: 20, colors: INDIGO_AMBER },
-    neutral: { base: 10, colors: VIRIDIS },
+    neutral: { base: 50, colors: INDIGO_AMBER_SEQUENTIAL },
     directionHint: {
       positive: "Higher values are mapped to indigo tones.",
       negative: "Higher values are mapped to amber tones.",
-      neutral: "Higher values run from deep purple through teal to light green.",
+      neutral: "Higher values run from deep indigo through blue to light amber.",
     },
   },
   viridis: {
@@ -115,8 +120,8 @@ export function getPalette(key) {
   return MAP_PALETTES[key] || MAP_PALETTES[DEFAULT_PALETTE_KEY];
 }
 
-// Every distinct band, once, keyed by base. Two schemes share the viridis band,
-// so this is what the generator emits rather than one block per scheme.
+// Every distinct band, once, keyed by base. This is what the generator emits
+// rather than one block per scheme.
 export function paletteBands() {
   const bands = new Map();
   for (const palette of Object.values(MAP_PALETTES)) {

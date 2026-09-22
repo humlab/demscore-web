@@ -162,8 +162,12 @@ export class LayerPreloadController {
     // catch it -- one mesh size spans several stops. Zooming within a stop does
     // not change the tiles, so it still resumes, as a pan does.
     const tileZoom = this.mapController.getVisibleTileZoom();
+    // A palette is part of every non-default tile URL. Neutral Default spells
+    // it out too, so its new sequential ramp cannot inherit stale Viridis
+    // preload marks from the former implicit-default request.
+    const palette = this.mapController.getPaletteKey();
 
-    const signature = `${dataset}|${variable}|${polarity}|${hexSize}|${areaOutlines}|${projection}|${tileZoom}|${yearMin}-${yearMax}|${years.length}`;
+    const signature = `${dataset}|${variable}|${polarity}|${palette}|${hexSize}|${areaOutlines}|${projection}|${tileZoom}|${yearMin}-${yearMax}|${years.length}`;
 
     this.rememberMarks();
     this.targetSignature = signature;

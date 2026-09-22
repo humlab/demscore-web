@@ -111,8 +111,10 @@ export class DemscoreApp extends BaseController {
       mapServerBase: this.backendClient.mapServerBase,
       metadataController: this.metadataController,
       // Toggling the area outlines rewrites the tile URLs, so the preload has to
-      // start over against the request the map is now making.
-      onLayerParamsChange: () => this.restartPreload?.(),
+      // start over against the request the map is now making. Do it
+      // immediately: until the run resets, the timeline marks are describing
+      // the old URL even though the map is already asking for the new one.
+      onLayerParamsChange: () => this.layerPreloadController?.start(),
       // refreshLegend() is the one place every change of what the map draws
       // passes through, which is why the non-visual reading of the map hangs
       // off it rather than off each of the half-dozen callers.

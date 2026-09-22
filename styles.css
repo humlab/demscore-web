@@ -2368,9 +2368,8 @@ textarea {
   cursor: pointer;
 }
 
-/* The colour scheme picker. A real <label for> and a real <select>: the point
-   of this control is that it works for whoever needs it, so it is not the
-   place to reinvent either. */
+/* The colour scheme picker uses native radios, so its compact colour strips do
+  not cost keyboard or screen-reader behaviour. */
 .map-display-field {
   display: block;
   margin: 0 0 3px;
@@ -2381,21 +2380,58 @@ textarea {
   text-transform: uppercase;
 }
 
-.map-display-select {
-  width: 100%;
-  padding: 2px 4px;
-  border: 1px solid var(--panel-border);
+.map-palette-options {
+  min-width: 174px;
+}
+
+.map-palette-list {
+  display: grid;
+  gap: 1px;
+}
+
+.map-palette-option {
+  display: grid;
+  grid-template-columns: 13px minmax(0, 1fr) 72px;
+  align-items: center;
+  gap: 4px;
+  min-height: 18px;
+  padding: 1px 2px;
   border-radius: var(--radius-inline);
-  background: #fff;
-  color: #333;
-  font: inherit;
-  font-size: 0.78rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.map-palette-option:hover {
+  background: rgba(31, 92, 137, 0.08);
+}
+
+.map-palette-option input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
   cursor: pointer;
 }
 
-.map-display-select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+.map-palette-name {
+  overflow: hidden;
+  font-size: 0.72rem;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-palette-swatches {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 2px;
+}
+
+.map-palette-swatches i {
+  display: block;
+  background: var(--palette-swatch);
 }
 
 /* The ring goes round the whole label, not round the radio dot: the dot is
@@ -2407,10 +2443,20 @@ textarea {
   border-radius: var(--radius-inline);
 }
 
+.map-palette-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 @supports not selector(:has(*)) {
   .map-display-option input:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+  }
+
+  .map-palette-option input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
   }
 }
 

@@ -1,3 +1,7 @@
+// v9: the outline layer now derives borders from the countries rendered for the
+// requested variable-year, so historical CShapes meshes cannot erase current
+// borders. The URL shape did not change, so old outline tiles must be evicted.
+//
 // v8: the WMS tile grid is half-levels rather than quarter-levels. Half of the
 // v7 entries -- the ones at the stops that survived -- spell exactly the URL the
 // app still asks for, because a resolution is the same number under either
@@ -33,7 +37,7 @@
 // meshes. Nothing below needs to tell them apart: the layer names, the SRS and
 // the BBOX all ride along in the URL that is the cache key, so the two caches
 // are the same cache and can never collide.
-const WMS_TILE_CACHE = "demscore-wms-tile-cache-v8";
+const WMS_TILE_CACHE = "demscore-wms-tile-cache-v9";
 
 // The fills may be asked for alone or together with the outline layer that rides
 // along in the same GetMap (see MapController.wmsLayerNames), and the two spell

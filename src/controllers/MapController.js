@@ -225,7 +225,8 @@ export class MapController extends BaseController {
     this.viewListeners = [];
     this.zoomReadoutEl = null;
     this.projectionInputs = [];
-    this.paletteSelectEl = null;
+    this.paletteInputs = [];
+    this.paletteSwatchEls = new Map();
     this.layerToggleInputs = [];
     this.displayOptionsEl = null;
 
@@ -646,6 +647,12 @@ export class MapController extends BaseController {
   }
 
   createWmsLayer() {
+    const polarity = this.metadataController.getActivePolarity();
+    // Default requests normally leave `palette` out to keep the long-lived
+    // cache warm. Neutral Default now has its own ramp, though, so spelling it
+    // out gives that changed rendering a fresh URL instead of reusing the old
+    // neutral-Viridis tiles.
+    const explicitlyNamePalette = this.paletteKey !== DEFAULT_PALETTE_KEY || polarity === "neutral";
     const source = new ol.source.TileWMS({
       url: this.mapServerBase,
       projection: this.projection.projection,
@@ -664,15 +671,10 @@ export class MapController extends BaseController {
         VERSION: "1.1.1",
         dataset: this.state.dataset,
         variable: this.state.variable,
-        polarity: this.metadataController.getActivePolarity(),
+        polarity,
         year: String(this.state.year),
         hex_size: String(this.hexSizeFromZoom()),
-        // Left out entirely on the default scheme rather than sent as
-        // `palette=default`. The mapfile's `default_palette` makes the two
-        // requests render identically, but they are different URLs and both
-        // caches key on the URL -- so spelling it out would have thrown away
-        // every tile already cached by everyone who never touches this control.
-        ...(this.paletteKey === DEFAULT_PALETTE_KEY ? {} : { palette: this.paletteKey }),
+        ...(explicitlyNamePalette ? { palette: this.paletteKey } : {}),
       },
       // No high-DPI request. A retina screen would otherwise ask MapServer for a
       // doubled tile with MAP_RESOLUTION appended, which is a different URL per
@@ -750,18 +752,23 @@ export class MapController extends BaseController {
       </div>
       <!-- On screen, like the outline toggle below it and for the same reason:
            which colours a reader can tell apart is not a preference, and a
-           control that answers it does not belong behind a shortcut. A select
-           rather than four radios because the stack is already three cards
-           tall over the map, and a native select is a keyboard and screen
-           reader control without anything being added to make it one. -->
-      <div class="map-display-options">
-        <label class="map-display-field" for="mapPaletteSelect">Colours</label>
-        <select id="mapPaletteSelect" class="map-display-select">
+           control that answers it does not belong behind a shortcut. Native
+           radios retain their keyboard and screen-reader behaviour while the
+           ramp beside each label makes this visual choice immediately clear. -->
+      <div class="map-display-options map-palette-options">
+        <p id="mapPaletteLabel" class="map-display-field">Colours</p>
+        <div class="map-palette-list" role="radiogroup" aria-labelledby="mapPaletteLabel">
           ${PALETTE_KEYS.map((key) => {
             const palette = MAP_PALETTES[key];
-            return `<option value="${key}" title="${palette.description}">${palette.label}</option>`;
+            return `<label class="map-palette-option" title="${palette.description}">
+              <input type="radio" name="mapPalette" value="${key}" />
+              <span class="map-palette-name">${palette.label}</span>
+              <span class="map-palette-swatches" data-palette-swatches="${key}" aria-hidden="true">${palette.signed.colors
+                .map((color) => `<i style="--palette-swatch: ${color}"></i>`)
+                .join("")}</span>
+            </label>`;
           }).join("")}
-        </select>
+        </div>
       </div>
       <!-- On screen rather than behind Shift+D with the rest of the extras.
            The outlines are what separates two adjacent classes a shade apart,
@@ -795,8 +802,18 @@ export class MapController extends BaseController {
       });
     }
 
-    this.paletteSelectEl = container.querySelector("#mapPaletteSelect");
-    this.paletteSelectEl.addEventListener("change", () => this.setPalette(this.paletteSelectEl.value));
+    this.paletteInputs = Array.from(container.querySelectorAll('input[name="mapPalette"]'));
+    for (const input of this.paletteInputs) {
+      input.addEventListener("change", () => {
+        if (input.checked) this.setPalette(input.value);
+      });
+    }
+    this.paletteSwatchEls = new Map(
+      PALETTE_KEYS.map((key) => [
+        key,
+        Array.from(container.querySelectorAll(`[data-palette-swatches="${key}"] i`)),
+      ]),
+    );
 
     const outlineToggle = container.querySelector("#areaOutlineToggle");
     outlineToggle.addEventListener("change", () => this.setAreaOutlinesEnabled(outlineToggle.checked));
@@ -840,12 +857,29 @@ export class MapController extends BaseController {
     for (const input of this.projectionInputs) {
       input.checked = input.value === this.projectionKey;
     }
-    if (this.paletteSelectEl) this.paletteSelectEl.value = this.paletteKey;
+    for (const input of this.paletteInputs) {
+      input.checked = input.value === this.paletteKey;
+    }
+    this.syncPaletteSwatches();
     const outlineToggle = this.displayOptionsEl.querySelector("#areaOutlineToggle");
     if (outlineToggle) outlineToggle.checked = this.areaOutlinesEnabled;
     for (const input of this.layerToggleInputs) {
       const layer = input.dataset.layer === "land" ? this.landLayer : this.hexLayerGroup;
       input.checked = layer.getVisible();
+    }
+  }
+
+  // The picker is a preview of the active map, not a catalogue of every
+  // palette's signed ramp. A neutral variable takes each scheme's dedicated
+  // sequential ramp, so the previews stay truthful when the variable changes.
+  syncPaletteSwatches() {
+    const polarity = this.metadataController.getActivePolarity();
+    for (const key of PALETTE_KEYS) {
+      const colors = legendColorsFor(key, polarity);
+      const swatches = this.paletteSwatchEls.get(key) || [];
+      swatches.forEach((swatch, index) => {
+        swatch.style.background = colors[index];
+      });
     }
   }
 
@@ -1196,7 +1230,8 @@ export class MapController extends BaseController {
 
   renderLegendTip(classIndex, breaks) {
     const classBreak = this.findClassBreak(breaks, classIndex);
-    this.legendTipClassEl.textContent = `Class ${classIndex} of ${LEGEND_CLASS_COUNT}`;
+    const classCount = this.classCountForBreaks(breaks);
+    this.legendTipClassEl.textContent = `Class ${classIndex} of ${classCount}`;
 
     if (breaks === undefined) {
       this.legendTipRangeEl.textContent = "Loading\u2026";
@@ -1248,6 +1283,13 @@ export class MapController extends BaseController {
   findClassBreak(breaks, classIndex) {
     if (!Array.isArray(breaks?.classes)) return null;
     return breaks.classes.find((entry) => entry.classIndex === classIndex) || null;
+  }
+
+  classCountForBreaks(breaks = this.getCachedClassBreaks()) {
+    const classIndexes = Array.isArray(breaks?.classes)
+      ? breaks.classes.map((entry) => entry.classIndex).filter(Number.isInteger)
+      : [];
+    return classIndexes.length > 0 ? Math.max(...classIndexes) : LEGEND_CLASS_COUNT;
   }
 
   // Whatever has already been answered for this key, without asking: `undefined`
@@ -1315,6 +1357,7 @@ export class MapController extends BaseController {
     const datasetTitle = datasetMeta?.title || datasetMeta?.label || this.state.dataset;
     const polarity = this.metadataController.getActivePolarity();
     const legendColors = this.legendColorsForPolarity(polarity);
+    this.syncPaletteSwatches();
 
     if (this.legendTitleEl) this.legendTitleEl.textContent = text.title;
     if (this.legendSubtitleEl) {
@@ -1357,11 +1400,14 @@ export class MapController extends BaseController {
   // the class breaks land there is only the class number to give, which is
   // still better than "image".
   applyLegendSwatchLabels(breaks) {
+    const classCount = this.classCountForBreaks(breaks);
     this.legendSwatchEls.forEach((swatch, index) => {
       const classIndex = index + 1;
-      const base = `Quantile class ${classIndex} of ${LEGEND_CLASS_COUNT}`;
+      const visible = classIndex <= classCount;
+      swatch.hidden = !visible;
+      const base = `Quantile class ${classIndex} of ${classCount}`;
       const classBreak = this.findClassBreak(breaks, classIndex);
-      if (!classBreak) {
+      if (!visible || !classBreak) {
         swatch.setAttribute("aria-label", base);
         return;
       }
@@ -1386,7 +1432,7 @@ export class MapController extends BaseController {
       note: text.note,
       directionHint: this.legendDirectionHint(polarity),
       polarity,
-      classCount: LEGEND_CLASS_COUNT,
+      classCount: this.classCountForBreaks(),
       paletteLabel: getPalette(this.paletteKey).label,
       projectionTitle: this.projection?.title || this.projectionKey,
       noDataNote: "Areas with no value for this variable and year are drawn as plain land, with no hexagons.",
