@@ -2253,8 +2253,8 @@ textarea {
   gap: 6px;
 }
 
-/* Everything in the stack but the projection choice is for working on the map
-   rather than reading it, so it is folded away until Shift+D unfolds it. */
+/* The layer switches and zoom readout are for working on the map rather than
+   reading it, so they are folded away until Shift+D unfolds them. */
 .map-display-extra {
   display: none;
 }
@@ -2368,54 +2368,240 @@ textarea {
   cursor: pointer;
 }
 
-/* The colour scheme picker uses native radios, so its compact colour strips do
-  not cost keyboard or screen-reader behaviour. */
-.map-display-field {
+/* Projection, colour and outline choices, docked bottom-centre over the map.
+   The first two are roving radiogroups built from buttons so the selected state
+   can slide underneath without hiding the keyboard model. */
+.map-choice-dashboard {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  z-index: 2;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(150px, 0.82fr) 1px minmax(320px, 2fr) 1px minmax(132px, 0.72fr);
+  align-items: stretch;
+  gap: 12px;
+  width: min(950px, calc(100% - 24px));
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  border-radius: 8px;
+  background: rgba(241, 245, 249, 0.94);
+  box-shadow: 0 5px 18px rgba(15, 23, 42, 0.22), 0 1px 3px rgba(15, 23, 42, 0.12);
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
+  color: #334155;
+}
+
+.map-choice-section {
+  min-width: 0;
+}
+
+.map-choice-divider {
+  width: 1px;
+  margin: 2px 0;
+  background: rgba(148, 163, 184, 0.62);
+}
+
+.map-choice-label {
   display: block;
-  margin: 0 0 3px;
+  margin: 0 0 5px 2px;
   color: var(--accent);
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.2em;
+  line-height: 1;
   text-transform: uppercase;
 }
 
-.map-palette-options {
-  min-width: 174px;
+.map-projection-switch,
+.map-palette-list {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 5px;
+  border-radius: 8px;
+  background: rgba(221, 228, 230, 0.9);
+}
+
+.map-projection-switch {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .map-palette-list {
-  display: grid;
-  gap: 1px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.map-palette-option {
+.map-outline-toggle {
+  box-sizing: border-box;
   display: grid;
-  grid-template-columns: 13px minmax(0, 1fr) 72px;
-  align-items: center;
-  gap: 4px;
-  min-height: 18px;
-  padding: 1px 2px;
-  border-radius: var(--radius-inline);
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  min-height: 76px;
+  padding: 8px 8px 7px;
+  border-radius: 8px;
+  background: rgba(221, 228, 230, 0.9);
+  color: #586a72;
   cursor: pointer;
   user-select: none;
 }
 
-.map-palette-option:hover {
-  background: rgba(31, 92, 137, 0.08);
+.map-outline-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.map-palette-option input {
-  width: 13px;
-  height: 13px;
-  margin: 0;
+.map-outline-switch {
+  display: block;
+}
+
+.map-outline-track {
+  position: relative;
+  display: block;
+  width: 52px;
+  height: 28px;
+  border-radius: 999px;
+  background: #aab8bf;
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.18);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.map-outline-thumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.28);
+  transform: translateX(0);
+  transition: transform 0.24s cubic-bezier(0.2, 0.85, 0.25, 1);
+}
+
+.map-outline-toggle:has(input:checked) {
+  color: var(--accent-strong);
+}
+
+.map-outline-toggle input:checked + .map-outline-switch .map-outline-track {
+  background: var(--accent);
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.18), 0 4px 10px rgba(23, 56, 75, 0.2);
+}
+
+.map-outline-toggle input:checked + .map-outline-switch .map-outline-thumb {
+  transform: translateX(24px);
+}
+
+.map-outline-copy {
+  max-width: 8.5rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.map-projection-selection {
+  position: absolute;
+  z-index: 0;
+  top: 5px;
+  left: 5px;
+  width: calc((100% - 12px) / 2);
+  height: calc(100% - 10px);
+  border-radius: 6px;
+  background: var(--accent);
+  box-shadow: 0 4px 10px rgba(23, 56, 75, 0.24);
+  transform: translateX(calc(var(--selected, 0) * (100% + 2px)));
+  transition: transform 0.28s cubic-bezier(0.2, 0.85, 0.25, 1);
+  will-change: transform;
+}
+
+.map-palette-selection {
+  position: absolute;
+  z-index: 0;
+  top: 5px;
+  left: 5px;
+  width: calc((100% - 16px) / 4);
+  height: calc(100% - 10px);
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  border-radius: 7px;
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.17), 0 1px 2px rgba(15, 23, 42, 0.12);
+  transform: translateX(calc(var(--selected, 0) * (100% + 2px)));
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
+}
+
+.map-projection-choice,
+.map-palette-option {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
   cursor: pointer;
+  user-select: none;
+}
+
+.map-projection-choice {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-height: 66px;
+  padding: 10px 8px 8px;
+  border: 0;
+  color: #586a72;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  transition: color 0.15s ease;
+}
+
+.map-palette-option {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  min-height: 66px;
+  padding: 10px 9px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #5b6775;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.map-projection-choice:hover {
+  color: var(--accent-strong);
+}
+
+.map-palette-option:hover {
+  color: #253649;
+}
+
+.map-projection-choice.is-selected {
+  color: #ffffff;
+}
+
+.map-palette-option.is-selected {
+  color: #253649;
+}
+
+.map-projection-icon,
+.map-projection-choice svg {
+  display: block;
+  width: 26px;
+  height: 22px;
+  stroke-width: 2.2;
 }
 
 .map-palette-name {
+  max-width: 100%;
   overflow: hidden;
-  font-size: 0.72rem;
-  line-height: 1;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.05;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2423,10 +2609,12 @@ textarea {
 .map-palette-swatches {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 1px;
-  height: 9px;
+  width: 100%;
+  max-width: 116px;
+  height: 13px;
   overflow: hidden;
   border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(35, 51, 68, 0.14);
 }
 
 .map-palette-swatches i {
@@ -2443,9 +2631,11 @@ textarea {
   border-radius: var(--radius-inline);
 }
 
-.map-palette-option:has(input:focus-visible) {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+.map-outline-toggle:has(input:focus-visible),
+.map-projection-choice:focus-visible,
+.map-palette-option:focus-visible {
+  outline: 3px solid #7ca8dd;
+  outline-offset: 2px;
 }
 
 @supports not selector(:has(*)) {
@@ -2454,9 +2644,10 @@ textarea {
     outline-offset: 2px;
   }
 
-  .map-palette-option input:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
+  .map-outline-toggle input:focus-visible + .map-outline-switch {
+    outline: 3px solid #7ca8dd;
+    outline-offset: 3px;
+    border-radius: 999px;
   }
 }
 
@@ -2507,6 +2698,13 @@ textarea {
    it keeps its ring and drops the rotation; the preload boxes still have to
    fill, so they fill in one step rather than sliding. */
 @media (prefers-reduced-motion: reduce) {
+  .map-projection-selection,
+  .map-palette-selection,
+  .map-outline-track,
+  .map-outline-thumb {
+    transition: none;
+  }
+
   #loading-indicator {
     animation: none;
     border-color: color-mix(in srgb, var(--accent) 30%, transparent);
@@ -2690,6 +2888,94 @@ textarea {
   #map {
     grid-column: 1;
     grid-row: 2;
+  }
+
+  .map-display-stack {
+    bottom: 158px;
+  }
+
+  .map-choice-dashboard {
+    bottom: 8px;
+    grid-template-columns: minmax(92px, 0.55fr) 1px minmax(0, 1fr) 1px minmax(80px, 0.48fr);
+    gap: 5px;
+    width: min(620px, calc(100% - 20px));
+    padding: 7px;
+  }
+
+  .map-choice-divider {
+    margin: 1px 0;
+  }
+
+  .map-choice-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.12em;
+  }
+
+  .map-projection-choice {
+    min-height: 58px;
+    padding: 8px 4px 7px;
+    font-size: 0.68rem;
+  }
+
+  .map-projection-icon,
+  .map-projection-choice svg {
+    width: 22px;
+    height: 20px;
+  }
+
+  .map-palette-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .map-palette-selection {
+    width: calc((100% - 12px) / 2);
+    height: calc((100% - 12px) / 2);
+    transform: translate(
+      calc(var(--column, 0) * (100% + 2px)),
+      calc(var(--row, 0) * (100% + 2px))
+    );
+  }
+
+  .map-palette-option {
+    min-height: 58px;
+    gap: 6px;
+    padding: 8px 5px 7px;
+  }
+
+  .map-palette-name {
+    font-size: 0.68rem;
+  }
+
+  .map-palette-swatches {
+    max-width: 138px;
+    height: 12px;
+  }
+
+  .map-outline-toggle {
+    min-height: 58px;
+    gap: 5px;
+    padding: 7px 4px;
+  }
+
+  .map-outline-track {
+    width: 42px;
+    height: 24px;
+  }
+
+  .map-outline-thumb {
+    top: 4px;
+    left: 4px;
+    width: 16px;
+    height: 16px;
+  }
+
+  .map-outline-toggle input:checked + .map-outline-switch .map-outline-thumb {
+    transform: translateX(18px);
+  }
+
+  .map-outline-copy {
+    max-width: 5.2rem;
+    font-size: 0.66rem;
   }
 
   .map-legend-dock {

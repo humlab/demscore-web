@@ -67,7 +67,7 @@ export const CLASS_COUNT = 7;
 
 export const MAP_PALETTES = {
   default: {
-    label: "Blue–red",
+    label: "Blue-Red",
     // Shown in the picker and in the map's spoken summary.
     description: "Blue to red, with red at the unfavourable end.",
     honoursPolarity: true,

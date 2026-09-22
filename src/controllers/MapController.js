@@ -33,9 +33,9 @@ const LAND_BASEMAP_COLOR = "#fffaf0";
 // Adjacent quantile classes can be a shade apart, which is the whole reason the
 // outlines exist, so they start on and the toggle is there to take them off.
 const AREA_OUTLINES_DEFAULT = true;
-// ntile(7) in demscore.country_scores() is what both the map and the legend are
-// built on, so the swatch count is not a styling choice. It comes from
-// core/palettes.js because every ramp there is cut to the same number.
+// demscore.country_scores() is what both the map and the legend are built on,
+// so the swatch count is not a styling choice. It comes from core/palettes.js
+// because every ramp there is cut to the same number.
 const LEGEND_CLASS_COUNT = CLASS_COUNT;
 // Shorter than the variable list's 170ms: the swatches are small and next to
 // each other, so a pointer crossing the bar is usually on its way somewhere,
@@ -224,11 +224,13 @@ export class MapController extends BaseController {
     this.layerSwapWaiters = [];
     this.viewListeners = [];
     this.zoomReadoutEl = null;
-    this.projectionInputs = [];
-    this.paletteInputs = [];
+    this.projectionButtons = [];
+    this.paletteButtons = [];
     this.paletteSwatchEls = new Map();
     this.layerToggleInputs = [];
+    this.outlineToggle = null;
     this.displayOptionsEl = null;
+    this.mapChoiceDashboardEl = null;
 
     this.legend = null;
     this.legendTitleEl = null;
@@ -729,8 +731,9 @@ export class MapController extends BaseController {
   }
 
   // One bottom-left stack replacing what Leaflet spread over a layers control
-  // and a custom one: which plane the map is drawn in, whether equal-colour
-  // areas are outlined, and which of the two layers are on.
+  // and a custom one: whether equal-colour areas are outlined, and which of the
+  // two layers are on. The projection and colour choices live together in the
+  // bottom-centre map dashboard.
   //
   // OpenLayers has no layer switcher of its own, which is the price of it
   // drawing everything into one canvas rather than into stacked panes.
@@ -739,51 +742,6 @@ export class MapController extends BaseController {
     container.className = "ol-unselectable map-display-stack";
     container.innerHTML = `
       <div class="zoom-display map-display-extra"></div>
-      <div class="map-display-options">
-        <p class="map-display-heading">Projection</p>
-        ${PROJECTION_KEYS.map((key) => {
-          const projection = getMapProjection(key);
-          return `
-            <label class="map-display-option" title="${projection.title}">
-              <input type="radio" name="mapProjection" value="${key}" />
-              <span>${projection.label}</span>
-            </label>`;
-        }).join("")}
-      </div>
-      <!-- On screen, like the outline toggle below it and for the same reason:
-           which colours a reader can tell apart is not a preference, and a
-           control that answers it does not belong behind a shortcut. Native
-           radios retain their keyboard and screen-reader behaviour while the
-           ramp beside each label makes this visual choice immediately clear. -->
-      <div class="map-display-options map-palette-options">
-        <p id="mapPaletteLabel" class="map-display-field">Colours</p>
-        <div class="map-palette-list" role="radiogroup" aria-labelledby="mapPaletteLabel">
-          ${PALETTE_KEYS.map((key) => {
-            const palette = MAP_PALETTES[key];
-            return `<label class="map-palette-option" title="${palette.description}">
-              <input type="radio" name="mapPalette" value="${key}" />
-              <span class="map-palette-name">${palette.label}</span>
-              <span class="map-palette-swatches" data-palette-swatches="${key}" aria-hidden="true">${palette.signed.colors
-                .map((color) => `<i style="--palette-swatch: ${color}"></i>`)
-                .join("")}</span>
-            </label>`;
-          }).join("")}
-        </div>
-      </div>
-      <!-- On screen rather than behind Shift+D with the rest of the extras.
-           The outlines are what separates two adjacent classes a shade apart,
-           and for a reader who cannot use hue at all -- the diverging ramp has
-           two classes that print as the same grey -- they are the only thing
-           that does. A control that carries that much is not a developer
-           affordance, and leaving it behind an undocumented shortcut meant
-           anyone who turned the outlines off (the choice is remembered in a
-           cookie) had no way of finding out how to turn them back on. -->
-      <div class="map-display-options">
-        <label class="map-display-option">
-          <input id="areaOutlineToggle" type="checkbox" />
-          <span>Outline equal-colour areas</span>
-        </label>
-      </div>
       <div class="map-display-options map-display-extra">
         <label class="map-display-option">
           <input type="checkbox" data-layer="land" />
@@ -794,29 +752,6 @@ export class MapController extends BaseController {
           <span>Demscore Hex Layer</span>
         </label>
       </div>`;
-
-    this.projectionInputs = Array.from(container.querySelectorAll('input[name="mapProjection"]'));
-    for (const input of this.projectionInputs) {
-      input.addEventListener("change", () => {
-        if (input.checked) this.setProjection(input.value);
-      });
-    }
-
-    this.paletteInputs = Array.from(container.querySelectorAll('input[name="mapPalette"]'));
-    for (const input of this.paletteInputs) {
-      input.addEventListener("change", () => {
-        if (input.checked) this.setPalette(input.value);
-      });
-    }
-    this.paletteSwatchEls = new Map(
-      PALETTE_KEYS.map((key) => [
-        key,
-        Array.from(container.querySelectorAll(`[data-palette-swatches="${key}"] i`)),
-      ]),
-    );
-
-    const outlineToggle = container.querySelector("#areaOutlineToggle");
-    outlineToggle.addEventListener("change", () => this.setAreaOutlinesEnabled(outlineToggle.checked));
 
     this.layerToggleInputs = Array.from(container.querySelectorAll("input[data-layer]"));
     for (const input of this.layerToggleInputs) {
@@ -832,11 +767,137 @@ export class MapController extends BaseController {
     // the map when the element is in the stop-event container, which is what
     // ol.control.Control puts it in.
     this.map.addControl(new ol.control.Control({ element: container }));
+
+    this.installMapChoiceDashboard();
   }
 
-  // Projection is the only choice the map offers for everyday use; the zoom
-  // reading, the outline toggle and the layer switches are there for whoever is
-  // working on the map, and stay out of the way until Shift+D asks for them.
+  installMapChoiceDashboard() {
+    const container = document.createElement("div");
+    container.className = "ol-unselectable map-choice-dashboard";
+    container.innerHTML = `
+      <div class="map-choice-section map-projection-panel">
+        <p id="mapProjectionLabel" class="map-choice-label">Projection</p>
+        <div class="map-projection-switch" role="radiogroup" aria-labelledby="mapProjectionLabel">
+          <span class="map-projection-selection" aria-hidden="true"></span>
+          ${PROJECTION_KEYS.map((key) => {
+            const projection = getMapProjection(key);
+            const icon = key === "webMercator" ? "map" : "globe-2";
+            return `
+              <button class="map-projection-choice" type="button" role="radio" value="${key}" title="${projection.title}">
+                <i class="map-projection-icon" data-lucide="${icon}" aria-hidden="true"></i>
+                <span>${projection.label}</span>
+              </button>`;
+          }).join("")}
+        </div>
+      </div>
+      <span class="map-choice-divider" aria-hidden="true"></span>
+      <div class="map-choice-section map-palette-panel">
+        <p id="mapPaletteLabel" class="map-choice-label">Colours</p>
+        <div class="map-palette-list" role="radiogroup" aria-labelledby="mapPaletteLabel">
+          <span class="map-palette-selection" aria-hidden="true"></span>
+          ${PALETTE_KEYS.map((key) => {
+            const palette = MAP_PALETTES[key];
+            return `<button class="map-palette-option" type="button" role="radio" value="${key}" title="${palette.description}">
+              <span class="map-palette-swatches" data-palette-swatches="${key}" aria-hidden="true">${palette.signed.colors
+                .map((color) => `<i style="--palette-swatch: ${color}"></i>`)
+                .join("")}</span>
+              <span class="map-palette-name">${palette.label}</span>
+            </button>`;
+          }).join("")}
+        </div>
+      </div>
+      <span class="map-choice-divider" aria-hidden="true"></span>
+      <div class="map-choice-section map-outline-panel">
+        <p id="mapOutlineLabel" class="map-choice-label">Outlines</p>
+        <label class="map-outline-toggle" for="areaOutlineToggle">
+          <input id="areaOutlineToggle" type="checkbox" aria-labelledby="mapOutlineLabel mapOutlineCopy" />
+          <span class="map-outline-switch" aria-hidden="true">
+            <span class="map-outline-track">
+              <span class="map-outline-thumb"></span>
+            </span>
+          </span>
+          <span id="mapOutlineCopy" class="map-outline-copy">Equal-colour areas</span>
+        </label>
+      </div>`;
+
+    this.projectionButtons = Array.from(container.querySelectorAll(".map-projection-choice"));
+    for (const button of this.projectionButtons) {
+      button.addEventListener("click", () => this.setProjection(button.value));
+    }
+    const projectionSwitch = container.querySelector(".map-projection-switch");
+    projectionSwitch.addEventListener("keydown", (event) => this.onProjectionKeydown(event));
+    this.paletteButtons = Array.from(container.querySelectorAll("[data-palette-swatches]")).map((swatches) =>
+      swatches.closest("button"),
+    );
+    for (const button of this.paletteButtons) {
+      button.addEventListener("click", () => this.setPalette(button.value));
+    }
+    const list = container.querySelector(".map-palette-list");
+    list.addEventListener("keydown", (event) => this.onPaletteKeydown(event));
+    this.outlineToggle = container.querySelector("#areaOutlineToggle");
+    this.outlineToggle.addEventListener("change", () => this.setAreaOutlinesEnabled(this.outlineToggle.checked));
+    this.paletteSwatchEls = new Map(
+      PALETTE_KEYS.map((key) => [
+        key,
+        Array.from(container.querySelectorAll(`[data-palette-swatches="${key}"] i`)),
+      ]),
+    );
+
+    this.mapChoiceDashboardEl = container;
+    this.syncProjectionSelector();
+    this.syncPaletteSelector();
+    this.syncOutlineToggle();
+    this.syncPaletteSwatches();
+    if (window.lucide && typeof window.lucide.createIcons === "function") {
+      window.lucide.createIcons();
+    }
+    this.map.addControl(new ol.control.Control({ element: container }));
+  }
+
+  onPaletteKeydown(event) {
+    const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
+    if (!keys.includes(event.key)) return;
+
+    event.preventDefault();
+    const currentIndex = Math.max(0, PALETTE_KEYS.indexOf(this.paletteKey));
+    const lastIndex = PALETTE_KEYS.length - 1;
+    let nextIndex = currentIndex;
+    if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = lastIndex;
+    } else {
+      const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
+      nextIndex = (currentIndex + direction + PALETTE_KEYS.length) % PALETTE_KEYS.length;
+    }
+
+    this.setPalette(PALETTE_KEYS[nextIndex]);
+    this.paletteButtons[nextIndex]?.focus();
+  }
+
+  onProjectionKeydown(event) {
+    const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
+    if (!keys.includes(event.key)) return;
+
+    event.preventDefault();
+    const currentIndex = Math.max(0, PROJECTION_KEYS.indexOf(this.projectionKey));
+    const lastIndex = PROJECTION_KEYS.length - 1;
+    let nextIndex = currentIndex;
+    if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = lastIndex;
+    } else {
+      const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
+      nextIndex = (currentIndex + direction + PROJECTION_KEYS.length) % PROJECTION_KEYS.length;
+    }
+
+    this.setProjection(PROJECTION_KEYS[nextIndex]);
+    this.projectionButtons[nextIndex]?.focus();
+  }
+
+  // The zoom reading and layer switches are there for whoever is working on the
+  // map, and stay out of the way until Shift+D asks for them.
   installDisplayExtrasShortcut() {
     document.addEventListener("keydown", (event) => {
       if (!event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
@@ -854,15 +915,10 @@ export class MapController extends BaseController {
   syncDisplayOptions() {
     if (!this.displayOptionsEl) return;
 
-    for (const input of this.projectionInputs) {
-      input.checked = input.value === this.projectionKey;
-    }
-    for (const input of this.paletteInputs) {
-      input.checked = input.value === this.paletteKey;
-    }
+    this.syncProjectionSelector();
+    this.syncPaletteSelector();
     this.syncPaletteSwatches();
-    const outlineToggle = this.displayOptionsEl.querySelector("#areaOutlineToggle");
-    if (outlineToggle) outlineToggle.checked = this.areaOutlinesEnabled;
+    this.syncOutlineToggle();
     for (const input of this.layerToggleInputs) {
       const layer = input.dataset.layer === "land" ? this.landLayer : this.hexLayerGroup;
       input.checked = layer.getVisible();
@@ -881,6 +937,40 @@ export class MapController extends BaseController {
         swatch.style.background = colors[index];
       });
     }
+  }
+
+  syncOutlineToggle() {
+    if (this.outlineToggle) this.outlineToggle.checked = this.areaOutlinesEnabled;
+  }
+
+  syncProjectionSelector() {
+    if (!this.mapChoiceDashboardEl) return;
+
+    const selected = Math.max(0, PROJECTION_KEYS.indexOf(this.projectionKey));
+    const projectionSwitch = this.mapChoiceDashboardEl.querySelector(".map-projection-switch");
+    projectionSwitch?.style.setProperty("--selected", selected);
+    this.projectionButtons.forEach((button, index) => {
+      const active = index === selected;
+      button.classList.toggle("is-selected", active);
+      button.setAttribute("aria-checked", active ? "true" : "false");
+      button.tabIndex = active ? 0 : -1;
+    });
+  }
+
+  syncPaletteSelector() {
+    if (!this.mapChoiceDashboardEl) return;
+
+    const selected = Math.max(0, PALETTE_KEYS.indexOf(this.paletteKey));
+    const list = this.mapChoiceDashboardEl.querySelector(".map-palette-list");
+    list?.style.setProperty("--selected", selected);
+    list?.style.setProperty("--column", selected % 2);
+    list?.style.setProperty("--row", Math.floor(selected / 2));
+    this.paletteButtons.forEach((button, index) => {
+      const active = index === selected;
+      button.classList.toggle("is-selected", active);
+      button.setAttribute("aria-checked", active ? "true" : "false");
+      button.tabIndex = active ? 0 : -1;
+    });
   }
 
   // The mesh MapServer is asked for at this zoom, in the metres of whichever
