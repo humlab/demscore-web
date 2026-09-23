@@ -1,3 +1,11 @@
+// v10: the outline layer reads its edges from demscore.hex_border_edges and
+// demscore.hex_border_sides instead of recomputing them per request from the
+// hexagons inside !BOX!. The old way mistook the rim of its own request box for
+// the rim of the map -- !BOX! is the extent of pixel centres, half a pixel
+// inside the tile -- and dashed a black line along every tile seam. The URL
+// shape did not change, so every tile carrying those dashes is still a cache
+// hit and only a new cache name can shed them.
+//
 // v9: the outline layer now derives borders from the countries rendered for the
 // requested variable-year, so historical CShapes meshes cannot erase current
 // borders. The URL shape did not change, so old outline tiles must be evicted.
@@ -37,7 +45,7 @@
 // meshes. Nothing below needs to tell them apart: the layer names, the SRS and
 // the BBOX all ride along in the URL that is the cache key, so the two caches
 // are the same cache and can never collide.
-const WMS_TILE_CACHE = "demscore-wms-tile-cache-v9";
+const WMS_TILE_CACHE = "demscore-wms-tile-cache-v10";
 
 // The fills may be asked for alone or together with the outline layer that rides
 // along in the same GetMap (see MapController.wmsLayerNames), and the two spell
@@ -102,7 +110,13 @@ self.addEventListener("fetch", (event) => {
       const cached = await cache.match(event.request, { ignoreVary: true });
       if (cached) return cached;
 
-      const response = await fetch(event.request);
+      // `cache: "reload"` rather than a plain fetch: the tiles also carry
+      // Cache-Control max-age from the gateway, so a miss here could be answered
+      // from the browser's own HTTP cache with a tile this cache was just
+      // renamed to be rid of. This cache is the tile cache; the HTTP copy adds
+      // nothing but a way for a bumped version to refill itself with the old
+      // pixels. Hits never reach here, so this costs nothing in normal use.
+      const response = await fetch(event.request, { cache: "reload" });
       if (response.ok) {
         event.waitUntil(cache.put(event.request, response.clone()));
       }
