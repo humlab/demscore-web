@@ -57,14 +57,6 @@ const COVERAGE_TRACK_H = 10;
 const COVERAGE_BAR_MIN_H = 2.5;
 // Bars are slightly narrower than their bucket, so neighbours stay countable.
 const COVERAGE_BAR_W = 0.78;
-// Rows from different datasets sit next to each other in one list, so every
-// strip is drawn against a single shared axis — two adjacent bars in the same
-// place have to mean the same year. The axis is clipped at 1900 because V-Dem
-// reaches back to 1789 while QoG starts in 1963: on a true 1789 axis every
-// QoG and REPDEM strip would be squashed into the right third of the track for
-// the sake of a handful of historical V-Dem series. Anything earlier is marked
-// as continuing off the left edge rather than dropped silently.
-const COVERAGE_AXIS_MIN_YEAR = 1900;
 // Most V-Dem descriptions are the codebook's field block scraped verbatim
 // ("VARIABLE TYPE: D PROJECT MANAGER(S): ... QUESTION: ..."), which reads as
 // noise in a card. Those entries carry the same prose in `question`.
@@ -240,8 +232,6 @@ export class MetadataController extends BaseController {
     // The whole list, every dataset's rows in title order, cached once every
     // dataset's titles are in. Filtering reads from it rather than rebuilding.
     this.allVariableRows = null;
-    // The shared year axis the coverage strips are drawn against.
-    this.coverageAxis = null;
     // Which variable each dataset was last left on, restored from the cookie.
     this.variableChoices = readVariableChoices();
 
@@ -910,7 +900,7 @@ export class MetadataController extends BaseController {
     const coverageDrawn = this.renderCoverageStrip(datasetKey, option, variable);
     if (coverageDrawn) {
       const id = `coverage-${datasetKey}-${variable}`;
-      option.appendChild(this.buildCoverageText(this.describeCoverage(coverageDrawn.entry, coverageDrawn.axis), id));
+      option.appendChild(this.buildCoverageText(this.describeCoverage(coverageDrawn.entry), id));
       input.setAttribute("aria-describedby", id);
     }
     return option;
@@ -941,26 +931,26 @@ export class MetadataController extends BaseController {
   // many countries it reaches, both baked into scripts/build_variable_coverage.sh
   // — the list shows every row at once, so nothing here may hit the database.
 
+  // The variable's own entry and nothing else: since each strip is drawn on its
+  // own years, the dataset's span is no longer part of reading one.
   getCoverageStripData(datasetKey, variableKey) {
-    const dataset = this.coverageMeta?.[datasetKey];
-    const entry = dataset?.variables?.[variableKey];
-    if (!dataset || !entry || typeof entry.levels !== "string" || entry.levels.length === 0) return null;
-    return { dataset, entry };
+    const entry = this.coverageMeta?.[datasetKey]?.variables?.[variableKey];
+    if (!entry || typeof entry.levels !== "string" || entry.levels.length === 0) return null;
+    return entry;
   }
 
-  // The axis every strip shares: 1900 (or the earliest year anything actually
-  // has, if that is later) through the latest year any dataset reaches.
-  getCoverageAxis() {
-    if (this.coverageAxis) return this.coverageAxis;
-    let min = Infinity;
-    let max = -Infinity;
-    for (const dataset of Object.values(this.coverageMeta)) {
-      if (Number.isFinite(dataset?.yearMin)) min = Math.min(min, dataset.yearMin);
-      if (Number.isFinite(dataset?.yearMax)) max = Math.max(max, dataset.yearMax);
-    }
-    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
-    this.coverageAxis = { yearMin: Math.max(min, COVERAGE_AXIS_MIN_YEAR), yearMax: max };
-    return this.coverageAxis;
+  // Each strip runs between its own variable's first and last year, and says
+  // which two those are underneath itself. The strips used to share one axis so
+  // that a bar in the same place meant the same year on every row; that bought
+  // comparison between rows at the price of every QoG row spending three
+  // quarters of its width on the century before QoG begins, and of a floor year
+  // that cut V-Dem's 18th-century series off at the left edge. The years written
+  // under the row are what replaces it: nothing about the scale is implied any
+  // more, so nothing has to be shared for it to be read correctly.
+  getCoverageAxis(entry) {
+    if (!Number.isFinite(entry?.yearMin) || !Number.isFinite(entry?.yearMax)) return null;
+    if (entry.yearMax < entry.yearMin) return null;
+    return { yearMin: entry.yearMin, yearMax: entry.yearMax };
   }
 
   // What the strip says in words.
@@ -971,10 +961,9 @@ export class MetadataController extends BaseController {
   // either. Which years, and how many countries, is the entire content of the
   // strip, so this is not a reduced version of it -- it is the same thing said
   // in words.
-  describeCoverage(entry, axis) {
+  describeCoverage(entry) {
     const range = entry.yearMin === entry.yearMax ? `${entry.yearMin} only` : `${entry.yearMin} to ${entry.yearMax}`;
-    const clipped = entry.yearMin < axis.yearMin ? `, continuing before ${axis.yearMin}` : "";
-    return `Data ${range}, up to ${this.describeCoverageCountries(entry)}${clipped}`;
+    return `Data ${range}, up to ${this.describeCoverageCountries(entry)}`;
   }
 
   describeCoverageCountries(entry) {
@@ -991,9 +980,11 @@ export class MetadataController extends BaseController {
     const target = option.querySelector(".variable-option-coverage");
     if (!target) return;
 
-    const data = this.getCoverageStripData(datasetKey, variable);
-    const axis = this.getCoverageAxis();
-    if (!data || !axis) {
+    const entry = this.getCoverageStripData(datasetKey, variable);
+    const axis = entry ? this.getCoverageAxis(entry) : null;
+    const staleAxis = option.querySelector(".variable-option-coverage-axis");
+    if (staleAxis) staleAxis.remove();
+    if (!entry || !axis) {
       // A variable the precompute never saw gets no strip rather than an empty
       // track, which would read as "this variable has no data anywhere".
       target.innerHTML = "";
@@ -1001,19 +992,37 @@ export class MetadataController extends BaseController {
       return null;
     }
 
-    const { dataset, entry } = data;
     target.hidden = false;
-    target.innerHTML = this.buildCoverageStripSvg(entry.levels, dataset);
-    // Data that starts before the axis does is still there; the strip just
-    // cannot show it, so the row says so instead of implying a later start.
-    target.classList.toggle("is-clipped", entry.yearMin < axis.yearMin);
-    target.title =
-      `Data ${entry.yearMin}\u2013${entry.yearMax}` +
-      `, up to ${entry.maxCountries} countries` +
-      ` (axis: ${axis.yearMin}\u2013${axis.yearMax}` +
-      `${entry.yearMin < axis.yearMin ? `, continues before ${axis.yearMin}` : ""})`;
+    target.innerHTML = this.buildCoverageStripSvg(entry);
+    target.title = `Data ${entry.yearMin}\u2013${entry.yearMax}, up to ${entry.maxCountries} countries`;
+    // The scale goes directly under the track it belongs to, whichever list the
+    // row is in — putting it here rather than at the two call sites is what
+    // keeps a strip from ever being drawn without the years that read it.
+    target.after(this.buildCoverageAxis(axis));
 
     return { entry, axis };
+  }
+
+  // The two years the strip runs between, written under it. These are not
+  // decoration: with a per-variable axis the width of the track says nothing
+  // about which years it covers, so this is the only thing that does.
+  //
+  // `aria-hidden`, because both callers put the strip inside a control — a
+  // `<label>` wrapping a radio in the sidebar, a `<button>` on the phone — where
+  // visible text joins that control's accessible name, and the same two years
+  // are already in the description text beside it.
+  buildCoverageAxis(axis) {
+    const el = document.createElement("span");
+    el.className = "variable-option-coverage-axis";
+    el.setAttribute("aria-hidden", "true");
+    const single = axis.yearMin === axis.yearMax;
+    el.classList.toggle("is-single", single);
+    for (const year of single ? [axis.yearMin] : [axis.yearMin, axis.yearMax]) {
+      const tick = document.createElement("span");
+      tick.textContent = String(year);
+      el.appendChild(tick);
+    }
+    return el;
   }
 
   // A run of off-screen text, for the two places a strip has to be said rather
@@ -1029,40 +1038,32 @@ export class MetadataController extends BaseController {
   // One <svg> holding one <path>, for the row strip and the hover card alike:
   // a bar per element would put tens of thousands of nodes in a V-Dem list, and
   // the list is rebuilt from scratch on every dataset switch.
-  buildCoverageStripSvg(levels, dataset, className = "variable-option-coverage-svg") {
-    const axis = this.getCoverageAxis();
+  buildCoverageStripSvg(entry, className = "variable-option-coverage-svg") {
+    const axis = this.getCoverageAxis(entry);
+    const levels = entry?.levels ?? "";
     const buckets = levels.length;
     if (!axis || buckets === 0) return "";
 
-    // The bucket string is spaced across its own dataset's span, so the path is
-    // emitted in years and the viewBox is the shared axis. That way one code
-    // path puts a QoG strip and a V-Dem strip on the same scale without either
-    // knowing about the other.
-    const spanStart = Number.isFinite(dataset?.yearMin) ? dataset.yearMin : axis.yearMin;
-    const spanEnd = Number.isFinite(dataset?.yearMax) ? dataset.yearMax : axis.yearMax;
-    const bucketYears = (spanEnd - spanStart + 1) / buckets;
+    // The bucket string is spaced across the variable's own span, which is also
+    // the viewBox, so the path is emitted in years and the first and last bucket
+    // always reach the two ends of the track.
+    const axisSpan = axis.yearMax - axis.yearMin + 1;
+    const bucketYears = axisSpan / buckets;
     const barYears = bucketYears * COVERAGE_BAR_W;
 
     const bars = [];
     for (let i = 0; i < buckets; i += 1) {
       const level = Number(levels[i]);
       if (!Number.isFinite(level) || level <= 0) continue;
-      const x = spanStart + i * bucketYears;
-      // Buckets entirely before the axis starts are dropped; the clipped marker
-      // on the row is what reports them.
-      if (x + barYears <= axis.yearMin) continue;
+      const x = axis.yearMin + i * bucketYears;
       // Level 1 is "present but thin". Sitting it at a quarter of the track
       // keeps a 32-country sample visibly above the baseline instead of merging
       // into it, while still ranking below a 165-country one.
       const height = COVERAGE_BAR_MIN_H + ((level - 1) / 8) * (COVERAGE_TRACK_H - COVERAGE_BAR_MIN_H);
       const y = (COVERAGE_TRACK_H - height).toFixed(2);
-      const left = Math.max(x, axis.yearMin);
-      const width = x + barYears - left;
-      if (width <= 0) continue;
-      bars.push(`M${left.toFixed(2)} ${y}h${width.toFixed(2)}v${height.toFixed(2)}h-${width.toFixed(2)}z`);
+      bars.push(`M${x.toFixed(2)} ${y}h${barYears.toFixed(2)}v${height.toFixed(2)}h-${barYears.toFixed(2)}z`);
     }
     if (bars.length === 0) return "";
-    const axisSpan = axis.yearMax - axis.yearMin + 1;
     return (
       `<svg class="${className}" viewBox="${axis.yearMin} 0 ${axisSpan} ${COVERAGE_TRACK_H}"` +
       ` preserveAspectRatio="none" aria-hidden="true" focusable="false">` +
@@ -1409,13 +1410,12 @@ export class MetadataController extends BaseController {
   }
 
   // The same strip the row carries, but with room to say what it means: the row
-  // has to be read at a glance, so the years it is plotted against and the reason
-  // one bar is taller than the next can only be spelled out here.
+  // has the years underneath it and nothing else, so the reason one bar is
+  // taller than the next can only be spelled out here.
   appendVariableTooltipCoverage(datasetKey, variable, container = this.variableTooltipBody) {
-    const data = this.getCoverageStripData(datasetKey, variable);
-    const axisRange = this.getCoverageAxis();
-    if (!data || !axisRange) return;
-    const { dataset, entry } = data;
+    const entry = this.getCoverageStripData(datasetKey, variable);
+    const axisRange = entry ? this.getCoverageAxis(entry) : null;
+    if (!entry || !axisRange) return;
 
     const section = document.createElement("div");
     section.className = "variable-tooltip-coverage";
@@ -1427,15 +1427,17 @@ export class MetadataController extends BaseController {
 
     const track = document.createElement("span");
     track.className = "variable-tooltip-coverage-track";
-    track.innerHTML = this.buildCoverageStripSvg(entry.levels, dataset, "variable-tooltip-coverage-svg");
+    track.innerHTML = this.buildCoverageStripSvg(entry, "variable-tooltip-coverage-svg");
     section.appendChild(track);
 
-    // The endpoints belong to the shared axis, not the variable's own range —
-    // they are what makes a strip that starts halfway along legible as "this one
-    // starts in 1960", which is the whole point of sharing the axis.
+    // The strip runs between the variable's own first and last year, so these
+    // two are the whole scale: without them a 19-year QoG span and a 237-year
+    // V-Dem one are the same picture.
     const axis = document.createElement("span");
     axis.className = "variable-tooltip-coverage-axis";
-    for (const year of [axisRange.yearMin, axisRange.yearMax]) {
+    const single = axisRange.yearMin === axisRange.yearMax;
+    axis.classList.toggle("is-single", single);
+    for (const year of single ? [axisRange.yearMin] : [axisRange.yearMin, axisRange.yearMax]) {
       const tick = document.createElement("span");
       tick.textContent = String(year);
       axis.appendChild(tick);
@@ -1448,14 +1450,10 @@ export class MetadataController extends BaseController {
       entry.yearMin === entry.yearMax
         ? `${entry.yearMin} only`
         : `${entry.yearMin}–${entry.yearMax}`;
-    const clipped =
-      entry.yearMin < axisRange.yearMin
-        ? ` The strip starts at ${axisRange.yearMin}, so earlier data is not drawn.`
-        : "";
     note.textContent =
       `Data ${range}, up to ${entry.maxCountries} ${entry.maxCountries === 1 ? "country" : "countries"}. ` +
-      `Bar height combines how many countries reported and how many of the years in that step carry data.` +
-      clipped;
+      `The strip spans those years only. Bar height combines how many countries reported and how many ` +
+      `of the years in that step carry data, against the busiest year in ${this.getDatasetLabel(this.meta.datasets[datasetKey], datasetKey)}.`;
     section.appendChild(note);
 
     container.appendChild(section);
@@ -1660,9 +1658,8 @@ export class MetadataController extends BaseController {
   }
 
   getVariableCoverageRange(datasetKey, variable) {
-    const data = this.getCoverageStripData(datasetKey, variable);
-    if (!data) return "";
-    const { entry } = data;
+    const entry = this.getCoverageStripData(datasetKey, variable);
+    if (!entry) return "";
     if (!Number.isFinite(entry.yearMin) || !Number.isFinite(entry.yearMax)) return "";
     return entry.yearMin === entry.yearMax ? String(entry.yearMin) : `${entry.yearMin}-${entry.yearMax}`;
   }
@@ -1693,10 +1690,11 @@ export class MetadataController extends BaseController {
     head.appendChild(this.buildDatasetTag(row.datasetKey, "mobile-picker-option-dataset"));
     option.appendChild(head);
 
+    // The year range used to be written here as well. It is now under the strip
+    // below, where it is the strip's scale rather than a repeat of it.
     const meta = document.createElement("span");
     meta.className = "mobile-picker-option-meta";
-    const range = this.getVariableCoverageRange(row.datasetKey, row.mainVariable);
-    meta.textContent = range ? `${row.mainVariable} / ${range}` : row.mainVariable;
+    meta.textContent = row.mainVariable;
     option.appendChild(meta);
 
     const coverage = document.createElement("span");
@@ -1705,11 +1703,10 @@ export class MetadataController extends BaseController {
     // The option is the button, so anything put inside it joins the button's
     // name -- there is nowhere here to hang a separate description without
     // breaking the `.mobile-picker-option + .mobile-picker-option` spacing. The
-    // meta line above already gives the year range, so only the country count
-    // is added, rather than the whole sentence twice over.
+    // years under the strip are `aria-hidden`, so this is where they are said.
     const coverageDrawn = this.renderCoverageStrip(row.datasetKey, option, row.mainVariable);
     if (coverageDrawn) {
-      option.appendChild(this.buildCoverageText(`, up to ${this.describeCoverageCountries(coverageDrawn.entry)}`));
+      option.appendChild(this.buildCoverageText(`, ${this.describeCoverage(coverageDrawn.entry).toLowerCase()}`));
     }
 
     return option;

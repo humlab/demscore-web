@@ -43,6 +43,11 @@ export class DemscoreApp extends BaseController {
     // The tail of the read-ahead queue while it is standing aside for the map;
     // see takePreloadNetworkTurn.
     this.preloadNetworkTurn = Promise.resolve();
+    // The mark the pointer is on and where the pointer was, so a cache state
+    // arriving mid-hover can rewrite the card that is already open rather than
+    // leaving it stale -- and rewrite it where it already is.
+    this.hoveredSegment = null;
+    this.markTooltipPointer = null;
 
     this.AUTO_PLAY_MIN_SPEED = 1;
     this.AUTO_PLAY_MAX_SPEED = 8;
@@ -57,6 +62,21 @@ export class DemscoreApp extends BaseController {
     this.PRELOAD_SEGMENT_MAX_PX = 18;
     this.PRELOAD_SEGMENT_GAP_PX = 2;
     this.TIMELINE_DENSE_TICK_SPAN = 24;
+    // How tall a read-ahead mark is drawn, in the px the CSS reserves for the
+    // band (`--coverage-band-height`). A mark for years that carry any data at
+    // all is floored well clear of nothing, so a thin stretch reads as thin
+    // rather than as absent -- absent is the hairline `.is-unavailable` draws.
+    this.COVERAGE_BAND_PX = 20;
+    this.COVERAGE_BAR_MIN_PX = 5;
+    // Clearance around the two end-year labels. They are the ones that say what
+    // the variable's span is, so where a ladder label lands on top of one it is
+    // the ladder label that goes.
+    this.TIMELINE_EDGE_LABEL_GAP_PX = 10;
+    // How far below the band the mark card still answers: enough to cover the
+    // tick marks and their labels, which are part of the same axis.
+    this.TIMELINE_AXIS_HOVER_SLACK_PX = 34;
+    this.TIMELINE_TOOLTIP_GAP_PX = 16;
+    this.TOOLTIP_VIEWPORT_MARGIN_PX = 10;
   }
 
   async start() {
@@ -163,6 +183,7 @@ export class DemscoreApp extends BaseController {
     this.timelineSelectedMarker = this.getEl("timelineSelectedMarker");
     this.timelineScale = this.getEl("timelineScale");
     this.timelinePreloadTrack = this.getEl("timelinePreloadTrack");
+    this.timelineMarkTooltip = this.getEl("timelineMarkTooltip");
     this.timelineWrap = this.getEl("timelineWrap");
     this.timelineVariableTitle = this.getEl("timelineVariableTitle");
     this.yearPlayBtn = this.getEl("yearPlayBtn");
@@ -195,7 +216,7 @@ export class DemscoreApp extends BaseController {
     this.mapController.getMap().on("moveend", () => this.restartPreload());
     this.redrawTimelineScale = this.debounce(() => {
       const coverage = this.getActiveTimelineCoverage();
-      this.renderTimelineScale(coverage.yearMin, coverage.yearMax, coverage.availableYears, coverage.countryCountsByYear);
+      this.renderTimelineScale(coverage.yearMin, coverage.yearMax, coverage.availableYears);
     }, 150);
     window.addEventListener("resize", () => {
       this.updateTimelineMarker();
@@ -223,6 +244,7 @@ export class DemscoreApp extends BaseController {
       }
     });
 
+    this.bindTimelineMarkTooltip();
     this.timelineSelectedMarker.addEventListener("pointerdown", (event) => this.startMarkerDrag(event));
     this.timelineSelectedMarker.addEventListener("pointermove", (event) => this.moveMarkerDrag(event));
     this.timelineSelectedMarker.addEventListener("pointerup", (event) => this.endMarkerDrag(event));
@@ -366,7 +388,7 @@ export class DemscoreApp extends BaseController {
     this.state.year = this.findNearestAvailableYear(this.state.year, availableYears);
 
     this.yearSlider.value = String(this.state.year);
-    this.renderTimelineScale(yearMin, yearMax, availableYears, coverage.countryCountsByYear);
+    this.renderTimelineScale(yearMin, yearMax, availableYears);
     this.refreshYearDisplay({ coverage });
 
     if (this.state.isAutoPlaying && this.findNextAvailableYear(this.state.year, availableYears) === null) {
@@ -420,6 +442,123 @@ export class DemscoreApp extends BaseController {
     if (!Number.isFinite(yearMin) || !Number.isFinite(yearMax)) return this.state.year;
     const span = yearMax - yearMin;
     return span > 0 ? Math.round(yearMin + pct * span) : yearMin;
+  }
+
+  // ---- The hover card on the read-ahead marks ----
+  // The marks are one row doing two jobs -- how tall is how much data, how full
+  // is how much is cached -- which buys back the height a second row cost but is
+  // not something a reader can be expected to work out. So hovering one says it.
+  //
+  // The listener is on the wrap rather than on the marks: `#yearSlider` is
+  // stretched over the whole wrap to catch scrub gestures, and the marks are
+  // `pointer-events: none` so they do not eat them. Events from the slider bubble
+  // to the wrap, so this reads them without taking any.
+  bindTimelineMarkTooltip() {
+    this.timelineWrap.addEventListener("pointermove", (event) => {
+      // Touch and pen scrub; only a hovering mouse gets the card.
+      if (event.pointerType && event.pointerType !== "mouse") return;
+      if (this.markerDragPointerId !== null) return this.hideMarkTooltip();
+
+      const segment = this.segmentAtClientX(event.clientX);
+      if (!segment || !this.isNearTimelineAxis(event.clientY)) return this.hideMarkTooltip();
+      this.markTooltipPointer = { x: event.clientX, y: event.clientY };
+      this.showMarkTooltip(segment);
+    });
+    this.timelineWrap.addEventListener("pointerleave", () => this.hideMarkTooltip());
+    this.timelineWrap.addEventListener("pointerdown", () => this.hideMarkTooltip());
+  }
+
+  // The band plus the ruler under it. Lower down, the wrap is still a scrub
+  // surface but there is nothing there to explain -- it is the map.
+  isNearTimelineAxis(clientY) {
+    const band = this.timelinePreloadTrack.getBoundingClientRect();
+    if (band.height <= 0) return false;
+    return clientY >= band.top - 6 && clientY <= band.bottom + this.TIMELINE_AXIS_HOVER_SLACK_PX;
+  }
+
+  // Segments partition the whole axis, so the year under the pointer is in
+  // exactly one of them.
+  segmentAtClientX(clientX) {
+    if (this.preloadSegments.length === 0) return null;
+    const year = this.yearFromClientX(clientX);
+    return this.preloadSegments.find((segment) => segment.years.includes(year)) || null;
+  }
+
+  describeSegmentYears(segment) {
+    const { years } = segment;
+    return years[0] === years[years.length - 1] ? `${years[0]}` : `${years[0]}\u2013${years[years.length - 1]}`;
+  }
+
+  describeSegmentData(segment) {
+    const total = segment.years.length;
+    const withData = segment.dataYears.length;
+    if (withData === 0) return total === 1 ? "No data for this year" : "No data for these years";
+    if (total === 1) return "Has data";
+    if (withData === total) return `Data in all ${total} years`;
+    return `Data in ${withData} of ${total} years`;
+  }
+
+  describeSegmentTiles(segment) {
+    if (segment.dataYears.length === 0) return "";
+    const status = segment.preloadStatus || "pending";
+    if (status === "loaded") return "Map tiles ready";
+    if (status === "failed") return "Map tiles could not be cached";
+    if (status === "loading") return `Caching map tiles, ${segment.preloadProgress || 0}%`;
+    return "Map tiles not cached yet";
+  }
+
+  showMarkTooltip(segment) {
+    const lines = [this.describeSegmentData(segment), this.describeSegmentTiles(segment)].filter(Boolean);
+    this.timelineMarkTooltip.innerHTML = "";
+
+    const heading = document.createElement("p");
+    heading.className = "timeline-mark-tooltip-years";
+    heading.textContent = this.describeSegmentYears(segment);
+    this.timelineMarkTooltip.appendChild(heading);
+
+    for (const line of lines) {
+      const item = document.createElement("p");
+      item.className = "timeline-mark-tooltip-line";
+      item.textContent = line;
+      this.timelineMarkTooltip.appendChild(item);
+    }
+
+    const note = document.createElement("p");
+    note.className = "timeline-mark-tooltip-note";
+    note.textContent =
+      "Bar height is how much data this variable has for those years. The dark fill is how much of it is already in the map's tile cache.";
+    this.timelineMarkTooltip.appendChild(note);
+
+    this.timelineMarkTooltip.hidden = false;
+    this.hoveredSegment = segment;
+    this.positionMarkTooltip();
+  }
+
+  // Below the pointer and clamped to the window, the way a native tooltip would
+  // sit. Above the pointer is not an option: the timeline is pinned to the top
+  // of the map and there is nothing up there to put it in.
+  positionMarkTooltip() {
+    if (!this.markTooltipPointer) return;
+    const { x: clientX, y: clientY } = this.markTooltipPointer;
+    const box = this.timelineMarkTooltip.getBoundingClientRect();
+    const margin = this.TOOLTIP_VIEWPORT_MARGIN_PX;
+    const left = Math.min(
+      Math.max(margin, clientX - box.width / 2),
+      Math.max(margin, window.innerWidth - box.width - margin),
+    );
+    const top = Math.min(
+      clientY + this.TIMELINE_TOOLTIP_GAP_PX,
+      Math.max(margin, window.innerHeight - box.height - margin),
+    );
+    this.timelineMarkTooltip.style.left = `${Math.round(left)}px`;
+    this.timelineMarkTooltip.style.top = `${Math.round(top)}px`;
+  }
+
+  hideMarkTooltip() {
+    if (this.timelineMarkTooltip.hidden) return;
+    this.timelineMarkTooltip.hidden = true;
+    this.hoveredSegment = null;
+    this.markTooltipPointer = null;
   }
 
   startMarkerDrag(event) {
@@ -717,13 +856,20 @@ export class DemscoreApp extends BaseController {
     }
 
     const start = Math.ceil(yearMin / minorStep) * minorStep;
-    const ticks = [];
+    const ticks = [{ year: yearMin, major: true, edge: "start" }];
     for (let y = start; y <= yearMax; y += minorStep) {
       if (y > yearMin && y < yearMax) {
         ticks.push({ year: y, major: y % majorStep === 0, edge: null });
       }
     }
+    ticks.push({ year: yearMax, major: true, edge: "end" });
 
+    // The ladder is a round-number scale and says nothing about the variable on
+    // the map: for V-Dem it reads 1800..2000 whichever variable is selected, and
+    // where a series actually begins and ends was left to be inferred from where
+    // the marks stop. The two ends are the one part of the axis that is about
+    // this variable, so they are always drawn and always labelled; a ladder
+    // label that collides with one loses its label in renderTimelineScale.
     return ticks;
   }
 
@@ -761,59 +907,133 @@ export class DemscoreApp extends BaseController {
       segments.push({ years, centerYear, dataYears: years.filter((year) => availableYearSet.has(year)) });
     }
 
-    return {
-      segments,
-      boxWidth,
-      // Too few years to tile the track: the boxes become beads and need a
-      // baseline behind them, or the timeline stops reading as one axis.
-      sparse: spacing <= 0 || boxWidth + this.PRELOAD_SEGMENT_GAP_PX < spacing - 0.5,
+    // Whether the marks tile the track or stand apart as beads used to decide
+    // whether a baseline was drawn behind them. The marks are bars now and the
+    // floor is always there, so the spacing no longer changes anything.
+    return { segments, boxWidth };
+  }
+
+  // The year each of the precomputed strip's buckets starts at, built the same
+  // way scripts/build_variable_coverage.sh cut them -- `yearMin + floor(i * span
+  // / buckets)`, which spreads the remainder instead of piling it on the last
+  // bucket. Rebuilding the edges rather than inverting that expression is the
+  // only way to be sure a year lands in the bucket it was counted into.
+  buildCoverageBucketEdges(yearMin, yearMax, buckets) {
+    const span = yearMax - yearMin + 1;
+    return Array.from({ length: buckets + 1 }, (_value, index) =>
+      yearMin + Math.floor((index * span) / buckets),
+    );
+  }
+
+  // How tall each read-ahead mark is drawn: the same coverage shape the variable
+  // list draws under every row and the card shows in full, read out of the same
+  // precomputed file, so one variable is one shape wherever it appears.
+  //
+  // The marks carry it rather than a row of their own. A bar above a box said
+  // two things about the same years in two places, and the box's own fill was
+  // already the second dimension this needed -- so the height is the coverage
+  // and the fill is the cache.
+  //
+  // Per-year counts would be finer than the precomputed buckets, but
+  // `countryCountsByYear` is a field the client reads and the backend has never
+  // sent, and filling it for 165 variables would about triple a 163 KB config
+  // fetch made on every load.
+  //
+  // Returns null when there is nothing to scale against -- no entry for this
+  // variable, or a file whose years no longer match the ones the map is drawing.
+  // Every mark then falls back to the flat `--track-height` the CSS gives it,
+  // which is what the timeline looked like before any of this.
+  buildCoverageHeightLookup(yearMin, yearMax) {
+    const entry = this.metadataController.getCoverageStripData(this.state.dataset, this.state.variable);
+    const buckets = entry?.levels?.length ?? 0;
+    if (buckets === 0 || entry.yearMin !== yearMin || entry.yearMax !== yearMax) return null;
+
+    const edges = this.buildCoverageBucketEdges(yearMin, yearMax, buckets);
+    const levelAt = (year) => {
+      for (let index = buckets - 1; index >= 0; index -= 1) {
+        if (year >= edges[index]) return Number(entry.levels[index]);
+      }
+      return Number(entry.levels[0]);
+    };
+
+    // The strip's buckets are coarser than the read-ahead segments (about six
+    // years against four), so a segment takes the mean of the buckets its years
+    // fall in. That resamples a coarse signal onto finer columns; it repeats
+    // detail rather than inventing it.
+    return (years) => {
+      const levels = years
+        .filter((year) => year >= yearMin && year <= yearMax)
+        .map(levelAt)
+        .filter((level) => Number.isFinite(level));
+      if (levels.length === 0) return null;
+
+      const level = levels.reduce((sum, value) => sum + value, 0) / levels.length;
+      if (level <= 0) return null;
+      // Same ramp as the list strips, so a bar here and a bar there mean the
+      // same thing: level 1 sits at the floor, level 9 fills the band.
+      const height =
+        this.COVERAGE_BAR_MIN_PX +
+        ((Math.min(9, level) - 1) / 8) * (this.COVERAGE_BAND_PX - this.COVERAGE_BAR_MIN_PX);
+      return Math.max(this.COVERAGE_BAR_MIN_PX, height);
     };
   }
 
-  describePreloadSegment(segment, status, progress) {
-    const { years, dataYears, countryCount } = segment;
-    const range = years[0] === years[years.length - 1] ? `${years[0]}` : `${years[0]}\u2013${years[years.length - 1]}`;
+  // The end-year labels are the point of the exercise, so a ladder label that
+  // runs into one is dropped rather than moved: moving it would put a round
+  // number somewhere it is not. Measured rather than estimated, because the
+  // width of "1789" depends on the font the browser actually used.
+  dropTimelineLabelsNearEdges() {
+    const edgeLabels = [...this.timelineScale.querySelectorAll(".timeline-tick.is-edge-start, .timeline-tick.is-edge-end")]
+      .map((tick) => tick.querySelector(".timeline-tick-label"))
+      .filter(Boolean)
+      .map((label) => label.getBoundingClientRect());
+    if (edgeLabels.length === 0) return;
 
-    if (dataYears.length === 0) return `${range}: no data`;
-
-    const countries = Number.isFinite(countryCount)
-      ? ` (${dataYears.length > 1 ? "up to " : ""}${countryCount} countries)`
-      : "";
-    if (status === "loaded") return `${range}: cached${countries}`;
-    if (status === "failed") return `${range}: cache failed`;
-    if (status === "loading") return `${range}: caching ${progress}%`;
-    return `${range}: waiting${countries}`;
+    for (const tick of this.timelineScale.querySelectorAll(".timeline-tick:not(.is-edge-start):not(.is-edge-end)")) {
+      const label = tick.querySelector(".timeline-tick-label");
+      if (!label) continue;
+      const box = label.getBoundingClientRect();
+      const collides = edgeLabels.some(
+        (edge) =>
+          box.left - this.TIMELINE_EDGE_LABEL_GAP_PX < edge.right &&
+          box.right + this.TIMELINE_EDGE_LABEL_GAP_PX > edge.left,
+      );
+      // The mark stays: it is a year on the ladder either way, and only the
+      // number had nowhere to go.
+      if (collides) label.remove();
+    }
   }
 
-  renderTimelineScale(yearMin, yearMax, availableYears = [], countryCountsByYear = {}) {
+  renderTimelineScale(yearMin, yearMax, availableYears = []) {
     // The scale is about to exist, so the placeholder rule and the hidden marker
     // give way to it. Idempotent: every later redraw passes through here too.
     this.timelineWrap.classList.remove("is-awaiting-data");
     this.timelineScale.innerHTML = "";
     this.timelinePreloadTrack.innerHTML = "";
     this.preloadSegments = [];
+    // The segments it pointed at are about to be replaced.
+    this.hideMarkTooltip();
     const ticks = this.buildTimelineTickYears(yearMin, yearMax);
     const span = yearMax - yearMin;
     const availableYearSet = new Set(availableYears);
     // A single-year coverage has no span to spread over, so everything centres.
     const yearPct = (year) => (span > 0 ? ((year - yearMin) / span) * 100 : 50);
 
-    const { segments, boxWidth, sparse } = this.buildPreloadSegments(yearMin, yearMax, availableYearSet);
-    this.timelinePreloadTrack.classList.toggle("is-sparse", sparse);
+    const { segments, boxWidth } = this.buildPreloadSegments(yearMin, yearMax, availableYearSet);
     // on the wrap, not the track: marker positioning and segment sizing both
     // read this same value.
     this.timelineWrap.style.setProperty("--preload-box-width", `${boxWidth}px`);
 
+    const coverageHeight = this.buildCoverageHeightLookup(yearMin, yearMax);
     for (const segment of segments) {
-      const counts = segment.dataYears
-        .map((year) => Number(countryCountsByYear[String(year)] ?? countryCountsByYear[year]))
-        .filter((count) => Number.isFinite(count));
-      segment.countryCount = counts.length > 0 ? Math.max(...counts) : null;
       segment.el = document.createElement("span");
       segment.el.className = `timeline-preload-segment${segment.dataYears.length > 0 ? "" : " is-unavailable"}`;
       segment.el.style.left = `${yearPct(segment.centerYear)}%`;
       segment.el.style.setProperty("--preload-progress", "0%");
-      segment.el.title = this.describePreloadSegment(segment, "pending", 0);
+      // Years with nothing to draw keep the hairline the stylesheet gives them:
+      // a mark floored at the coverage minimum would claim data they do not have.
+      const height = segment.dataYears.length > 0 && coverageHeight ? coverageHeight(segment.years) : null;
+      if (height !== null) segment.el.style.height = `${height.toFixed(1)}px`;
       this.timelinePreloadTrack.appendChild(segment.el);
       this.preloadSegments.push(segment);
     }
@@ -838,6 +1058,7 @@ export class DemscoreApp extends BaseController {
       this.timelineScale.appendChild(tick);
     }
 
+    this.dropTimelineLabelsNearEdges();
     this.highlightTimelineTick(this.state.year);
 
     if (this.preloadSnapshot) {
@@ -880,7 +1101,17 @@ export class DemscoreApp extends BaseController {
       el.classList.toggle("is-loaded", isLoaded);
       el.classList.toggle("is-failed", isFailed);
       el.style.setProperty("--preload-progress", `${isLoaded ? 100 : progress}%`);
-      el.title = this.describePreloadSegment(segment, status, progress);
+      segment.preloadStatus = status;
+      segment.preloadProgress = progress;
+    }
+
+    // A run finishing under an open card would otherwise leave it reading
+    // "not cached yet" over a mark that has just filled in. It is redrawn where
+    // the pointer left it, not where the card happens to be: the card is centred
+    // on the pointer, so feeding its own box back in would walk it left by half
+    // its width every time a tile arrived.
+    if (this.hoveredSegment && !this.timelineMarkTooltip.hidden) {
+      this.showMarkTooltip(this.hoveredSegment);
     }
   }
 }

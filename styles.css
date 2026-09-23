@@ -672,11 +672,13 @@ textarea {
   line-height: 1.35;
 }
 
-/* Last line: a sparkline of the years this variable covers. The track spans the
-   whole dataset's years on every row, so the same x position is the same year
-   down the list and spans can be compared without reading a single number.
+/* Last lines: a sparkline of the years this variable covers, and underneath it
+   the two years it runs between. The track spans that variable's own first-to-
+   last year and nothing else, so every row uses its full width — which is also
+   why the years below are not optional: they are the only scale the strip has.
    Bar height carries how much data is there — sampling frequency and country
-   coverage folded together by scripts/build_variable_coverage.sh. */
+   coverage folded together by scripts/build_variable_coverage.sh, against the
+   busiest year in the same dataset. */
 .variable-option-coverage {
   --coverage-track-height: 10px;
   display: block;
@@ -685,24 +687,8 @@ textarea {
   height: var(--coverage-track-height);
 }
 
-/* Data that runs off the left of the shared axis gets a chevron at the edge, so
-   a V-Dem series reaching back to 1789 does not read as starting in 1900. */
-.variable-option-coverage.is-clipped::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: -5px;
-  width: 0;
-  height: 0;
-  border-top: 3.5px solid transparent;
-  border-right: 4px solid currentColor;
-  border-bottom: 3.5px solid transparent;
-  opacity: 0.65;
-}
-
-/* The baseline draws the shared axis even where a variable has none of it, which
-   is what makes a late-starting row read as late-starting rather than as a short
-   strip floating in the row. */
+/* The baseline runs the full width under the bars, so a variable with a gap in
+   the middle of its span still reads as one strip rather than two. */
 .variable-option-coverage::before {
   content: "";
   position: absolute;
@@ -727,6 +713,33 @@ textarea {
 
 .variable-option:hover .variable-option-coverage-svg {
   opacity: 0.9;
+}
+
+/* The strip's scale. Tabular figures so the two ends line up down the list even
+   though no two rows share an axis any more, and small enough that the row is
+   still read title-first. */
+.variable-option-coverage-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+  font-family: var(--font-numeric);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  opacity: 0.62;
+}
+
+/* One year, not a span: centred, because pinning it left would read as the
+   start of a range whose end had been cut off. */
+.variable-option-coverage-axis.is-single,
+.variable-tooltip-coverage-axis.is-single {
+  justify-content: center;
+}
+
+.variable-option:hover .variable-option-coverage-axis {
+  opacity: 0.8;
 }
 
 /* On the tinted fill the ink is navy rather than the row's usual grey, which is
@@ -967,8 +980,8 @@ textarea {
   color: var(--accent);
 }
 
-/* The row's strip again, with the context a row has no space for: the years its
-   axis runs between, and what makes one bar taller than its neighbour. */
+/* The row's strip again, with the context a row has no space for: what makes
+   one bar taller than its neighbour, and what full height is measured against. */
 .variable-tooltip-coverage {
   margin: 9px 0 0;
   padding-top: 8px;
@@ -983,8 +996,8 @@ textarea {
   color: var(--accent);
 }
 
-/* Same baseline as the row: it draws the dataset's whole span, so a variable
-   that starts late reads as starting late rather than as a floating strip. */
+/* Same baseline as the row: it runs the full width of the variable's own span,
+   so a gap in the middle of a series still reads as one strip. */
 .variable-tooltip-coverage-track::before {
   content: "";
   position: absolute;
@@ -1427,6 +1440,9 @@ textarea {
   padding: 0 22px 0 0;
 }
 
+/* Tall enough for the marks, the axis they stand on and the tick labels under
+   it — back to the 72px it was before the coverage band, now that the coverage
+   is the marks' own height rather than a second row above them. */
 .timeline-main::before {
   position: absolute;
   z-index: 0;
@@ -1447,7 +1463,15 @@ textarea {
 
 .timeline-slider-wrap {
   --selected-pct: 50%;
-  --axis-y: 36px;
+  /* The baseline the read-ahead marks stand on, and the line everything else
+     is placed from: the marks grow up from it, the tick marks and their labels
+     hang below it, and the year marker drops from it. The marks used to be
+     boxes centred *on* it, with the ticks above; they became bars when the
+     coverage moved into their height, and a bar needs a floor. */
+  --axis-y: 28px;
+  --coverage-band-height: 20px;
+  /* What a mark falls back to when there is no coverage to scale it by: a flat
+     row of equal boxes, which is what this was before the two merged. */
   --track-height: 12px;
   /* Set from JS once the boxes are sized; the track inherits it for every
      preloaded year bucket. */
@@ -1463,29 +1487,33 @@ textarea {
   display: none;
 }
 
+/* The band the marks stand in: its foot is the axis, and a mark grows upward
+   from there by however much data its years carry. */
 .timeline-preload-track {
   position: absolute;
-  top: var(--axis-y);
+  top: calc(var(--axis-y) - var(--coverage-band-height));
   left: 0;
   right: 0;
-  height: var(--track-height);
-  transform: translateY(-50%);
+  height: var(--coverage-band-height);
   z-index: 2;
   pointer-events: none;
 }
 
-/* Only drawn when the boxes are too far apart to tile (a handful of years over a
-   wide track): without it the axis would read as a few loose beads. */
-.timeline-preload-track.is-sparse::before {
+/* The floor under the marks. It used to be drawn only where the boxes were too
+   far apart to tile; marks of differing heights need a line to stand on at every
+   spacing, or a run of short ones reads as floating. */
+.timeline-preload-track::before {
   position: absolute;
-  top: 50%;
+  top: 100%;
   left: 0;
   right: 0;
-  height: 3px;
+  height: 1.5px;
   content: "";
   border-radius: 999px;
-  background: rgba(17, 17, 17, 0.16);
-  transform: translateY(-50%);
+  /* Darker than a resting mark on purpose: at the same weight the two merged
+     and the marks read as sitting in a grey trough rather than standing on a
+     line. */
+  background: rgba(17, 17, 17, 0.38);
 }
 
 /* Before a variable's years are in there is nothing to put on the axis, and a
@@ -1496,17 +1524,11 @@ textarea {
   display: none;
 }
 
+/* Before a variable's years are in, that floor is all there is, and it pulses to
+   say the axis is coming rather than that it is empty. */
 .timeline-slider-wrap.is-awaiting-data .timeline-preload-track::before {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  right: 0;
   height: 3px;
-  content: "";
-  z-index: 1;
-  border-radius: 999px;
   background: color-mix(in srgb, var(--timeline-ink) 18%, transparent);
-  transform: translateY(-50%);
   animation: demscore-timeline-wait 1.5s ease-in-out infinite;
 }
 
@@ -1526,41 +1548,45 @@ textarea {
   }
 }
 
-/* Centred on the year it covers, so a box lines up with its tick and the marker. */
+/* One mark per bucket of years, centred on the years it covers so it lines up
+   with its tick and with the year marker.
+
+   It says two things at once. Its height is how much data the selected variable
+   has for those years -- the same shape the variable list draws under the row
+   for it. Its fill is how much of those years is in the tile cache, and it rises
+   from the floor rather than sweeping across, so the two readings cannot be
+   confused: one is how tall, the other is how full.
+
+   Grey is the resting state. Mixed towards the paper rather than made
+   transparent, because on a phone the axis is drawn over the map and a
+   translucent mark would take its colour from the hexagons under it. */
 .timeline-preload-segment {
   --preload-progress: 0%;
   box-sizing: border-box;
   position: absolute;
-  top: 50%;
+  bottom: 0;
   width: var(--preload-box-width);
-  height: 100%;
-  border: 1.5px solid rgba(17, 17, 17, 0.22);
-  border-radius: 2px;
-  background: var(--timeline-paper);
-  transform: translate(-50%, -50%);
+  height: var(--track-height);
+  border-radius: 2px 2px 0 0;
+  background: color-mix(in srgb, var(--timeline-ink) 26%, var(--timeline-paper));
+  transform: translateX(-50%);
   overflow: hidden;
 }
 
 .timeline-preload-segment::after {
   position: absolute;
-  inset: 0 auto 0 0;
-  width: var(--preload-progress);
+  inset: auto 0 0 0;
+  height: var(--preload-progress);
   content: "";
   background: var(--timeline-fill);
-  transition: width 120ms linear;
-}
-
-.timeline-preload-segment.is-loading {
-  border-color: color-mix(in srgb, var(--timeline-fill) 55%, transparent);
+  transition: height 120ms linear;
 }
 
 .timeline-preload-segment.is-loaded {
-  border-color: var(--timeline-fill);
   background: var(--timeline-fill);
 }
 
 .timeline-preload-segment.is-failed {
-  border-color: var(--timeline-fail);
   background: var(--timeline-fail);
 }
 
@@ -1568,11 +1594,11 @@ textarea {
   display: none;
 }
 
-/* years with no data at all shrink to a hairline so the track still reads as one axis */
+/* years with no data at all shrink to a hairline: nothing to cache, and nothing
+   to be tall about, with the floor behind them carrying the axis across the gap */
 .timeline-preload-segment.is-unavailable {
   height: 3px;
-  border-color: transparent;
-  background: rgba(17, 17, 17, 0.16);
+  background: rgba(17, 17, 17, 0.28);
 }
 
 .timeline-preload-segment.is-unavailable::after {
@@ -1640,9 +1666,11 @@ textarea {
   height: 0;
 }
 
+/* Below the axis now, not above it: above is where the marks grow. The ruler
+   and the numbers it is a ruler for end up on the same side of the line. */
 .timeline-tick-mark {
   position: absolute;
-  bottom: calc(var(--track-height) / 2 + 3px);
+  top: 4px;
   left: -1px;
   width: 2px;
   height: 6px;
@@ -1658,7 +1686,7 @@ textarea {
 .timeline-tick-label {
   position: absolute;
   font-family: var(--font-numeric);
-  top: calc(var(--track-height) / 2 + 5px);
+  top: 19px;
   left: 0;
   transform: translateX(-50%);
   font-size: 0.68rem;
@@ -1684,7 +1712,7 @@ textarea {
 
 .timeline-selected-marker {
   position: absolute;
-  top: calc(var(--axis-y) + var(--track-height) / 2);
+  top: var(--axis-y);
   left: var(--selected-pct);
   transform: translate(-50%, 0%);
   display: flex;
@@ -1858,6 +1886,59 @@ textarea {
   padding: 0;
   box-sizing: border-box;
   pointer-events: auto;
+}
+
+/* What the mark under the pointer means. Fixed rather than parented to the
+   timeline: the overlay is pinned to the top of the map, so a card above the
+   pointer has nowhere to go and one below it has to be free of the overlay's
+   own stacking. `pointer-events: none` so it never steals the scrub gesture it
+   is sitting on top of. */
+.timeline-mark-tooltip {
+  position: fixed;
+  z-index: 1300;
+  /* `max-content` first, then capped: a fixed box otherwise shrinks to whatever
+     room is left between its `left` and the edge, which turns the note into a
+     column of single words near the right of the screen. */
+  width: max-content;
+  max-width: 264px;
+  padding: 9px 12px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 10px 28px rgba(23, 56, 75, 0.18);
+  backdrop-filter: blur(3px);
+  pointer-events: none;
+}
+
+.timeline-mark-tooltip[hidden] {
+  display: none;
+}
+
+.timeline-mark-tooltip-years {
+  margin: 0;
+  font-family: var(--font-numeric);
+  font-size: 0.86rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.timeline-mark-tooltip-line {
+  margin: 3px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+/* The part that is about the row rather than about these years, so it is set
+   apart from the reading above it. */
+.timeline-mark-tooltip-note {
+  margin: 7px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--panel-border);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--muted);
 }
 
 /* The caption under the timeline. It floats over the map like everything else
@@ -2206,6 +2287,10 @@ textarea {
   color: rgba(255, 255, 255, 0.88);
   font-size: 0.8rem;
   line-height: 1.2;
+}
+
+.legend-labels span:last-child {
+  text-align: right;
 }
 
 /* Off the end of the ramp, not part of it: a country with no value for this
@@ -2755,7 +2840,7 @@ textarea {
 
 @media (max-width: 900px) {
   :root {
-    --map-legend-height: 94px;
+    --map-legend-height: 82px;
   }
 
   #app {
@@ -2927,17 +3012,17 @@ textarea {
   }
 
   .map-display-stack {
-    bottom: 66px;
+    bottom: 56px;
   }
 
   .map-choice-dashboard {
-    bottom: 8px;
+    bottom: 6px;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     width: min(620px, calc(100% - 20px));
     min-width: 0;
-    padding: 6px;
+    padding: 4px;
   }
 
   .map-choice-divider {
@@ -2956,21 +3041,31 @@ textarea {
   .map-projection-switch,
   .map-palette-mobile,
   .map-outline-toggle {
-    min-height: 40px;
-    padding: 4px;
+    min-height: 34px;
+    padding: 3px;
     border-radius: 7px;
   }
 
+  .map-projection-selection {
+    top: 3px;
+    left: 3px;
+    width: calc((100% - 8px) / 2);
+    height: calc(100% - 6px);
+  }
+
   .map-projection-choice {
-    min-height: 32px;
-    padding: 4px 6px;
-    font-size: 0.66rem;
+    place-items: center;
+    align-content: center;
+    gap: 2px;
+    min-height: 28px;
+    padding: 3px 5px;
+    font-size: 0.64rem;
   }
 
   .map-projection-icon,
   .map-projection-choice svg {
-    width: 17px;
-    height: 17px;
+    width: 16px;
+    height: 16px;
   }
 
   .map-palette-list {
@@ -2981,14 +3076,14 @@ textarea {
     display: grid;
     grid-template-columns: minmax(42px, 0.32fr) minmax(0, 1fr);
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     background: rgba(221, 228, 230, 0.9);
   }
 
   .map-palette-mobile::after {
     content: "";
     position: absolute;
-    right: 12px;
+    right: 10px;
     top: 50%;
     width: 7px;
     height: 7px;
@@ -2999,8 +3094,8 @@ textarea {
   }
 
   .map-palette-select {
-    min-height: 32px;
-    padding: 0 24px 0 0;
+    min-height: 28px;
+    padding: 0 22px 0 0;
     border-radius: 5px;
     appearance: none;
     font-size: 0.78rem;
@@ -3008,31 +3103,31 @@ textarea {
   }
 
   .map-palette-mobile-swatches {
-    height: 12px;
+    height: 10px;
   }
 
   .map-outline-toggle {
     grid-template-columns: auto auto;
     align-content: center;
     justify-items: start;
-    gap: 6px;
-    min-width: 78px;
+    gap: 5px;
+    min-width: 70px;
   }
 
   .map-outline-track {
-    width: 38px;
-    height: 22px;
+    width: 34px;
+    height: 20px;
   }
 
   .map-outline-thumb {
     top: 3px;
     left: 3px;
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
   }
 
   .map-outline-toggle input:checked + .map-outline-switch .map-outline-thumb {
-    transform: translateX(16px);
+    transform: translateX(14px);
   }
 
   .map-outline-copy {
@@ -3045,13 +3140,13 @@ textarea {
   @media (max-width: 520px) {
     .map-choice-dashboard {
       width: min(430px, calc(100% - 12px));
-      gap: 5px;
-      padding: 5px;
+      gap: 4px;
+      padding: 4px;
     }
 
     .map-projection-choice {
-      width: 36px;
-      padding: 4px;
+      width: 32px;
+      padding: 2px;
     }
 
     .map-projection-choice span {
@@ -3098,8 +3193,8 @@ textarea {
 
   .map-legend-dock {
     align-items: stretch;
-    padding: 9px 12px 10px;
-    border-top-width: 6px;
+    padding: 7px 10px 8px;
+    border-top-width: 5px;
   }
 
   /* Stacked outright, and `nowrap` with it: a column that wraps sizes its one
@@ -3109,7 +3204,7 @@ textarea {
     flex-direction: column;
     flex-wrap: nowrap;
     align-items: stretch;
-    gap: 6px;
+    gap: 4px;
   }
 
   /* Down the column a `flex-basis` is a height, and the dock stretches the
@@ -3120,12 +3215,21 @@ textarea {
     flex: 0 0 auto;
   }
 
+  .legend-copy {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 8px;
+  }
+
   .legend-title {
+    grid-column: 1;
     margin-bottom: 1px;
     font-size: 1rem;
   }
 
   .legend-subtitle {
+    grid-column: 1;
     overflow: hidden;
     font-size: 0.72rem;
     line-height: 1.2;
@@ -3133,26 +3237,51 @@ textarea {
     white-space: nowrap;
   }
 
+  .legend-data-button {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    margin-top: 0;
+    padding: 4px 8px;
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
+
+  .legend-scale {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 3px;
+  }
+
   .legend-bar {
+    grid-column: 1;
+    grid-row: 1;
     height: 12px;
   }
 
   .legend-labels {
-    margin-top: 4px;
+    grid-column: 1;
+    grid-row: 2;
+    margin-top: 0;
     font-size: 0.7rem;
   }
 
   /* The note goes and this stays: the note restates what the ramp already
      shows, while nothing else on a phone says what the cream means. */
   .legend-nodata {
-    gap: 5px;
-    margin-top: 4px;
+    grid-column: 2;
+    grid-row: 1;
+    gap: 4px;
+    margin: 0;
     font-size: 0.7rem;
+    white-space: nowrap;
   }
 
   .legend-nodata-swatch {
-    width: 14px;
-    height: 9px;
+    width: 12px;
+    height: 10px;
   }
 
   .legend-note {
@@ -3191,7 +3320,10 @@ textarea {
   }
 
   .timeline-slider-wrap {
-    --axis-y: 34px;
+    /* The axis clears the card above it by the height of the marks standing on
+       it, exactly as on the desktop. The band itself is not restated: its height
+       is `COVERAGE_BAND_PX` in DemscoreApp, and the two have to agree. */
+    --axis-y: 26px;
     --track-height: 10px;
     flex-basis: 100%;
     height: 164px;
@@ -3200,64 +3332,67 @@ textarea {
 
   .timeline-main {
     flex-wrap: wrap;
-    min-height: 58px;
+    min-height: 44px;
     padding: 0 0 6px;
   }
 
+  /* Kept to the controls row, unlike the desktop card: here the axis sits on
+     the map below it, so the card backs the buttons only and the coverage band
+     never enters it. */
   .timeline-main::before {
-    height: 58px;
+    height: 44px;
   }
 
   .timeline-controls {
     width: 100%;
-    min-height: 58px;
+    min-height: 44px;
   }
 
   .playback-control {
     width: 100%;
-    min-height: 58px;
+    min-height: 44px;
   }
 
   .playback-control .play-button {
     flex: 1 1 auto;
     min-width: 0;
-    padding: 0 16px;
-    gap: 9px;
-    font-size: 1.14rem;
+    padding: 0 12px;
+    gap: 7px;
+    font-size: 1rem;
   }
 
   .playback-control .play-button svg {
-    width: 21px;
-    height: 21px;
+    width: 18px;
+    height: 18px;
   }
 
   .speed-button {
-    min-height: 58px;
-    padding: 0 12px;
+    min-height: 44px;
+    padding: 0 10px;
     border-left: 0;
     border-right: 0;
-    gap: 8px;
+    gap: 6px;
   }
 
   .speed-button button {
-    width: 24px;
-    height: 40px;
+    width: 22px;
+    height: 32px;
   }
 
   .speed-button svg {
-    width: 21px;
-    height: 21px;
+    width: 18px;
+    height: 18px;
   }
 
   #speedDisplay {
     min-width: 1.2em;
-    font-size: 1.02rem;
+    font-size: 0.92rem;
   }
 
-  /* The group is 58px here rather than 72px, so the caption comes down with it. */
+  /* The group is 44px here rather than 72px, so the caption comes down with it. */
   .speed-button-label {
-    top: 7px;
-    font-size: 0.56rem;
+    top: 4px;
+    font-size: 0.52rem;
   }
 
   /* The phone header is the variable picker, and it already reads "V-Dem /
@@ -3278,11 +3413,16 @@ textarea {
   }
 
   .timeline-tick-mark {
+    top: 3px;
     height: 5px;
   }
 
   .timeline-tick.is-major .timeline-tick-mark {
     height: 10px;
+  }
+
+  .timeline-tick-label {
+    top: 16px;
   }
 
   .timeline-controls {

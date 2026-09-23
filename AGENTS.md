@@ -11,8 +11,9 @@ Primary user flows:
   each row carries its dataset's colour on its left edge, and picking a row is also what
   switches the dataset
 - scrub or animate year timeline
-- compare at a glance which variables cover which years, from the coverage strip under
-  each row — the one part of a row that works on touch, where the hover card does not
+- compare at a glance which years a variable covers, from the coverage strip under each
+  row and the two years written under that — the one part of a row that works on touch,
+  where the hover card does not
 - read a variable's codebook description in a hover card, or its full entry in a dialog,
   along with how to cite the dataset, and follow that card's footer to the module's codebook
   PDF or its Demscore download
@@ -158,11 +159,13 @@ Common tasks and where to work:
 
 - Change how a variable row looks or reads:
   - `MetadataController.buildVariableOption()` (row markup: a `div` holding the picking
-    `label`). Every row is the same shape — a title row over a coverage strip. It used to
+    `label`). Every row is the same shape — a title row over a coverage strip over the two
+    years that strip spans. It used to
     be a split button with a caret opening a menu of the variable's other versions; only
     the base version is offered now, which is also why the strip alignment needs no
     padding tricks any more
-  - the second line is `.variable-option-coverage`, the coverage strip, on every row. It
+  - the second line is `.variable-option-coverage`, the coverage strip, on every row, and
+    the third is `.variable-option-coverage-axis`, its first and last year. The strip
     replaced the variable key that used to sit there: the key is still one hover away in
     the card, and the strip says something the title does not
   - `.variable-list` / `.variable-option*` in `styles.css`; the list is a flex child
@@ -246,10 +249,16 @@ Common tasks and where to work:
   - `MetadataController.renderCoverageStrip()` turns the variable's digit string into one
     `<path>` via `buildCoverageStripSvg()`. One path per row is deliberate: 60 bars as
     elements across the list would be thousands of nodes, rebuilt on every filter change
-  - the axis is per dataset, not per variable: a row's bars sit where its years fall in
-    the whole dataset's span, and the `::before` baseline draws that span even where the
-    variable has none of it. Without the baseline a late-starting variable would read as
-    a short strip floating in the row rather than as late-starting
+  - the axis is per variable: the strip runs from that variable's first year to its last
+    and uses the full width of the track, so the two years `buildCoverageAxis()` writes
+    underneath are the only scale it has — a strip without them is unreadable, which is why
+    `renderCoverageStrip()` inserts them itself rather than leaving it to its callers.
+    The axis used to be shared by every dataset and floored at 1900, so that a bar in the
+    same place meant the same year on every row; that bought comparison between rows at the
+    price of a QoG row spending three quarters of its width on the years before QoG starts,
+    and of V-Dem's 18th-century series being cut off at the left edge. The `::before`
+    baseline stays, now drawing the variable's own span, so a series with a gap in the
+    middle still reads as one strip
   - bar height folds sampling frequency and country coverage into one number, and is
     floored at level 1 so a 32-country sample still shows where its span begins
   - `.variable-option-coverage*` in `styles.css`; the SVG is `fill: currentColor`, which
@@ -362,21 +371,65 @@ Common tasks and where to work:
     click outside and shuts the card in the same gesture that asked for it
 
 - Change the timeline axis / tile-preload progress bar:
-  - the axis *is* the preload track: `#timelinePreloadTrack` is a flex row of
-    `.timeline-preload-segment` boxes that fill in teal as `LayerPreloadController`
+  - the axis *is* the preload track: `#timelinePreloadTrack` is a row of
+    `.timeline-preload-segment` marks that fill in teal as `LayerPreloadController`
     caches tiles (there is no separate `.timeline-line`)
+  - **one mark says two things.** Its *height* is how much data the selected variable
+    has for the years it covers; its *fill* is how much of those years is in the tile
+    cache, rising from the floor rather than sweeping across, so the two readings
+    cannot be confused -- one is how tall, the other is how full. They were two
+    stacked rows for a while, a coverage band over the marks, which spent twice the
+    height saying two things about the same column
   - `DemscoreApp.buildPreloadSegments()` buckets years into boxes so each stays at
     least `PRELOAD_SEGMENT_MIN_PX` wide, so the segment count depends on the rendered
     track width and is rebuilt (debounced) on window resize
   - boxes are absolutely positioned and centred on the years they cover, using the
     same `(year - yearMin) / span` mapping as the ticks and the selected marker, so
     they line up; the end boxes overhang the track by half a box, which nothing clips
-  - a coverage of only a few years caps box width at `PRELOAD_SEGMENT_MAX_PX` and adds
-    `.is-sparse` to the track, which draws a baseline behind the boxes so the axis
-    still reads as a line (a two-year dataset would otherwise be two loose slabs)
+  - a coverage of only a few years caps mark width at `PRELOAD_SEGMENT_MAX_PX`. There
+    used to be an `.is-sparse` class for that case, to put a baseline behind marks too
+    far apart to tile; the floor is unconditional now, so the spacing no longer changes
+    anything
   - `buildTimelineTickYears()` ticks *every* year for spans up to
-    `TIMELINE_DENSE_TICK_SPAN`, endpoints included; the wider step ladder only ticks
-    inside the range, which left short spans with no scale at all
+    `TIMELINE_DENSE_TICK_SPAN`, endpoints included; the wider step ladder ticks the
+    round numbers inside the range and then adds the two endpoints itself. The ladder
+    is the same 1800..2000 whichever V-Dem variable is on the map, so the endpoints
+    are the only part of the axis that says anything about *this* variable, and they
+    are always drawn and always labelled
+  - `dropTimelineLabelsNearEdges()` then takes the label off any ladder tick that runs
+    into an endpoint label (1800 against 1789, and 2000 against 2025 on a narrow
+    window). The mark stays; only the number goes, and the endpoint always wins. It
+    measures the rendered labels rather than estimating from the year span, because
+    how wide "1789" is depends on the font the browser actually used
+  - mark height comes from `DemscoreApp.buildCoverageHeightLookup()`, which reads the
+    *precomputed* strip (`MetadataController.getCoverageStripData()` ->
+    `config/variable_coverage.json`) -- the same digits the variable list draws under
+    every row, so one variable is one shape wherever it appears. The strip's buckets
+    are coarser than the segments, so a segment takes the mean of the buckets its
+    years fall in: a resample, not new detail. Per-year counts would be finer, but
+    `countryCountsByYear` is a field the client reads and the backend has never sent,
+    and filling it for 165 variables would about triple a 163 KB config fetch made on
+    every load. With no usable strip the lookup returns null and every mark falls back
+    to the flat `--track-height` the stylesheet gives it, which is what this looked
+    like before the two merged
+  - `--axis-y` is the floor the marks stand on and the line the whole axis is placed
+    from: marks grow up from it by `--coverage-band-height` (which must equal
+    `COVERAGE_BAND_PX` in `DemscoreApp`), the tick marks and labels hang below it, and
+    the year marker drops from it. `.timeline-preload-track::before` draws that floor,
+    always -- it used to appear only where the boxes were too far apart to tile, but
+    marks of differing heights need a line to stand on at every spacing. It is darker
+    than a resting mark on purpose: at the same weight the two merge and the marks
+    read as sitting in a grey trough
+  - hovering a mark opens `#timelineMarkTooltip` (`bindTimelineMarkTooltip()` ->
+    `segmentAtClientX()` -> `showMarkTooltip()`): the years, what is in them, the cache
+    state, and a note saying what height and fill mean. The listener is on the *wrap*,
+    not the marks -- `#yearSlider` is stretched over the whole wrap to catch scrub
+    gestures and the marks are `pointer-events: none` so they do not eat them, so this
+    reads the events that bubble up without taking any. It answers only near the axis
+    (`isNearTimelineAxis()`), never mid-drag, and mouse only. The card is at *body*
+    level, like the variable card and for the same reason: `#timeline-overlay` carries
+    a `transform`, which would make it the containing block for a fixed child and
+    shrink the card into whatever room was left right of the pointer
   - `DemscoreApp.renderPreloadState()` aggregates per-year status/progress into each
     box; `renderTimelineScale()` replays the last snapshot after a rebuild
   - box height lives in `--track-height` on `.timeline-slider-wrap`, box width in
@@ -389,7 +442,9 @@ Common tasks and where to work:
     gutter wide enough for it; a fixed inset left the end box grazing the corner
   - `.timeline-scale` sits above the marker on purpose, and tick labels use an opaque
     halo instead of `opacity`, so the marker line breaks around a label instead of
-    striking through it
+    striking through it. A resting `.timeline-preload-segment` is mixed towards the
+    paper colour for the same reason rather than given an `opacity`: on a phone the
+    axis is drawn over hexagons, and a translucent mark would take its colour from them
 
 - Change anything about the projection, panning limits or world fit:
   - `src/core/projection.js`. The map is drawn in Equal Earth (EPSG:8857) by default
@@ -621,8 +676,10 @@ Common tasks and where to work:
     it in different places: in the sidebar the row is a `<label>` wrapping a radio, so text
     put inside it lands in the radio's *name* and, with `aria-describedby` pointing at the
     same span, is then read a second time as its description
-  - the phone picker option *is* the button, so its text joins the button's name and only the
-    part the visible meta line does not already give is added
+  - the phone picker option *is* the button, so its text joins the button's name. The years
+    under the strip are `aria-hidden` there (they would otherwise be read as part of the
+    button's name), so the whole sentence is added, and the meta line above is the variable
+    key alone — it used to repeat the year range the strip now carries
 
 ## Guardrails
 - Keep responsibilities separated:
@@ -671,11 +728,16 @@ Then do a manual smoke test in browser:
   the same pair. On a phone those two footer links are full-width buttons rather than text
 - variable list: click a row, arrow-key through the list (which crosses dataset boundaries),
   and Tab out in one stop — including while a filter hides the selected row
-- coverage strips: every row has one and they all start and end at the same x; a
-  late-starting variable visibly starts later than its neighbours; hovering a strip reports its real year range and country count.
-  The axis is shared by *all* datasets and clipped at 1900, so a REPDEM row and a V-Dem row
-  put the same year at the same x, and a series reaching back further than 1900 shows the
-  clipped chevron at the left edge rather than appearing to start in 1900
+- coverage strips: every row has one, it fills the row's full width, and the years under
+  its two ends are that variable's first and last — a 2012–2024 QoG row and a 1789–2025
+  V-Dem row are both full-width and say so underneath. Hovering a strip reports the same
+  range and the country count. Two rows are *not* on a shared scale, which is what those
+  year labels are there to make plain
+- timeline axis: the first and last year of the selected variable are labelled at the two
+  ends whichever variable it is, no label collides with them, and the marks standing on the
+  axis are the same shape as that variable's row in the variable list. Hovering one names
+  its years and says what the height and the fill mean; hovering does not interrupt a scrub,
+  and dragging the marker dismisses it
 - year scrub + autoplay; the caption under the timeline names the variable the map is drawing
   and follows every way of changing it — a row, a filter that changes the selection, a
   remembered choice on reload

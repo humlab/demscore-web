@@ -130,6 +130,13 @@
             </div>
           </div>
           <div class="timeline-slider-wrap is-awaiting-data" id="timelineWrap">
+            <!-- One row doing two jobs. How tall a bar is says how much data
+                 the selected variable has for those years; how much of it has
+                 filled in from the bottom says how much of it is in the tile
+                 cache. They were two stacked rows at first, which spent twice
+                 the height saying two things about the same column. Decorative
+                 — the numbers behind it are spoken by the slider and by the
+                 map summary. -->
             <div id="timelinePreloadTrack" class="timeline-preload-track" aria-hidden="true"></div>
             <!-- The visible timeline is drawn around this input rather than by
                  it: the range is transparent and stretched over the whole wrap,
@@ -213,6 +220,21 @@
          back. `MetadataController.openVariableInfoPopover()` /
          `hideVariableTooltip()` switch the role and the close button together;
          neither may be changed without the other. -->
+    <!-- What the mark under the pointer is saying. The marks are one row doing
+         two jobs, which is worth the height but is not self-evident, so the card
+         reads the hovered one out and then says what the shape means.
+
+         At body level, and for the same reason the variable card is: it is
+         positioned in viewport coordinates, and `#timeline-overlay` carries a
+         `transform`, which would make *it* the containing block for a fixed
+         child and leave the card shrunk into whatever room was left to the right
+         of the pointer.
+
+         `aria-hidden` and mouse-only: it is the spoken equivalent of a
+         decorative row, and everything in it is already said by the slider's
+         `aria-valuetext` and the map summary. -->
+    <div id="timelineMarkTooltip" class="timeline-mark-tooltip" hidden aria-hidden="true"></div>
+
     <div id="variableTooltip" class="variable-tooltip" role="tooltip" aria-labelledby="variableTooltipTitle" hidden>
       <div class="variable-tooltip-head">
         <div class="variable-tooltip-head-text">
