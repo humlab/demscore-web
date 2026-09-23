@@ -805,6 +805,17 @@ export class MapController extends BaseController {
             </button>`;
           }).join("")}
         </div>
+        <div class="map-palette-mobile">
+          <span class="map-palette-mobile-swatches" data-current-palette-swatches aria-hidden="true">${Array.from({ length: CLASS_COUNT })
+            .map(() => "<i></i>")
+            .join("")}</span>
+          <select class="map-palette-select" aria-labelledby="mapPaletteLabel">
+            ${PALETTE_KEYS.map((key) => {
+              const palette = MAP_PALETTES[key];
+              return `<option value="${key}">${palette.label}</option>`;
+            }).join("")}
+          </select>
+        </div>
       </div>
       <span class="map-choice-divider" aria-hidden="true"></span>
       <div class="map-choice-section map-outline-panel">
@@ -834,6 +845,8 @@ export class MapController extends BaseController {
     }
     const list = container.querySelector(".map-palette-list");
     list.addEventListener("keydown", (event) => this.onPaletteKeydown(event));
+    this.paletteSelect = container.querySelector(".map-palette-select");
+    this.paletteSelect.addEventListener("change", () => this.setPalette(this.paletteSelect.value));
     this.outlineToggle = container.querySelector("#areaOutlineToggle");
     this.outlineToggle.addEventListener("change", () => this.setAreaOutlinesEnabled(this.outlineToggle.checked));
     this.paletteSwatchEls = new Map(
@@ -842,6 +855,7 @@ export class MapController extends BaseController {
         Array.from(container.querySelectorAll(`[data-palette-swatches="${key}"] i`)),
       ]),
     );
+    this.currentPaletteSwatchEls = Array.from(container.querySelectorAll("[data-current-palette-swatches] i"));
 
     this.mapChoiceDashboardEl = container;
     this.syncProjectionSelector();
@@ -937,6 +951,10 @@ export class MapController extends BaseController {
         swatch.style.background = colors[index];
       });
     }
+    const currentColors = legendColorsFor(this.paletteKey, polarity);
+    this.currentPaletteSwatchEls?.forEach((swatch, index) => {
+      swatch.style.background = currentColors[index];
+    });
   }
 
   syncOutlineToggle() {
@@ -965,6 +983,7 @@ export class MapController extends BaseController {
     list?.style.setProperty("--selected", selected);
     list?.style.setProperty("--column", selected % 2);
     list?.style.setProperty("--row", Math.floor(selected / 2));
+    if (this.paletteSelect) this.paletteSelect.value = this.paletteKey;
     this.paletteButtons.forEach((button, index) => {
       const active = index === selected;
       button.classList.toggle("is-selected", active);
