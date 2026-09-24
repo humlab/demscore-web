@@ -1,3 +1,10 @@
+// v11: the inset layers are gone. Countries no cell of the grid could seat used
+// to get a hexagon from the grid one notch finer, drawn on top of the cell it
+// landed on; every hexagon is one size now, and a country the cells cannot seat
+// simply waits for a finer stop. That drops a name from LAYERS, so the URL does
+// change -- but the mesh was rebuilt with it and the colours of tiles whose URL
+// did not change moved underneath them, which only a new cache name can shed.
+//
 // v10: the outline layer reads its edges from demscore.hex_border_edges and
 // demscore.hex_border_sides instead of recomputing them per request from the
 // hexagons inside !BOX!. The old way mistook the rim of its own request box for
@@ -45,7 +52,7 @@
 // meshes. Nothing below needs to tell them apart: the layer names, the SRS and
 // the BBOX all ride along in the URL that is the cache key, so the two caches
 // are the same cache and can never collide.
-const WMS_TILE_CACHE = "demscore-wms-tile-cache-v10";
+const WMS_TILE_CACHE = "demscore-wms-tile-cache-v11";
 
 // The fills may be asked for alone or together with the outline layer that rides
 // along in the same GetMap (see MapController.wmsLayerNames), and the two spell
@@ -59,10 +66,8 @@ const WMS_TILE_CACHE = "demscore-wms-tile-cache-v10";
 // unknown name and the whole tile falls through uncached.
 const CACHEABLE_WMS_LAYERS = new Set([
   "hex_variable",
-  "hex_inset",
   "hex_outline",
   "hex_variable_mercator",
-  "hex_inset_mercator",
   "hex_outline_mercator",
 ]);
 

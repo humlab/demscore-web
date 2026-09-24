@@ -220,7 +220,7 @@ const PROJECTION_DEFINITIONS = {
     code: EQUAL_EARTH_CODE,
     label: "Equal Earth",
     title: "Equal Earth (EPSG:8857) — every hexagon covers the same real area",
-    wmsLayers: { fill: "hex_variable", inset: "hex_inset", outline: "hex_outline" },
+    wmsLayers: { fill: "hex_variable", outline: "hex_outline" },
     hexResolutionStops: hexResolutionStops(HEX_SIZES_M),
     extent: [
       -EQUAL_EARTH_HALF_X,
@@ -244,7 +244,6 @@ const PROJECTION_DEFINITIONS = {
     // See the note above hex_variable_mercator in mapserver/mapserver.map.
     wmsLayers: {
       fill: "hex_variable_mercator",
-      inset: "hex_inset_mercator",
       outline: "hex_outline_mercator",
     },
     hexResolutionStops: hexResolutionStops(HEX_SIZES_M),

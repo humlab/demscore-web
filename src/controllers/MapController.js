@@ -700,15 +700,13 @@ export class MapController extends BaseController {
   // Which MapServer layers this projection's mesh lives in, in drawing order --
   // MapServer draws them in the order they are named here.
   //
-  // The inset layer carries the half-size hexagons given to countries too small
-  // to be dealt a cell of their own at this size, and it has to come after the
-  // fills because those hexagons overlap the cell they sit on. The outline layer
-  // is drawn over both from a precomputed edge table; asking for all of them in
-  // the same GetMap keeps them in step -- one image, one cache entry, and no
-  // window where outlines from the previous year sit over this year's colours.
+  // The outline layer is drawn over the fills from a precomputed edge table;
+  // asking for both in the same GetMap keeps them in step -- one image, one
+  // cache entry, and no window where outlines from the previous year sit over
+  // this year's colours.
   wmsLayerNames() {
-    const { fill, inset, outline } = this.projection.wmsLayers;
-    const names = [fill, inset];
+    const { fill, outline } = this.projection.wmsLayers;
+    const names = [fill];
     if (this.areaOutlinesEnabled) names.push(outline);
     return names.join(",");
   }

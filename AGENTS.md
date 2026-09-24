@@ -513,8 +513,8 @@ Common tasks and where to work:
     metres per pixel: the two worlds are different sizes, so keeping the metres would
     turn a world view into a view of the Atlantic
   - **each projection has a mesh of its own**, and the toggle switches MapServer
-    layers, not just the SRS. `hex_variable`/`hex_inset`/`hex_outline` are cut in
-    Equal Earth, the `_mercator` three in Web Mercator. Reprojecting
+    layers, not just the SRS. `hex_variable`/`hex_outline` are cut in
+    Equal Earth, the `_mercator` pair in Web Mercator. Reprojecting
     one mesh into the other plane is what this replaced: a hexagon is a hexagon
     only where it was cut, and an Equal Earth cell pushed into Mercator is twice
     as tall as it is wide by 60N and a sliver by 80N. What the toggle compares is
@@ -529,10 +529,8 @@ Common tasks and where to work:
     layer renders nothing. See `hexResolutionStops` in `core/projection.js` and
     `sql/mapserver_hex_mercator.sql`
   - `wmsLayerNames()` returns the layers **in drawing order**, because MapServer
-    draws them in the order they are named. The inset layer carries the half-size
-    hexagons given to countries too small to be dealt a cell at this size and
-    *overlaps* the cell under it, so it has to come after the fills; the outline
-    layer comes last. A layer added to a GetMap must also be added to
+    draws them in the order they are named: the fills, then the outline layer over
+    them. A layer added to a GetMap must also be added to
     `CACHEABLE_WMS_LAYERS` in `sw.js` — that set is closed, and one unknown name
     makes the whole tile fall through uncached
   - the land basemap is *not* densified before projecting. Equal Earth curves the
