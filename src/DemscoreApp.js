@@ -1,11 +1,18 @@
 import { BaseController } from "./core/BaseController.js";
 import { BackendClient } from "./core/BackendClient.js";
-import { readMapSelection, writeMapSelection } from "./core/preferences.js";
+import { readMapSelection, writeMapSelection, readMapView, writeMapView } from "./core/preferences.js";
 import { AboutController } from "./controllers/AboutController.js";
 import { MetadataController } from "./controllers/MetadataController.js";
 import { LayerPreloadController } from "./controllers/LayerPreloadController.js";
 import { MapController } from "./controllers/MapController.js";
 import { MapDataController } from "./controllers/MapDataController.js";
+import { TableViewController } from "./controllers/TableViewController.js";
+
+// The two readings of a year the app can be on. Map is the default: it is
+// what this application is, and the table is the second way of reading the
+// same `demscore.country_scores()` call.
+const VIEW_KEYS = ["map", "table"];
+const DEFAULT_VIEW_KEY = "map";
 
 export class DemscoreApp extends BaseController {
   constructor() {
@@ -18,6 +25,7 @@ export class DemscoreApp extends BaseController {
     this.metadataController = null;
     this.mapController = null;
     this.mapDataController = null;
+    this.tableViewController = null;
     this.aboutController = null;
     this.layerPreloadController = null;
 
@@ -127,6 +135,10 @@ export class DemscoreApp extends BaseController {
         ? storedSelection.variable
         : meta.defaults.variable,
       year: initialYear,
+      // Which of the two readings of the year is on screen. Map is the default
+      // for a first visit; after that it is whichever one the reader left it
+      // on, like the projection and the colour scheme.
+      view: readMapView(VIEW_KEYS, DEFAULT_VIEW_KEY),
       isAutoPlaying: false,
       autoPlaySpeed: 4,
       autoPlayTimer: null,
@@ -161,11 +173,14 @@ export class DemscoreApp extends BaseController {
       // start over against the request the map is now making. Do it
       // immediately: until the run resets, the timeline marks are describing
       // the old URL even though the map is already asking for the new one.
-      onLayerParamsChange: () => this.layerPreloadController?.start(),
+      onLayerParamsChange: () => this.startReadAhead(),
       // refreshLegend() is the one place every change of what the map draws
       // passes through, which is why the non-visual reading of the map hangs
       // off it rather than off each of the half-dozen callers.
-      onStateChange: () => this.mapDataController?.refresh(),
+      onStateChange: () => {
+        this.mapDataController?.refresh();
+        this.tableViewController?.refresh();
+      },
       // The credit line asks about the boundaries, so that is the section it lands on.
       onOpenAttribution: (opener) => this.aboutController.open(opener, "boundary"),
     });
@@ -185,12 +200,36 @@ export class DemscoreApp extends BaseController {
     });
     this.mapDataController.initialize();
 
+    // After the map, because the class swatch in each row is painted from the
+    // legend's own ramp -- the same colours, through the same polarity-aware
+    // reversal, so the two views cannot end up describing one year in two
+    // colour schemes.
+    this.tableViewController = new TableViewController({
+      state: this.state,
+      meta,
+      attributionMeta,
+      metadataController: this.metadataController,
+      mapController: this.mapController,
+      // The read-ahead marks on the timeline are fed by whichever view is on
+      // screen: tiles while the map is, rows while the table is. A mark means
+      // "this year is ready" either way, and it would be a lie if it went on
+      // describing tiles nobody is fetching.
+      onPrefetchUpdate: (snapshot) => {
+        if (this.state.view !== "table") return;
+        this.renderPreloadState(snapshot);
+      },
+    });
+    this.tableViewController.initialize();
+
     this.layerPreloadController = new LayerPreloadController({
       state: this.state,
       metadataController: this.metadataController,
       mapController: this.mapController,
       cacheEnabled: this.backendClient.cacheEnabled,
-      onUpdate: (snapshot) => this.renderPreloadState(snapshot),
+      onUpdate: (snapshot) => {
+        if (this.state.view !== "map") return;
+        this.renderPreloadState(snapshot);
+      },
       // Autoplay is the one time the map and the read-ahead want the same
       // MapServer at the same moment, and the map is the one somebody is
       // watching.
@@ -206,8 +245,158 @@ export class DemscoreApp extends BaseController {
 
     this.speedDisplay.textContent = `${this.state.autoPlaySpeed}x`;
     this.updatePlayButton();
+    // Before the first refresh, so a remembered table view never opens a layer
+    // swap it would cancel in the next statement. The layer the map was built
+    // with has already asked for its tiles; this is about the second one.
+    this.mapController.setDrawingEnabled(this.state.view === "map");
     this.mapController.refresh();
+
+    // Last, and through the same path a click on the switcher takes, so there
+    // is one statement of what each view turns on and off. A remembered table
+    // view therefore never starts the tile read-ahead at all, rather than
+    // starting it and cancelling it a moment later.
+    this.syncViewSwitch();
+    this.applyView({ initial: true });
+  }
+
+  // ---- the two views ------------------------------------------------------
+
+  // How much of the top of the map pane the timeline is standing on.
+  //
+  // The timeline overlay is centred on the map pane and as wide as it can be --
+  // `min(1180px, calc(100vw - 340px - 48px))` -- so the gutter beside it is
+  // 200px on a 1920 window and 24px on a 1440 one. Nothing can be parked beside
+  // it at the top-left corner and still be there at every width, which is where
+  // the view switcher started and where it was promptly buried.
+  //
+  // So it is parked *under* the timeline instead, and this is the number that
+  // says where that is. Measured rather than written down: the overlay's height
+  // changes with the window width, with the variable's year span, and with
+  // whether the caption under it is shown. `.view-switch` reads it for its
+  // `top` and `.table-view` for the padding that keeps its first rows out from
+  // under both.
+  syncTimelineInset() {
+    const height = this.timelineOverlayEl?.getBoundingClientRect().height;
+    if (!Number.isFinite(height) || height <= 0) return;
+    // The overlay's own top offset is 12px; the rest is the gutter between it
+    // and the first thing below it.
+    this.mapContainer.style.setProperty("--timeline-inset", `${Math.round(height) + 20}px`);
+  }
+
+  // The switcher is a radiogroup, so it owes the reader a roving tabindex and
+  // arrow keys: exactly one option is in the tab order, and the arrows move
+  // between them. Two buttons with `role="radio"` and neither of those is a
+  // promise the control does not keep.
+  bindViewSwitch() {
+    this.viewSwitchEl.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-view]");
+      if (!button) return;
+      this.setView(button.dataset.view);
+    });
+
+    this.viewSwitchEl.addEventListener("keydown", (event) => {
+      const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
+      if (!keys.includes(event.key)) return;
+      event.preventDefault();
+
+      const current = Math.max(0, VIEW_KEYS.indexOf(this.state.view));
+      let next = current;
+      if (event.key === "Home") {
+        next = 0;
+      } else if (event.key === "End") {
+        next = VIEW_KEYS.length - 1;
+      } else {
+        const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
+        next = (current + step + VIEW_KEYS.length) % VIEW_KEYS.length;
+      }
+
+      this.setView(VIEW_KEYS[next]);
+      // By name rather than by index: nothing makes the DOM order of the two
+      // buttons agree with the order of VIEW_KEYS, and a swap of one would
+      // silently move the focus to the option that was not chosen.
+      this.viewSwitchEl.querySelector(`button[data-view="${VIEW_KEYS[next]}"]`)?.focus();
+    });
+  }
+
+  syncViewSwitch() {
+    this.viewSwitchButtons.forEach((button) => {
+      const isCurrent = button.dataset.view === this.state.view;
+      button.setAttribute("aria-checked", isCurrent ? "true" : "false");
+      button.classList.toggle("is-active", isCurrent);
+      // The roving part: only the chosen option is a tab stop, so Tab leaves
+      // the group in one press rather than in one press per option.
+      button.tabIndex = isCurrent ? 0 : -1;
+    });
+  }
+
+  setView(view) {
+    if (!VIEW_KEYS.includes(view) || view === this.state.view) return;
+
+    this.state.view = view;
+    writeMapView(view);
+    this.syncViewSwitch();
+    this.applyView();
+  }
+
+  // What each view turns on and off. Both the switcher and startup come through
+  // here, so there is one statement of it rather than two that have to agree.
+  applyView({ initial = false } = {}) {
+    const showingTable = this.state.view === "table";
+
+    this.mapContainer.classList.toggle("is-table-view", showingTable);
+    // Covered, not unmounted: OpenLayers keeps its view, its size and its zoom
+    // while the table is over it. `inert` is what takes the hidden map out of
+    // the tab order and out of the accessibility tree -- a canvas nobody can
+    // see should not be somewhere the keyboard can land.
+    this.mapCanvas.inert = showingTable;
+
+    if (showingTable) {
+      // The tile read-ahead is for tiles nobody is going to look at. Its marks
+      // go with it: the table's own read-ahead takes over the timeline.
+      this.layerPreloadController.cancel();
+      this.mapController.setDrawingEnabled(false);
+      this.tableViewController.activate();
+    } else {
+      this.tableViewController.deactivate();
+      // Asks for the year the timeline has meanwhile moved to, which may be a
+      // long way from the one the layer still holds.
+      this.mapController.setDrawingEnabled(true);
+      this.layerPreloadController.start();
+    }
+
+    if (initial) return;
+
+    // A frame may be in flight against the view that has just been left, and
+    // its answer would schedule the next year from a source that is no longer
+    // pacing the animation. Retire it and take the next frame from the new one.
+    if (this.state.isAutoPlaying) {
+      this.autoPlayTicket += 1;
+      this.scheduleAutoPlayTick();
+    }
+  }
+
+  // What paces an autoplay frame, which is the view on screen: the map is done
+  // when its tiles are drawn, the table when its rows are. Neither is a timer --
+  // the animation runs at the rate the data arrives, so a slow stretch plays
+  // slowly instead of skipping.
+  // The read-ahead belongs to the view on screen, the same way the pacing does.
+  // The map reads tiles ahead; the table reads rows ahead. Everything that used
+  // to reach for the tile preloader by name comes through here instead, so a
+  // reader in the table view never warms a tile.
+  startReadAhead() {
+    if (this.state.view === "table") {
+      this.tableViewController.startPrefetch();
+      return;
+    }
     this.layerPreloadController.start();
+  }
+
+  advanceAutoPlayFrame(onReady) {
+    if (this.state.view === "table") {
+      this.tableViewController.advanceAutoPlayFrame(onReady);
+      return;
+    }
+    this.mapController.advanceAutoPlayLayer(onReady);
   }
 
   cacheTimelineElements() {
@@ -224,6 +413,11 @@ export class DemscoreApp extends BaseController {
     this.speedDownBtn = this.getEl("speedDownBtn");
     this.speedUpBtn = this.getEl("speedUpBtn");
     this.speedDisplay = this.getEl("speedDisplay");
+    this.timelineOverlayEl = this.getEl("timeline-overlay");
+    this.viewSwitchEl = this.getEl("viewSwitch");
+    this.viewSwitchButtons = Array.from(this.viewSwitchEl.querySelectorAll("button[data-view]"));
+    this.mapContainer = this.getEl("map");
+    this.mapCanvas = this.getEl("mapCanvas");
   }
 
   bindDomainEvents() {
@@ -235,18 +429,18 @@ export class DemscoreApp extends BaseController {
         this.refreshTimelineForActiveVariable();
         this.rememberMapSelection();
         this.mapController.refresh();
-        this.layerPreloadController.start();
+        this.startReadAhead();
       },
       onVariableChange: () => {
         this.refreshTimelineForActiveVariable();
         this.rememberMapSelection();
         this.mapController.refresh();
-        this.layerPreloadController.start();
+        this.startReadAhead();
       },
     });
 
     this.applyYear = this.debounce(() => this.mapController.refresh(), 400);
-    this.restartPreload = this.debounce(() => this.layerPreloadController.start(), 300);
+    this.restartPreload = this.debounce(() => this.startReadAhead(), 300);
     // Zoom is continuous and OpenLayers has no separate zoomend: moveend is
     // where a pan and a zoom both come to rest.
     this.mapController.getMap().on("moveend", () => this.restartPreload());
@@ -257,6 +451,7 @@ export class DemscoreApp extends BaseController {
     window.addEventListener("resize", () => {
       this.updateTimelineMarker();
       this.redrawTimelineScale();
+      this.syncTimelineInset();
     });
   }
 
@@ -280,6 +475,14 @@ export class DemscoreApp extends BaseController {
       }
     });
 
+    this.bindViewSwitch();
+    // The overlay changes height when the timeline is rebuilt for a new
+    // variable, not only when the window moves, so this watches the element
+    // rather than the window alone.
+    if (typeof ResizeObserver === "function") {
+      new ResizeObserver(() => this.syncTimelineInset()).observe(this.timelineOverlayEl);
+    }
+    this.syncTimelineInset();
     this.bindTimelineMarkTooltip();
     this.timelineSelectedMarker.addEventListener("pointerdown", (event) => this.startMarkerDrag(event));
     this.timelineSelectedMarker.addEventListener("pointermove", (event) => this.moveMarkerDrag(event));
@@ -543,13 +746,18 @@ export class DemscoreApp extends BaseController {
     return `Data in ${withData} of ${total} years`;
   }
 
+  // The fill on a mark is the read-ahead, and the read-ahead is not the same
+  // thing in the two views: the map reads tiles ahead, the table reads rows
+  // ahead. Same mark, same meaning -- "this year is ready" -- and it has to name
+  // the right thing or it is describing work nobody is doing.
   describeSegmentTiles(segment) {
     if (segment.dataYears.length === 0) return "";
+    const what = this.state.view === "table" ? "Table rows" : "Map tiles";
     const status = segment.preloadStatus || "pending";
-    if (status === "loaded") return "Map tiles ready";
-    if (status === "failed") return "Map tiles could not be cached";
-    if (status === "loading") return `Caching map tiles, ${segment.preloadProgress || 0}%`;
-    return "Map tiles not cached yet";
+    if (status === "loaded") return `${what} ready`;
+    if (status === "failed") return `${what} could not be loaded ahead`;
+    if (status === "loading") return `Loading ${what.toLowerCase()}, ${segment.preloadProgress || 0}%`;
+    return `${what} not loaded yet`;
   }
 
   showMarkTooltip(segment) {
@@ -571,7 +779,10 @@ export class DemscoreApp extends BaseController {
     const note = document.createElement("p");
     note.className = "timeline-mark-tooltip-note";
     note.textContent =
-      "Bar height is how much data this variable has for those years. The dark fill is how much of it is already in the map's tile cache.";
+      "Bar height is how much data this variable has for those years. The dark fill is how much of it has already been read ahead — " +
+      (this.state.view === "table"
+        ? "the rows for those years, held in the browser."
+        : "the map tiles for those years, held in the browser's tile cache.");
     this.timelineMarkTooltip.appendChild(note);
 
     this.timelineMarkTooltip.hidden = false;
@@ -773,7 +984,7 @@ export class DemscoreApp extends BaseController {
 
       // The year is drawn, or it is given up on: either way the timeline moves.
       this.autoPlayWatchdog = window.setTimeout(continueAfterFrame, this.AUTO_PLAY_FRAME_CEILING_MS);
-      this.mapController.advanceAutoPlayLayer(continueAfterFrame);
+      this.advanceAutoPlayFrame(continueAfterFrame);
     }, this.getAutoPlayStepMs());
   }
 
@@ -792,7 +1003,7 @@ export class DemscoreApp extends BaseController {
     // animation starts from, and from here on the read-ahead waits its turn
     // (see waitForNetworkTurn). Years already cached keep their marks: the run
     // asks for the same thing, so it resumes rather than starts over.
-    this.layerPreloadController.start();
+    this.startReadAhead();
     this.scheduleAutoPlayTick();
   }
 

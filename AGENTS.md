@@ -10,6 +10,12 @@ Primary user flows:
 - choose variable from the always-visible variable list, which spans *every* dataset at once;
   each row carries its dataset's colour on its left edge, and picking a row is also what
   switches the dataset
+- switch between the two readings of a year — the **map** and the **table** — with
+  the Map/Table control at the left of the map pane. One at a time; the table
+  replaces the map rather than sitting beside it
+- sort the table on any column, and watch the order rearrange itself as the years
+  play: a ranking sorted by value is the one reading neither the map nor a modal
+  can give
 - scrub or animate year timeline
 - compare at a glance which years a variable covers, from the coverage strip under each
   row and the two years written under that — the one part of a row that works on touch,
@@ -56,6 +62,22 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - the map's non-visual equivalent: the standing summary (`#mapSummary`), the one-sentence
     live announcement (`#mapAnnouncer`), and the data table dialog with its CSV download
   - hangs off `MapController`'s `onStateChange`, fired from `refreshLegend()`
+- `src/controllers/TableViewController.js`
+  - the **table view**: the second reading of the year the map is drawing, from the
+    same `demscore.country_scores()` call, so the two can never disagree about what
+    a year holds
+  - one row per country, columns `#` / Country / ISO3 / Value / Class / Boundary,
+    sorted on any of them but `#` — which *is* the position in whatever sort is in
+    force, so sorting on it is either a no-op or a contradiction
+  - rows are **moved, not redrawn**, when the year steps. A `<tr>` is kept per
+    country in `rowEls` and reordered with `appendChild`, and a FLIP pass gives
+    it a transform back to where it was so the browser tweens the difference.
+    That is the whole point of the view: with the value column sorted, the
+    countries change places under the reader as the animation plays
+  - its own read-ahead (`startPrefetch`), which fetches the surrounding years'
+    rows and reports in the tile preloader's snapshot shape, so the timeline
+    marks go on meaning "this year is ready" in either view
+  - hangs off the same `MapController.onStateChange` the summary does
 - `src/controllers/AboutController.js`
   - the About dialog, which is also the credits. It was two dialogs — a short About with a
     link into a separate "Sources & licences" — and the link was a seam: what the map is and
@@ -73,6 +95,17 @@ The app was refactored into a small class hierarchy with one top-level coordinat
     browser. Three openers: the **About** button on the map, the credit line under it, and the
     data table's boundary footnote. The last two pass `"boundary"`, so they land on the
     section that answers the question they were asked from
+- `src/core/csv.js`
+  - the countries of one variable-year as a file, and the only place that file is
+    spelled. Both downloads — the table view's own button and the data-table
+    dialog's — go through it, so a file that came out of this application has one
+    shape whichever button produced it
+  - **every row carries its own `dataset`, `variable` and `year`.** The download
+    used to name the variable-year in the filename alone, which is a place a file
+    loses: renamed once, or its rows pasted under another year's in a spreadsheet,
+    and nothing was left saying what the numbers measured or when. It also makes
+    several of these files concatenate into one honest table, which is the obvious
+    next thing to do with them
 - `src/core/attribution.js`
   - the one line the OpenLayers attribution control shows, built once from the same generated
     file and handed to *both* the land source and the WMS source. OpenLayers shows each
@@ -102,6 +135,11 @@ The app was refactored into a small class hierarchy with one top-level coordinat
 3. `MapController` initialises the OpenLayers map and first WMS layer.
 4. User interactions update shared `state` in `DemscoreApp`.
 5. `MapController.loadNextLayer()` swaps to a fresh WMS layer when dataset/variable/year changes.
+6. In the table view, step 5 does not happen: `MapController.setDrawingEnabled(false)`
+   makes `loadNextLayer()` a no-op, the tile read-ahead is cancelled, and
+   `TableViewController` refreshes from `/api/map-data` instead. The OpenLayers map
+   is *covered*, not unmounted — it keeps its view, its size and its zoom, and only
+   the fetching stops.
 
 ## Config & Endpoints
 Config files (served by backend):
@@ -260,6 +298,79 @@ Common tasks and where to work:
   - the filter chips are `button`s inside the panel, so the panel's own button styling is
     scoped to `#controls .dataset-panel > button` (direct children). Widening that selector
     repaints the chips
+
+- Change what a download contains:
+  - `src/core/csv.js`, and nothing else on either side. `COLUMNS` there is the
+    whole file — a column is a header and a function of `(row, selection, index)`
+  - the first five columns identify the numbers and must stay: a row that cannot
+    say which dataset, variable and year it is from is a row that stops meaning
+    anything the moment it leaves the page it was downloaded from
+
+- Change the table view, or the animation in it:
+  - `src/controllers/TableViewController.js`; `COLUMNS` at the top is the single
+    statement of what a column is, and the header, the body, the sort and the CSV
+    are all built from it. Adding one means an entry there and nothing else
+  - **`renderRows()` is FLIP and its passes may not be interleaved.** Each is all
+    reads or all writes: write the cells, read where every row is, write the new
+    order, read where each has landed, write one transform each, flush, play.
+    Reading a row's position between two writes forces a layout of the whole
+    table, and at 244 rows and eight years a second that is the difference
+    between an animation and a slideshow
+  - the flush in pass 6 (`void this.bodyEl.offsetHeight`) cannot be a
+    `requestAnimationFrame`. rAF callbacks run *before* the style recalculation,
+    so the invert and the play would land in one recalculation and the rows would
+    simply appear in their new places with no movement at all
+  - `flipDuration()` caps the glide below the interval between two years. A row
+    still travelling when the next year arrives never gets anywhere, and a table
+    in which nothing settles cannot be read. `shouldAnimate()` is the other half:
+    only a year stepping within one variable is a movement — a new variable is a
+    different table that happens to share country names
+  - **nothing in this view may change size as the year steps.** The rows move;
+    the table must not. Three things enforce that and all three are load-bearing:
+    - the summary is two lines, each `nowrap` with an ellipsis and its full text
+      in `title`. It was one flowing paragraph, and the clause naming how many
+      countries have no value this year comes and goes with the year — so it
+      rewrapped between one line and two mid-animation and stepped the whole
+      table up and down
+    - `table-layout: fixed`, with the widths in the `width` of each `COLUMNS`
+      entry and a `<colgroup>` built from them. An auto-layout table re-measures
+      every column against its widest cell on each redraw, so a value going from
+      `0.9` to `0.912` shifts every column beside it — the same jitter sideways
+    - the boundary note under the table is one clipped line, because the sources
+      in view change with the year as CShapes entities come and go
+    A column added here needs a `width` (Country is the one without: under fixed
+    layout it takes what the others leave) and, if it can be long, `clips: true`
+    so the cell carries its full text in `title`. A sentence that does not change
+    with the year belongs in the caption or on a column header, not in a line
+    that is rewritten eight times a second
+  - a row's identity is `country` + `validFromYear`, not the name: V-Dem codes a
+    pre-partition Vietnam and a northern one over the same nine years, and the
+    historical registry can carry several periods of one entity
+  - the class swatch is painted from `MapController.legendColorsForPolarity()` —
+    the legend's own ramp, through the same polarity-aware reversal — so map and
+    table cannot end up describing one year in two colour schemes
+  - `.table-view*` and `.view-switch*` in `styles.css`. The switcher's `top` is
+    `--timeline-inset`, measured from the overlay by
+    `DemscoreApp.syncTimelineInset()`: the timeline is centred on the map pane and
+    as wide as it can be, so the gutter beside it is 200px on a 1920 window and
+    24px on a 1440 one, and nothing parked at the top-left corner survives every
+    width. Anything else floated over the map pane has to read the same variable
+  - `#tableView` and `.map-canvas` are both grid item 1/1 in `#map`, which is why
+    both are placed explicitly: an auto-placed canvas would find 1/1 taken and
+    step down into the legend dock's row
+
+- Change which view is on screen, or add a third:
+  - `VIEW_KEYS` in `DemscoreApp`, `applyView()` — the one statement of what each
+    view turns on and off, which both the switcher and startup come through —
+    `startReadAhead()` and `advanceAutoPlayFrame()`
+  - **autoplay is paced by the view on screen.** The map's frame is done when its
+    tiles are drawn; the table's when its rows are. Neither is a timer, so a slow
+    stretch plays slowly rather than skipping — and a view added without a pacing
+    answer stops the animation with the button still reading "Pause"
+  - the read-ahead goes the same way: nothing may reach for `layerPreloadController`
+    by name any more, or a reader in the table view warms tiles nobody will see
+  - the choice is a cookie (`readMapView`/`writeMapView` in `core/preferences.js`),
+    like the projection and the palette. Map is the default for a first visit
 
 - Change what a legend swatch says on hover:
   - `MapController.renderLegendTip()` for the wording, `formatLegendValue()` for how a number
@@ -732,6 +843,8 @@ After edits, run at minimum:
 - `node --check src/core/BaseController.js`
 - `node --check src/core/BackendClient.js`
 - `node --check src/controllers/MapDataController.js`
+- `node --check src/controllers/TableViewController.js`
+- `node --check src/core/csv.js`
 - `node --check src/controllers/AboutController.js`
 - `node --check src/core/attribution.js`
 - `node --check src/core/palettes.js`
@@ -773,6 +886,29 @@ Then do a manual smoke test in browser:
   axis are the same shape as that variable's row in the variable list. Hovering one names
   its years and says what the height and the fill mean; hovering does not interrupt a scrub,
   and dragging the marker dismisses it
+- Map/Table switch: the control sits clear of the timeline at every window width —
+  drag the window across the whole range and it is never under the timeline card;
+  picking Table replaces the map, picking Map brings it back looking at the same
+  place at the same zoom, and the choice survives a reload
+- CSV download: open one in a spreadsheet and check the first five columns name
+  the dataset, the variable and the year on *every* row — not just in the
+  filename; scrub to another year, download again, and the two files should
+  concatenate into one table that still reads correctly. Both buttons (the table
+  view's and the data-table dialog's) must produce the same columns
+- table view: rows sort on every column but `#`, the arrow and `aria-sort` agree,
+  the class swatch matches the legend bar's colour for the same class, a country
+  with no value for the year keeps its place and sorts to the end whichever way
+  the column points, and the CSV is the rows in the order shown
+- table view stability: press Animate and watch the table's top edge and its
+  column boundaries — neither may move. The summary stays two lines and the
+  columns stay put whatever the values do; only the rows move
+- table view animation: sort on Value, press Animate, and the rows glide past each
+  other rather than jumping; at 8x nothing is still moving when the next year
+  lands; under `prefers-reduced-motion: reduce` the order still changes and
+  nothing moves. The timeline marks fill in as the *rows* are read ahead, and the
+  mark card says "Table rows" rather than "Map tiles"
+- switching view mid-animation: the timeline keeps moving, does not stall on the
+  frame that was in flight, and the button never sticks on "Pause"
 - year scrub + autoplay; the caption under the timeline names the variable the map is drawing
   and follows every way of changing it — a row, a filter that changes the selection, a
   remembered choice on reload

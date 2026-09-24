@@ -1,6 +1,7 @@
 import { BaseController } from "../core/BaseController.js";
 import { formatLegendValue, speakCountryCount, speakLegendRange } from "./MapController.js";
 import { boundaryLabelFor } from "../core/attribution.js";
+import { downloadCountryRowsCsv } from "../core/csv.js";
 
 // A polite live region that fires on every keystroke is worse than no live
 // region: the reader hears the first word of each announcement and none of the
@@ -445,47 +446,11 @@ export class MapDataController extends BaseController {
   }
 
   // The same rows the table shows, in the order it is showing them, as a file.
-  // Built here rather than served: the backend already sent the numbers, and a
-  // second round trip to get them punctuated differently would be a second
-  // chance for the two to disagree.
+  // Spelled in `core/csv.js`, shared with the table view's own download, so a
+  // file that came out of this application has one shape whichever button
+  // produced it -- and so the year these numbers are for is in the rows and not
+  // only in the filename, which is a place a file loses.
   downloadCsv() {
-    if (this.tableRows.length === 0) return;
-    const { variable, dataset, year } = this.describeSelection();
-    const escape = (value) => {
-      const text = value === null || value === undefined ? "" : String(value);
-      return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-    };
-
-    const lines = [
-      ["country", "iso3", "value", "class", "status", "boundary_source", "boundary_valid_from", "boundary_valid_to", "boundary_confidence"].join(","),
-    ];
-    for (const row of this.sortedRows()) {
-      lines.push(
-        [
-          row.country,
-          row.iso3,
-          row.value,
-          row.classIndex,
-          row.value === null ? "no data" : "has value",
-          // The raw source key rather than the display label: a file that
-          // outlives this page is more use joined back to the database than
-          // read aloud.
-          row.geometrySource,
-          row.validFromYear,
-          row.validToYear,
-          row.geometryConfidence,
-        ]
-          .map(escape)
-          .join(","),
-      );
-    }
-
-    const blob = new Blob([`${lines.join("\n")}\n`], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `demscore-${dataset}-${variable}-${year}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCountryRowsCsv(this.sortedRows(), this.describeSelection());
   }
 }

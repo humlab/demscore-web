@@ -216,9 +216,122 @@
         </div>
         <p id="mapAnnouncer" class="visually-hidden" role="status" aria-live="polite"></p>
 
+        <!-- Which of the two readings of the year is on screen. A radiogroup
+             rather than a tablist: the two are not tabs into panels beside
+             them, they are one choice with two answers, and the variable list
+             already says that shape in this app. Roving tabindex and arrow
+             keys come with the role; DemscoreApp binds both.
+
+             It floats over the map pane rather than sitting in the sidebar
+             because it switches what is under it, and because the sidebar
+             collapses to a band at the phone breakpoint where there is no
+             room for it. -->
+        <div
+          id="viewSwitch"
+          class="view-switch"
+          role="radiogroup"
+          aria-label="How to show this year"
+        >
+          <button
+            id="viewSwitchMap"
+            type="button"
+            role="radio"
+            class="view-switch-option"
+            data-view="map"
+            aria-checked="true"
+          >
+            <i data-lucide="hexagon" aria-hidden="true"></i>
+            <span>Map</span>
+          </button>
+          <button
+            id="viewSwitchTable"
+            type="button"
+            role="radio"
+            class="view-switch-option"
+            data-view="table"
+            aria-checked="false"
+            tabindex="-1"
+          >
+            <i data-lucide="table" aria-hidden="true"></i>
+            <span>Table</span>
+          </button>
+        </div>
+
         <div id="mapCanvas" class="map-canvas">
           <div id="loading-indicator" aria-hidden="true"></div>
         </div>
+
+        <!-- The other reading of the same year, over the map rather than
+             beside it: both want the whole pane, and a half-height map at a
+             world view is not a map. The canvas underneath is left laid out
+             and made `inert` instead of hidden, so OpenLayers keeps its view,
+             its size and its zoom while nobody is looking at it — a map that
+             is re-measured every time it comes back is a map that has lost its
+             place.
+
+             Not the same thing as #mapDataDialog. That is the map's non-visual
+             equivalent, opened over the map and closed again; this one is *on*
+             while the year moves, which is what lets a ranking reorder under
+             the reader as the animation plays. -->
+        <section
+          id="tableView"
+          class="table-view"
+          aria-labelledby="tableViewHeading"
+          hidden
+        >
+          <h3 id="tableViewHeading" class="visually-hidden">This year as a table</h3>
+          <div class="table-view-head">
+            <!-- Two lines, always exactly two, each of them one line. The
+                 summary used to be one paragraph of flowing text, and the
+                 clause that says how many countries have no value this year
+                 comes and goes with the year — so during an animation it
+                 rewrapped between one line and two, and the whole table stepped
+                 up and down under the reader. A view whose point is that rows
+                 move cannot have the table itself moving as well.
+
+                 Each line is `nowrap` with an ellipsis and carries its full
+                 text in `title`; what gets cut is the tail of a sentence the
+                 legend dock below and the caption above both repeat. -->
+            <p id="tableViewSummary" class="table-view-summary">
+              <span id="tableViewSelection" class="table-view-summary-line"></span>
+              <span id="tableViewCoverage" class="table-view-summary-line is-muted"></span>
+            </p>
+            <button id="tableViewDownloadBtn" type="button" class="table-view-download" disabled>
+              Download CSV
+            </button>
+          </div>
+          <!-- Focusable on purpose, and one of the few things that should be:
+               it scrolls, and a scrollable box with no tab stop cannot be
+               scrolled from the keyboard at all. It has a role and a name to
+               go with it. -->
+          <div
+            id="tableViewScroll"
+            class="table-view-scroll"
+            role="region"
+            aria-labelledby="tableViewHeading"
+            tabindex="0"
+          >
+            <!-- `table-layout: fixed` in styles.css, and this is what feeds
+                 it. An auto-layout table re-measures every column against its
+                 widest cell on every redraw, so a value going from "0.9" to
+                 "0.912" or a rank from "9" to "10" shifts every column beside
+                 it — a second jitter, sideways, on top of the one the summary
+                 used to cause. The widths are written once, by
+                 TableViewController.renderColumnWidths(), and Country takes
+                 whatever is left. -->
+            <table class="table-view-table">
+              <caption id="tableViewCaption" class="visually-hidden"></caption>
+              <colgroup id="tableViewCols"></colgroup>
+              <thead id="tableViewHead"></thead>
+              <tbody id="tableViewBody"></tbody>
+            </table>
+          </div>
+          <p id="tableViewNote" class="table-view-note"></p>
+          <!-- The sort is a visible change to the order of 177 rows and no
+               change at all to anything a screen reader is standing on, so it
+               is said. Silent during an animation, the way #mapAnnouncer is. -->
+          <p id="tableViewStatus" class="visually-hidden" role="status" aria-live="polite"></p>
+        </section>
         <!-- Spoken counterpart to the spinner, and only for loads slow enough
              to be worth interrupting a reader over. -->
         <p id="mapLoadingStatus" class="visually-hidden" role="status" aria-live="polite"></p>
@@ -233,16 +346,6 @@
       <p id="legendTooltipCount" class="legend-tip-count"></p>
     </div>
 
-    <!-- One dialog, not two. What the map is and what it is made of are the same
-         question asked at different depths, and a reader who wanted the licence
-         for a boundary source should not have to find a second modal to reach
-         it. The prose below is static; everything under #aboutCredits is
-         rendered by AboutController from /api/config/attribution, so a boundary
-         source added to the database arrives here without anyone editing HTML.
-
-         The sections are <details>. The ones carrying an obligation — the
-         citations and the boundary licences — open by default; the software
-         courtesy list does not. -->
     <dialog id="aboutDialog" class="about-dialog" aria-labelledby="aboutDialogTitle">
       <div class="mobile-dialog-header">
         <h2 id="aboutDialogTitle">About Demscore Hex Map</h2>
@@ -250,8 +353,6 @@
           <i data-lucide="x" aria-hidden="true"></i>
         </button>
       </div>
-      <!-- Scrolls, so it is a tab stop with a role and a name, for the same
-           reason the data table's wrapper is. -->
       <div
         id="aboutBody"
         class="about-body"

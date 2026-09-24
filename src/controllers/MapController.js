@@ -216,6 +216,12 @@ export class MapController extends BaseController {
     // off it.
     this.onStateChange = typeof onStateChange === "function" ? onStateChange : () => {};
     this.areaOutlinesEnabled = readAreaOutlinesEnabled(AREA_OUTLINES_DEFAULT);
+    // Whether the map is the view on screen. The table view covers it rather
+    // than unmounting it -- see the note over #tableView in index.html -- so the
+    // OpenLayers map keeps its view, its size and its zoom, and only the tile
+    // fetching stops. A GetMap for a year nobody can see is a MapServer render
+    // and a cache entry bought for nothing.
+    this.drawingEnabled = true;
     this.projectionKey = readMapProjection(PROJECTION_KEYS, DEFAULT_PROJECTION_KEY);
     this.paletteKey = readMapPalette(PALETTE_KEYS, DEFAULT_PALETTE_KEY);
 
@@ -1099,7 +1105,32 @@ export class MapController extends BaseController {
     this.loadingStatusEl.textContent = text;
   }
 
+  // Whether the map is the view on screen, and therefore whether a change of
+  // year is worth a GetMap. Switching away drops whatever swap was in flight;
+  // switching back asks for the year the timeline has meanwhile moved to, which
+  // may be a long way from the one the layer still holds.
+  setDrawingEnabled(enabled) {
+    const next = enabled !== false;
+    if (next === this.drawingEnabled) return;
+    this.drawingEnabled = next;
+
+    if (!next) {
+      this.stopPendingLayerSwap();
+      return;
+    }
+    this.loadNextLayer();
+  }
+
   loadNextLayer(onReady) {
+    // Nothing to draw into: the table view is over the map. The callback is
+    // still answered, because the thing waiting on it may be an autoplay frame
+    // and a frame that is never answered stops the timeline with the button
+    // still reading "Pause".
+    if (!this.drawingEnabled) {
+      if (typeof onReady === "function") onReady();
+      return;
+    }
+
     // A reload can land while a swap is still in flight -- a zoom crossing a hex
     // resolution stop mid-autoplay is the usual way. The superseded layer's
     // continuation moves onto the new layer instead of dying with it: autoplay

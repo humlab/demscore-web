@@ -2450,7 +2450,13 @@ textarea {
   background: #ffffff;
 }
 
+/* Explicitly placed, and it has to be: #tableView claims 1/1 so that it covers
+   the canvas exactly, and an explicitly placed item is laid out before the
+   auto-placed ones. Left to auto-placement the canvas would find 1/1 taken and
+   step down into the legend dock's row. */
 .map-canvas {
+  grid-row: 1;
+  grid-column: 1;
   position: relative;
   width: 100%;
   height: 100%;
@@ -2467,7 +2473,384 @@ textarea {
   height: 100%;
 }
 
+/* ---- the Map / Table switcher -------------------------------------------
+
+   Floating over the map pane at the left, the mirror of the display-options
+   stack at bottom-left. It is not an OpenLayers control: it is a sibling of the
+   canvas rather than a child of the viewport, so a click on it never reaches
+   the map and there is nothing to keep out of the map's event handling.
+
+   *Under* the timeline, not beside it. The timeline overlay is centred on the
+   map pane and as wide as it can be, so the gutter beside it is 200px on a 1920
+   window and 24px on a 1440 one -- there is no left-corner position that
+   survives every width, and the first one tried was buried. `--timeline-inset`
+   is that height, measured by DemscoreApp.syncTimelineInset(); the fallback is
+   only for the moment before the first measurement lands.
+
+   z-index over the canvas and under #timeline-overlay (1200): they no longer
+   overlap, and if a future timeline grows into this one the timeline is the one
+   that should win. */
+.view-switch {
+  position: absolute;
+  top: var(--timeline-inset, 150px);
+  left: 12px;
+  z-index: 900;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 6px 18px rgba(23, 56, 75, 0.14);
+  backdrop-filter: blur(3px);
+}
+
+.view-switch-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 11px;
+  border: 0;
+  border-radius: var(--radius-inline);
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.view-switch-option svg {
+  width: 15px;
+  height: 15px;
+}
+
+.view-switch-option:hover:not(.is-active) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.view-switch-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Navy fill on the chosen one. The handbook keeps terracotta for the rule over
+   the legend dock and nothing else, so the selected state is the structural
+   colour rather than the accent. */
+.view-switch-option.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ---- the table view -----------------------------------------------------
+
+   Stacked on the canvas rather than beside it: both are grid item 1/1 in #map,
+   so the table covers the map exactly and the legend dock in row 2 stays put.
+   Opaque, because the map is still laid out underneath -- see the note over
+   #tableView in index.html.
+
+   The top inset clears the timeline *and* the switcher parked under it, which
+   is why it is the measured `--timeline-inset` plus the switcher's own height.
+   The inset has to be measured: the overlay's height changes with the window
+   width, with whether the variable caption is shown, and with the timeline's
+   own layout. */
+.table-view {
+  grid-row: 1;
+  grid-column: 1;
+  z-index: 400;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: calc(var(--timeline-inset, 150px) + 46px) clamp(12px, 3vw, 32px) 14px;
+  background: #fff;
+}
+
+.table-view[hidden] {
+  display: none;
+}
+
+.table-view-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 0 9px;
+}
+
+/* The two summary lines are each one line, so the head is a fixed height and
+   the scroller below it starts in the same place at every year. Anything added
+   here has to keep that. */
+.table-view-head > * {
+  flex: 0 1 auto;
+}
+
+/* Exactly two lines, at every window width and every year. The summary was one
+   flowing paragraph, and the clause naming how many countries have no value
+   comes and goes with the year -- so mid-animation it rewrapped between one
+   line and two and stepped the whole table up and down. In a view whose point
+   is that the *rows* move, the table moving too is the one thing that must not
+   happen. `min-width: 0` is what lets a flex child shrink far enough to clip
+   rather than pushing the download button off the row. */
+.table-view-summary {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.table-view-summary-line {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-view-summary-line.is-muted {
+  color: var(--muted);
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+}
+
+.table-view-download {
+  flex: 0 0 auto;
+  padding: 7px 13px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
+  background: #fff;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.table-view-download:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.table-view-download:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* The pane's only scroller, and the one thing in it that absorbs leftover
+   height. It is a tab stop with a role and a name for the same reason the data
+   dialog's wrapper is: a scrollable box with no tab stop cannot be scrolled
+   from the keyboard at all. */
+.table-view-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
+  background: #fff;
+}
+
+.table-view-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* `fixed` rather than `auto`, and it is not a performance choice. An auto-layout
+   table measures every column against its widest cell on each redraw, so a value
+   going from "0.9" to "0.912", or a rank from "9" to "10", widens its column and
+   shifts every column beside it -- a sideways jitter once a frame. Fixed takes
+   its widths from the <colgroup> alone (built by
+   TableViewController.renderColumnWidths from the `width` on each COLUMNS entry)
+   and never looks at a cell, so nothing in the data can move a column. */
+.table-view-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.84rem;
+}
+
+/* A fixed column clips instead of growing, so every cell needs somewhere for
+   the overflow to go. A country name or a boundary label long enough to reach
+   this is rare; the CSV and the row's own `title` carry it in full. */
+.table-view-table th,
+.table-view-table td {
+  overflow: hidden;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-view-table tbody th {
+  font-weight: 400;
+}
+
+.table-view-table .is-numeric {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* `border-collapse: separate` above, and a background here, are both for the
+   sticky header: a collapsed table draws its borders on the table rather than
+   on the cells, and a sticky cell then leaves its bottom rule behind and lets
+   the rows scroll through where the border used to be. */
+.table-view-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 0;
+  border-bottom: 1px solid var(--panel-border);
+  background: var(--muted-surface);
+}
+
+.table-view-head-static {
+  display: block;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.table-view-sort {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.table-view-table .is-numeric .table-view-sort {
+  text-align: right;
+}
+
+.table-view-sort:hover {
+  background: var(--surface-hover);
+}
+
+.table-view-sort:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* Which way the column is sorted, as a mark as well as in `aria-sort`: the
+   arrow is what a sighted reader has, the attribute is what a screen reader
+   has, and neither stands in for the other. */
+.table-view-sort.is-asc::after {
+  content: " \25B2";
+  font-size: 0.72em;
+}
+
+.table-view-sort.is-desc::after {
+  content: " \25BC";
+  font-size: 0.72em;
+}
+
+/* ---- the movement -------------------------------------------------------
+
+   A row is moved rather than redrawn when the year steps, and this is the half
+   of that which is not JavaScript. `is-moving` is added for exactly the frame
+   in which the inverted transform is taken off, so nothing here is on while the
+   table is at rest; `--flip-ms` is written per row by
+   TableViewController.flipDuration(), which caps the glide below the interval
+   between two years so a row always arrives before the next one starts.
+
+   `position: relative` gives the transformed row a stacking context of its own,
+   so a row on its way past another is drawn over it rather than half under it. */
+.table-view-row {
+  position: relative;
+  background: #fff;
+}
+
+.table-view-row.is-moving {
+  z-index: 1;
+  transition: transform var(--flip-ms, 380ms) cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.table-view-row.is-entering {
+  animation: table-view-row-in 260ms ease-out;
+}
+
+@keyframes table-view-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.table-view-row:hover {
+  background: var(--surface-hover);
+}
+
+/* A country the source did not measure for this year. It keeps its place in the
+   order -- see sortedRows: "no data" is not a small number -- and says so by
+   being quiet rather than by being absent. */
+.table-view-row.is-no-data {
+  color: var(--muted);
+}
+
+/* The one place the two views touch. Painted from the legend's own ramp, through
+   the same polarity-aware reversal, so map and table cannot end up describing one
+   year in two colour schemes. The transition is what makes a year's change of
+   class legible when a row does not move at all. */
+.table-view-swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 7px;
+  border: 1px solid rgba(23, 56, 75, 0.25);
+  border-radius: 2px;
+  vertical-align: -1px;
+  transition: background-color 260ms ease;
+}
+
+.table-view-swatch.is-empty {
+  border-style: dashed;
+  background: transparent;
+}
+
+/* One line, for the same reason the summary is two: the boundary sources in
+   view change with the year -- CShapes entities come and go -- so a note that
+   wrapped would resize the scroller under it once a frame. The full list is in
+   its `title`. */
+.table-view-note {
+  overflow: hidden;
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Nothing moves. The reordering is still the news, so the rank column and the
+   swatch carry it; what goes is the glide, not the information. */
+@media (prefers-reduced-motion: reduce) {
+  .table-view-row.is-moving,
+  .table-view-row.is-entering,
+  .table-view-swatch {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* The data-table dialog is the same rows in a modal, which is exactly what this
+   view already is -- so its opener goes while this view is the one on screen. */
+#map.is-table-view .legend-data-button {
+  display: none;
+}
+
 .map-legend-dock {
+  grid-row: 2;
+  grid-column: 1;
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -3466,6 +3849,57 @@ textarea {
 
   .map-display-stack {
     bottom: 56px;
+  }
+
+  /* The timeline is a card across the top of the map pane at this breakpoint,
+     roughly a third of a phone screen tall, so the switcher cannot stay at the
+     top-left corner. Bottom-right instead: clear of the timeline, clear of the
+     display stack at bottom-left, and clear of the legend dock below both. */
+  .view-switch {
+    top: auto;
+    left: auto;
+    right: 8px;
+    /* Measured from the foot of #map, which includes the legend dock -- unlike
+       .map-display-stack, which is an OpenLayers control inside the canvas and
+       so measures from the foot of the canvas. */
+    bottom: calc(var(--map-legend-height) + 8px);
+  }
+
+  /* ...which means the table's last rows would scroll under it, so the pane
+     keeps a gutter at the foot instead of at the head: nothing is parked under
+     the timeline at this breakpoint, so the top inset is the timeline alone. */
+  .table-view {
+    padding-top: calc(var(--timeline-inset, 240px) + 4px);
+    padding-bottom: 48px;
+  }
+
+  /* Six columns do not fit a phone. ISO3 is the one the country name already
+     says, and the boundary source is the one the note under the table still
+     names for the view as a whole -- the per-row reading of it stays on the
+     desktop and in the CSV. The value, its class and the position in the sort
+     are what the view is for, so those stay. */
+  .table-view-table :is(th, td)[data-column="iso3"],
+  .table-view-table :is(th, td)[data-column="boundary"] {
+    display: none;
+  }
+
+  /* ...and their <col>s with them. Under `table-layout: fixed` a <col> reserves
+     its width whether or not any cell is drawn in it, so hiding the cells alone
+     leaves two empty gutters where the columns were. */
+  .table-view-table col[data-column="iso3"],
+  .table-view-table col[data-column="boundary"] {
+    width: 0;
+  }
+
+  .table-view-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .table-view-table th,
+  .table-view-table td {
+    padding: 6px 8px;
   }
 
   .map-choice-dashboard {

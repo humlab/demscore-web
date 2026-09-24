@@ -129,3 +129,24 @@ export function writeMapPalette(key) {
     // A browser that refuses cookies still works; it just forgets between visits.
   }
 }
+
+// Which of the two readings of the year is on screen: the map, or the table.
+// Kept here with the projection and the palette because it is the same kind of
+// choice — one a reader makes for themselves and should not have to make again
+// on every visit. Map is the default, and an unreadable or unknown cookie falls
+// back to the argument rather than to a hardcoded choice, so the caller's
+// default is the only default.
+const MAP_VIEW_COOKIE = "demscore_view";
+
+export function readMapView(allowedKeys, fallback) {
+  const stored = readCookie(MAP_VIEW_COOKIE);
+  return allowedKeys.includes(stored) ? stored : fallback;
+}
+
+export function writeMapView(key) {
+  try {
+    writeCookie(MAP_VIEW_COOKIE, key);
+  } catch (_) {
+    // A browser that refuses cookies still works; it just forgets between visits.
+  }
+}
