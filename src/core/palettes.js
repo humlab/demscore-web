@@ -68,8 +68,10 @@ export const CLASS_COUNT = 7;
 export const MAP_PALETTES = {
   default: {
     label: "Blue-Red",
+    neutralLabel: "Black-yellow",
     // Shown in the picker and in the map's spoken summary.
     description: "Blue to red, with red at the unfavourable end.",
+    neutralDescription: "Black to yellow, for variables where neither end is favourable or unfavourable.",
     honoursPolarity: true,
     signed: { base: 0, colors: RD_YL_BU },
     neutral: { base: 40, colors: MAGMA },
@@ -152,4 +154,14 @@ export function legendColorsFor(paletteKey, polarity) {
 export function directionHintFor(paletteKey, polarity) {
   const hints = getPalette(paletteKey).directionHint;
   return hints.all || hints[polarity] || hints.negative;
+}
+
+export function paletteLabelFor(paletteKey, polarity) {
+  const palette = getPalette(paletteKey);
+  return polarity === "neutral" && palette.neutralLabel ? palette.neutralLabel : palette.label;
+}
+
+export function paletteDescriptionFor(paletteKey, polarity) {
+  const palette = getPalette(paletteKey);
+  return polarity === "neutral" && palette.neutralDescription ? palette.neutralDescription : palette.description;
 }

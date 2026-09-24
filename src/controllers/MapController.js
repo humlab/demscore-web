@@ -13,8 +13,9 @@ import {
   MAP_PALETTES,
   PALETTE_KEYS,
   directionHintFor,
-  getPalette,
   legendColorsFor,
+  paletteDescriptionFor,
+  paletteLabelFor,
 } from "../core/palettes.js";
 import {
   DEFAULT_PROJECTION_KEY,
@@ -853,6 +854,9 @@ export class MapController extends BaseController {
         Array.from(container.querySelectorAll(`[data-palette-swatches="${key}"] i`)),
       ]),
     );
+    this.paletteSelectOptions = new Map(
+      PALETTE_KEYS.map((key) => [key, this.paletteSelect.querySelector(`option[value="${key}"]`)]),
+    );
     this.currentPaletteSwatchEls = Array.from(container.querySelectorAll("[data-current-palette-swatches] i"));
 
     this.mapChoiceDashboardEl = container;
@@ -952,6 +956,18 @@ export class MapController extends BaseController {
     const currentColors = legendColorsFor(this.paletteKey, polarity);
     this.currentPaletteSwatchEls?.forEach((swatch, index) => {
       swatch.style.background = currentColors[index];
+    });
+    this.syncPaletteLabels(polarity);
+  }
+
+  syncPaletteLabels(polarity = this.metadataController.getActivePolarity()) {
+    this.paletteButtons.forEach((button) => {
+      const label = paletteLabelFor(button.value, polarity);
+      const name = button.querySelector(".map-palette-name");
+      if (name) name.textContent = label;
+      button.title = paletteDescriptionFor(button.value, polarity);
+      const option = this.paletteSelectOptions?.get(button.value);
+      if (option) option.textContent = label;
     });
   }
 
@@ -1540,7 +1556,7 @@ export class MapController extends BaseController {
       directionHint: this.legendDirectionHint(polarity),
       polarity,
       classCount: this.classCountForBreaks(),
-      paletteLabel: getPalette(this.paletteKey).label,
+      paletteLabel: paletteLabelFor(this.paletteKey, polarity),
       projectionTitle: this.projection?.title || this.projectionKey,
       noDataNote: "Areas with no value for this variable and year are drawn as plain land, with no hexagons.",
     };
