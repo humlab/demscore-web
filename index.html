@@ -337,7 +337,15 @@
       integrity="sha256-uJr47Dt29WTVFf0H/tPsQUrs+PM/aFt3tgdFHLDCAp8="
       crossorigin="anonymous"
     ></script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <!-- Pinned, and with an integrity hash, like the two above it. `@latest`
+         meant the icon library could change under the page between two loads
+         with nothing recording which version drew what, and it was the one
+         script tag a subresource-integrity check could not cover. -->
+    <script
+      src="https://unpkg.com/lucide@1.48.0/dist/umd/lucide.min.js"
+      integrity="sha256-NE0xg1GH3zKVQdIjJfqbl/lLsBK1IKQbm0p0oaTZxjc="
+      crossorigin="anonymous"
+    ></script>
     <script type="module" src="./app.js"></script>
     <script>lucide.createIcons();</script>
   </body>
