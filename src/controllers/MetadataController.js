@@ -139,7 +139,7 @@ function normalizeTopicsConfig(topicsMeta) {
 }
 
 export class MetadataController extends BaseController {
-  constructor({ meta, polarityMeta, coverageMeta, topicsMeta, state, backendClient }) {
+  constructor({ meta, polarityMeta, coverageMeta, topicsMeta, selectionPreference, state, backendClient }) {
     super();
     this.meta = meta;
     this.state = state;
@@ -234,6 +234,12 @@ export class MetadataController extends BaseController {
     this.allVariableRows = null;
     // Which variable each dataset was last left on, restored from the cookie.
     this.variableChoices = readVariableChoices();
+    // The active dataset/variable/year restored for this page load. It gets
+    // first claim over the older per-dataset variable cookie, but only for the
+    // dataset it was saved with.
+    this.selectionPreference = selectionPreference && typeof selectionPreference === "object"
+      ? selectionPreference
+      : null;
 
     this.datasetSection = this.getEl("datasetSection");
     this.datasetTabs = this.getEl("datasetTabs");
@@ -658,7 +664,14 @@ export class MetadataController extends BaseController {
     const datasetKey = this.state.dataset;
     const hierarchy = this.datasetHierarchies[datasetKey];
 
-    let variable = this.getRememberedSelection(datasetKey) || "";
+    let variable =
+      this.selectionPreference?.dataset === datasetKey
+        ? this.resolveKnownMainVariable(datasetKey, this.selectionPreference.variable) || ""
+        : "";
+
+    if (!variable) {
+      variable = this.getRememberedSelection(datasetKey) || "";
+    }
 
     if (!variable) {
       const configured = this.state.variable;
@@ -909,14 +922,17 @@ export class MetadataController extends BaseController {
   // The cookie may still name a derived variable from when those were offered,
   // and the config it was saved against may have moved on since — so it counts
   // only if the dataset still has it, and a derived one resolves to its base.
-  getRememberedSelection(datasetKey) {
-    const variable = this.variableChoices[datasetKey];
+  resolveKnownMainVariable(datasetKey, variable) {
     const hierarchy = this.datasetHierarchies[datasetKey];
     if (!variable || !hierarchy) return null;
     if (hierarchy.mainVariableSet.has(variable)) return variable;
 
     const mainVariable = stripVariantSuffixChain(variable);
     return hierarchy.mainVariableSet.has(mainVariable) ? mainVariable : null;
+  }
+
+  getRememberedSelection(datasetKey) {
+    return this.resolveKnownMainVariable(datasetKey, this.variableChoices[datasetKey]);
   }
 
   rememberVariableChoice(datasetKey, variable) {

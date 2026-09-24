@@ -1,6 +1,7 @@
 // Per-visitor UI choices that outlive the page, kept in a cookie so the browser
 // carries them between visits without a backend round trip.
 const VARIABLE_COOKIE = "demscore_variable_by_dataset";
+const MAP_SELECTION_COOKIE = "demscore_map_selection";
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 
 function readCookie(name) {
@@ -33,6 +34,37 @@ export function readVariableChoices() {
 export function writeVariableChoices(choices) {
   try {
     writeCookie(VARIABLE_COOKIE, JSON.stringify(choices));
+  } catch (_) {
+    // A browser that refuses cookies still works; it just forgets between visits.
+  }
+}
+
+// The last dataset/variable/year tuple that was actually on the map. It is
+// separate from the per-dataset variable memory above: that one makes returning
+// to a dataset pleasant, this one restores the page after a refresh.
+export function readMapSelection() {
+  try {
+    const parsed = JSON.parse(readCookie(MAP_SELECTION_COOKIE) || "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+
+    const selection = {};
+    if (typeof parsed.dataset === "string" && parsed.dataset.length > 0) selection.dataset = parsed.dataset;
+    if (typeof parsed.variable === "string" && parsed.variable.length > 0) selection.variable = parsed.variable;
+    if (Number.isInteger(parsed.year)) selection.year = parsed.year;
+
+    return selection.dataset || selection.variable || Number.isInteger(selection.year) ? selection : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+export function writeMapSelection(selection) {
+  try {
+    const dataset = typeof selection?.dataset === "string" ? selection.dataset : "";
+    const variable = typeof selection?.variable === "string" ? selection.variable : "";
+    const year = Number(selection?.year);
+    if (!dataset || !variable || !Number.isInteger(year)) return;
+    writeCookie(MAP_SELECTION_COOKIE, JSON.stringify({ dataset, variable, year }));
   } catch (_) {
     // A browser that refuses cookies still works; it just forgets between visits.
   }

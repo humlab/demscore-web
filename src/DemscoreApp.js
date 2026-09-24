@@ -1,5 +1,6 @@
 import { BaseController } from "./core/BaseController.js";
 import { BackendClient } from "./core/BackendClient.js";
+import { readMapSelection, writeMapSelection } from "./core/preferences.js";
 import { MetadataController } from "./controllers/MetadataController.js";
 import { LayerPreloadController } from "./controllers/LayerPreloadController.js";
 import { MapController } from "./controllers/MapController.js";
@@ -102,11 +103,21 @@ export class DemscoreApp extends BaseController {
       throw new Error("web-backend variables payload is missing required datasets/defaults sections");
     }
 
+    const storedSelection = readMapSelection();
+    const storedDataset =
+      storedSelection?.dataset && meta.datasets[storedSelection.dataset] ? storedSelection.dataset : null;
+    const initialDataset = storedDataset || meta.defaults.dataset;
+    const initialYear = storedDataset && Number.isInteger(storedSelection?.year)
+      ? storedSelection.year
+      : meta.defaults.year;
+
     this.meta = meta;
     this.state = {
-      dataset: meta.defaults.dataset,
-      variable: meta.defaults.variable,
-      year: meta.defaults.year,
+      dataset: initialDataset,
+      variable: storedDataset && typeof storedSelection?.variable === "string"
+        ? storedSelection.variable
+        : meta.defaults.variable,
+      year: initialYear,
       isAutoPlaying: false,
       autoPlaySpeed: 4,
       autoPlayTimer: null,
@@ -119,6 +130,7 @@ export class DemscoreApp extends BaseController {
       polarityMeta,
       coverageMeta,
       topicsMeta,
+      selectionPreference: storedSelection,
       state: this.state,
       backendClient: this.backendClient,
     });
@@ -169,6 +181,7 @@ export class DemscoreApp extends BaseController {
     this.bindTimelineEvents();
 
     this.refreshTimelineForActiveVariable();
+    this.rememberMapSelection();
 
     this.speedDisplay.textContent = `${this.state.autoPlaySpeed}x`;
     this.updatePlayButton();
@@ -199,11 +212,13 @@ export class DemscoreApp extends BaseController {
       },
       onDatasetChange: async () => {
         this.refreshTimelineForActiveVariable();
+        this.rememberMapSelection();
         this.mapController.refresh();
         this.layerPreloadController.start();
       },
       onVariableChange: () => {
         this.refreshTimelineForActiveVariable();
+        this.rememberMapSelection();
         this.mapController.refresh();
         this.layerPreloadController.start();
       },
@@ -312,6 +327,14 @@ export class DemscoreApp extends BaseController {
     this.renderTimelineVariableTitle();
   }
 
+  rememberMapSelection() {
+    writeMapSelection({
+      dataset: this.state.dataset,
+      variable: this.state.variable,
+      year: this.state.year,
+    });
+  }
+
   // The caption under the timeline: which variable the colours on the map
   // stand for, and which dataset it came from. The legend dock carries the
   // same pair, but it is docked to the foot of the map and the timeline is at
@@ -407,6 +430,7 @@ export class DemscoreApp extends BaseController {
     // `bounded` is the year that was actually asked for; where it is not the
     // year we landed on, the slider says so instead of silently skipping.
     this.refreshYearDisplay({ coverage, requestedYear: bounded });
+    this.rememberMapSelection();
 
     if (immediate) {
       this.mapController.refresh();
@@ -710,6 +734,7 @@ export class DemscoreApp extends BaseController {
       this.state.year = nextYear;
       this.yearSlider.value = String(this.state.year);
       this.refreshYearDisplay({ coverage });
+      this.rememberMapSelection();
       this.mapController.refreshLegend();
 
       // The frame this tick is about to ask for. A scrub, a pause or a later
