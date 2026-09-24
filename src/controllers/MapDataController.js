@@ -1,5 +1,6 @@
 import { BaseController } from "../core/BaseController.js";
 import { formatLegendValue, speakCountryCount, speakLegendRange } from "./MapController.js";
+import { boundaryLabelFor } from "../core/attribution.js";
 
 // A polite live region that fires on every keystroke is worse than no live
 // region: the reader hears the first word of each announcement and none of the
@@ -18,9 +19,20 @@ const COLUMNS = [
   { key: "value", label: "Value", numeric: true },
   { key: "classIndex", label: "Class", numeric: true },
   { key: "status", label: "Status", numeric: false },
+  // Which outline the row's hexagons were cut from, and for a historical coding
+  // unit the years that outline is claimed for. /api/map-data has carried this
+  // since the historical registry landed and nothing displayed it, which left a
+  // hexagon resting on an 1815 world snapshot indistinguishable from one resting
+  // on a present-day border. They are not the same claim.
+  { key: "boundary", label: "Boundary", numeric: false },
 ];
 
 const COLLATOR = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+
+// The upper end of the WMS year clamp, which the resolution policy also uses to
+// close a period that has not ended. A row carrying it is current, not a claim
+// about the twenty-second century.
+const OPEN_ENDED_YEAR = 2100;
 
 // The map is a WMS image. There is no feature under the pointer to interrogate,
 // no DOM inside the tiles, and nothing an assistive technology can be handed
@@ -41,12 +53,14 @@ const COLLATOR = new Intl.Collator(undefined, { sensitivity: "base", numeric: tr
 // -- the single place every change of dataset, variable, year or polarity
 // passes through.
 export class MapDataController extends BaseController {
-  constructor({ state, meta, metadataController, mapController }) {
+  constructor({ state, meta, attributionMeta, metadataController, mapController, onOpenAttribution }) {
     super();
     this.state = state;
     this.meta = meta;
+    this.attributionMeta = attributionMeta || null;
     this.metadataController = metadataController;
     this.mapController = mapController;
+    this.onOpenAttribution = typeof onOpenAttribution === "function" ? onOpenAttribution : () => {};
 
     this.summaryTextEl = this.getEl("mapSummaryText");
     this.summaryClassesEl = this.getEl("mapSummaryClasses");
@@ -58,6 +72,7 @@ export class MapDataController extends BaseController {
     this.tableHeadEl = this.getEl("mapDataTableHead");
     this.tableBodyEl = this.getEl("mapDataTableBody");
     this.closeBtn = this.getEl("mapDataCloseBtn");
+    this.boundaryNoteEl = this.getEl("mapDataBoundaryNote");
     this.downloadBtn = this.getEl("mapDataDownloadBtn");
     // Built by MapController.initializeLegend(), so this runs after it.
     this.openBtn = this.getEl("mapDataTableBtn");
@@ -213,6 +228,7 @@ export class MapDataController extends BaseController {
     this.tableCaptionEl.textContent = `${variableTitle}, ${datasetTitle}, ${year}`;
     this.tableHeadEl.innerHTML = "";
     this.tableBodyEl.innerHTML = "";
+    this.boundaryNoteEl.textContent = "";
     this.tableRows = [];
     this.tableKey = key;
     this.downloadBtn.disabled = true;
@@ -243,6 +259,7 @@ export class MapDataController extends BaseController {
       `Class 1 is the lowest seventh of the values, class ${payload.classCount} the highest.`;
     this.downloadBtn.disabled = false;
     this.renderTable();
+    this.renderBoundaryNote();
   }
 
   async fetchTable(key) {
@@ -256,7 +273,12 @@ export class MapDataController extends BaseController {
         classCount: Number.isFinite(payload?.classCount) ? payload.classCount : 7,
         countriesTotal: Number.isFinite(payload?.countriesTotal) ? payload.countriesTotal : 0,
         countriesWithData: Number.isFinite(payload?.countriesWithData) ? payload.countriesWithData : 0,
-        rows: Array.isArray(payload?.rows) ? payload.rows.slice(0, MAX_TABLE_ROWS) : [],
+        rows: (Array.isArray(payload?.rows) ? payload.rows.slice(0, MAX_TABLE_ROWS) : []).map((row) => ({
+          ...row,
+          // Resolved once, here, rather than per cell: the label is a lookup
+          // into the attribution register and the table redraws on every sort.
+          boundary: this.describeBoundary(row),
+        })),
       };
     } catch (error) {
       console.error(error);
@@ -362,6 +384,66 @@ export class MapDataController extends BaseController {
     return row[column] || "—";
   }
 
+  // What a row's hexagons were cut from, as a reader would say it. A present-day
+  // country gets the source alone; a historical coding unit gets the years the
+  // outline is claimed for, because that is the part the picture cannot carry.
+  describeBoundary(row) {
+    const label = boundaryLabelFor(this.attributionMeta, row.geometrySource);
+    if (!label) return "";
+    if (!row.historical) return label;
+    const from = row.validFromYear;
+    const to = row.validToYear;
+    if (!Number.isFinite(from)) return label;
+    // The registry closes an open-ended period at the year clamp rather than
+    // leaving it null, so 2100 is a sentinel and not a claim about 2100. Both
+    // Palestine units and Zanzibar carry it -- they are on the map today, which
+    // is the whole reason the credit line cannot be conditional on the year.
+    if (!Number.isFinite(to) || to >= OPEN_ENDED_YEAR) return `${label} (from ${from})`;
+    return `${label} (${from}\u2013${to})`;
+  }
+
+  // The sources under the rows above, and the way from here into the licences
+  // that cover them. It counts what is in *this* view rather than listing every
+  // source the deployment holds: at 2020 that is Natural Earth plus the three
+  // CShapes entities whose policy rows run to 2100, and at 1830 it is a quite
+  // different list. The dialog behind the button is the full register.
+  renderBoundaryNote() {
+    this.boundaryNoteEl.textContent = "";
+    const counts = new Map();
+    for (const row of this.tableRows) {
+      const label = boundaryLabelFor(this.attributionMeta, row.geometrySource);
+      if (!label) continue;
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    if (counts.size === 0) return;
+
+    const listed = [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, count]) => `${label} (${count})`)
+      .join(", ");
+    this.boundaryNoteEl.appendChild(
+      document.createTextNode(`Boundaries in this view: ${listed}. `),
+    );
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "attribution-open";
+    button.setAttribute("aria-haspopup", "dialog");
+    button.textContent = "Sources & licences";
+    // The data dialog is modal, so opening a second modal over it would stack
+    // two focus traps. Closing this one first also means Escape from the credits
+    // returns the reader to the map rather than to a table they have finished
+    // with; `onOpenAttribution` is given the button that opened it, but that
+    // button is inside a dialog that is now closed, so focus falls back to the
+    // dialog's own opener -- the legend's Data table button.
+    button.addEventListener("click", () => {
+      const opener = this.openBtn;
+      this.dialog.close();
+      this.onOpenAttribution(opener);
+    });
+    this.boundaryNoteEl.appendChild(button);
+  }
+
   // The same rows the table shows, in the order it is showing them, as a file.
   // Built here rather than served: the backend already sent the numbers, and a
   // second round trip to get them punctuated differently would be a second
@@ -374,10 +456,25 @@ export class MapDataController extends BaseController {
       return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
     };
 
-    const lines = [["country", "iso3", "value", "class", "status"].join(",")];
+    const lines = [
+      ["country", "iso3", "value", "class", "status", "boundary_source", "boundary_valid_from", "boundary_valid_to", "boundary_confidence"].join(","),
+    ];
     for (const row of this.sortedRows()) {
       lines.push(
-        [row.country, row.iso3, row.value, row.classIndex, row.value === null ? "no data" : "has value"]
+        [
+          row.country,
+          row.iso3,
+          row.value,
+          row.classIndex,
+          row.value === null ? "no data" : "has value",
+          // The raw source key rather than the display label: a file that
+          // outlives this page is more use joined back to the database than
+          // read aloud.
+          row.geometrySource,
+          row.validFromYear,
+          row.validToYear,
+          row.geometryConfidence,
+        ]
           .map(escape)
           .join(","),
       );

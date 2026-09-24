@@ -24,14 +24,35 @@
   <body>
     <div id="app">
       <aside id="controls">
-        <h1 class="app-title">
-          <img
-            src="./assets/images/demscore-logo.svg"
-            alt="Demscore Hex Map"
-            width="200"
-            height="50"
-          />
-        </h1>
+        <!-- The wordmark and the way into what the map is made of, on one row.
+             The button is the heading's *sibling*, not its child: inside the
+             <h1> it would be part of the heading's accessible name, which would
+             then read "Demscore Hex Map About". -->
+        <div class="app-header">
+          <h1 class="app-title">
+            <img
+              src="./assets/images/demscore-logo.svg"
+              alt="Demscore Hex Map"
+              width="200"
+              height="50"
+            />
+          </h1>
+          <!-- Icon only, so the label has to be carried by the name. `title` is
+               the mouse affordance; `aria-label` is what is announced, and it
+               wins over `title` when both are present. -->
+          <button
+            id="aboutBtn"
+            type="button"
+            class="about-button"
+            title="About this map"
+            aria-label="About this map"
+            aria-haspopup="dialog"
+            aria-expanded="false"
+            aria-controls="aboutDialog"
+          >
+            <i data-lucide="info" aria-hidden="true"></i>
+          </button>
+        </div>
 
         <section id="mobileControls" class="mobile-controls" aria-label="Mobile map controls">
           <button
@@ -212,6 +233,39 @@
       <p id="legendTooltipCount" class="legend-tip-count"></p>
     </div>
 
+    <!-- One dialog, not two. What the map is and what it is made of are the same
+         question asked at different depths, and a reader who wanted the licence
+         for a boundary source should not have to find a second modal to reach
+         it. The prose below is static; everything under #aboutCredits is
+         rendered by AboutController from /api/config/attribution, so a boundary
+         source added to the database arrives here without anyone editing HTML.
+
+         The sections are <details>. The ones carrying an obligation — the
+         citations and the boundary licences — open by default; the software
+         courtesy list does not. -->
+    <dialog id="aboutDialog" class="about-dialog" aria-labelledby="aboutDialogTitle">
+      <div class="mobile-dialog-header">
+        <h2 id="aboutDialogTitle">About Demscore Hex Map</h2>
+        <button id="aboutCloseBtn" type="button" class="mobile-dialog-close-btn" aria-label="Close about Demscore Hex Map">
+          <i data-lucide="x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <!-- Scrolls, so it is a tab stop with a role and a name, for the same
+           reason the data table's wrapper is. -->
+      <div
+        id="aboutBody"
+        class="about-body"
+        role="region"
+        aria-labelledby="aboutDialogTitle"
+        tabindex="0"
+      >
+        <p class="about-lede">An exploratory view of democracy indicators across countries and years.</p>
+        <p>Built in 2026 through the <a href="https://infravis.se/" target="_blank">InfraVis infrastructure</a> and developed at <a href="https://www.umu.se/humlab/" target="_blank">Humlab, Umeå University</a>.</p>
+        <p class="about-bridge">Everything the map is made of is listed below, with the terms each source is used under.</p>
+        <div id="aboutCredits" class="about-credits"></div>
+      </div>
+    </dialog>
+
     <!-- Two cards in one element. Hovering a row shows it as a `tooltip`:
          transient, tied to the pointer, nothing to operate inside it. Clicking
          an info button shows the same content as a non-modal `dialog`: it stays
@@ -282,6 +336,11 @@
           <tbody id="mapDataTableBody"></tbody>
         </table>
       </div>
+      <!-- Which boundary sources the rows above rest on, and the way from a row
+           to the licence that covers it. A hexagon drawn on an 1815 snapshot and
+           one drawn on a present-day border are the same picture; this and the
+           Boundary column are the only places that difference is legible. -->
+      <p id="mapDataBoundaryNote" class="map-data-boundary-note"></p>
       <p class="map-data-footer">
         <button id="mapDataDownloadBtn" type="button" class="map-data-download">Download this table as CSV</button>
       </p>

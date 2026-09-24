@@ -1,0 +1,61 @@
+Demscore hex map web app — licensing
+====================================
+
+This repository is the web client of the Demscore hex map. The deployment that
+builds the data it renders is github.com/humlab/demscore-deployment; its LICENSE
+covers the same ground in full, and this file is the part that applies here.
+
+
+Source code — MIT
+-----------------
+
+Everything in this repository: `src/`, `app.js`, `index.html`, `styles.css`,
+`sw.js`, and the build scripts.
+
+Copyright (c) 2025 Demscore / Humlab, Umeå University
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+What the MIT grant does not cover
+---------------------------------
+
+**The map this app draws.** The WMS tiles it requests are rendered from hexagon
+meshes derived from CShapes 2.0 and CShapes-Europe, which are CC BY-NC-SA 4.0.
+Those tiles, and any image made from them, are adaptations under that licence:
+attribution, non-commercial use only, share-alike.
+
+    https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+So the code here may be reused freely, including commercially, but not while
+pointed at a Demscore hex-map WMS endpoint. Point it at a tile service built
+from permissively licensed geometry and only the MIT terms apply.
+
+**`config/attribution_sources.json`** is a register of other people's citations
+and licence statements, reproduced so the app can display them. It is factual
+reference material about third-party works, not a contribution of this project.
+
+**`assets/codebooks/*.pdf`** are the data providers' own documents (V-Dem, QoG,
+REPDEM), redistributed unchanged and belonging to them. Each dataset requires
+citation as a condition of use; the citations are in the app's "Sources &
+licences" dialog.
+
+**`assets/images/demscore-logo.svg`** is Demscore's mark, used with permission
+and not licensed onward. The panel background photograph is by Adrien Ledoux via
+Unsplash, under the Unsplash Licence.

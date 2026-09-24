@@ -1,0 +1,277 @@
+{
+ "generatedAt": "2026-09-24T11:33:29Z",
+ "weightHexSizeM": 100000,
+ "shortLine": "Boundaries: Natural Earth · CShapes 2.0 & CShapes-Europe (CC BY-NC-SA 4.0) · historical-basemaps (GPL-3.0). Modified.",
+ "boundary": [
+  {
+   "key": "natural_earth",
+   "title": "Natural Earth 50m",
+   "shortLabel": "Natural Earth",
+   "url": "https://www.naturalearthdata.com/",
+   "citation": "Made with Natural Earth. Free vector and raster map data at naturalearthdata.com.",
+   "role": "Present-day country identity, the hexagon geometry every current country is drawn from, and the land basemap.",
+   "modifications": "Sovereigns dissolved from their map units, overseas units removed, reprojected to Equal Earth (EPSG:8857) and to Web Mercator (EPSG:3857), and cut into a hexagon mesh.",
+   "license": {
+    "label": "Public domain",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "nonCommercial": false,
+    "shareAlike": false
+   },
+   "variants": [
+    {
+     "sourceDataset": "natural_earth_50m",
+     "label": "Natural Earth 50m",
+     "countries": 243,
+     "hexes": 5729
+    }
+   ],
+   "countries": 243,
+   "hexes": 5729,
+   "presentDay": 242,
+   "yearFrom": 1802,
+   "yearTo": 1953,
+   "inShortLine": true
+  },
+  {
+   "key": "cshapes_2.0",
+   "title": "CShapes 2.0",
+   "shortLabel": "CShapes 2.0",
+   "url": "https://icr.ethz.ch/data/cshapes/",
+   "citation": "Schvitz, Guy, Seraina Rüegger, Luc Girardin, Lars-Erik Cederman, Nils Weidmann, and Kristian Skrede Gleditsch. 2022. “Mapping the International System, 1886-2019: The CShapes 2.0 Dataset.” Journal of Conflict Resolution 66(1): 144-161.",
+   "role": "Period-aware historical country boundaries from 1886, and the present-day outlines of Palestine and Zanzibar, which Natural Earth does not carry as separate countries.",
+   "modifications": "Selected per country-period, some periods extended or merged to cover a coding unit's own span, reprojected to Equal Earth (EPSG:8857) and to Web Mercator (EPSG:3857), and cut into a hexagon mesh.",
+   "license": {
+    "label": "CC BY-NC-SA 4.0",
+    "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+    "nonCommercial": true,
+    "shareAlike": true
+   },
+   "variants": [
+    {
+     "sourceDataset": "cshapes_2.0",
+     "label": "CShapes 2.0",
+     "countries": 18,
+     "hexes": 1754
+    },
+    {
+     "sourceDataset": "cshapes_2.0_extended",
+     "label": "CShapes 2.0 (period extended)",
+     "countries": 5,
+     "hexes": 4
+    },
+    {
+     "sourceDataset": "cshapes_2.0_derived",
+     "label": "CShapes 2.0 (derived)",
+     "countries": 1,
+     "hexes": 0
+    }
+   ],
+   "countries": 24,
+   "hexes": 1758,
+   "presentDay": 0,
+   "yearFrom": 1856,
+   "yearTo": 2100,
+   "inShortLine": true
+  },
+  {
+   "key": "cshapes_europe",
+   "title": "CShapes-Europe",
+   "shortLabel": "CShapes-Europe",
+   "url": "https://icr.ethz.ch/data/cshapes/",
+   "citation": "Cederman, Lars-Erik, Luc Girardin, Carl Müller-Crepon, and Yannick Pengl. 2025. Nationalism and the Transformation of the State: Border Change and Political Violence in the Modern World. Cambridge University Press.",
+   "role": "Period-aware European boundaries from 1816, including the pre-unification German and Italian states.",
+   "modifications": "Selected per country-period, some periods extended backwards to cover a coding unit's own span, reprojected to Equal Earth (EPSG:8857) and to Web Mercator (EPSG:3857), and cut into a hexagon mesh.",
+   "license": {
+    "label": "CC BY-NC-SA 4.0",
+    "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+    "nonCommercial": true,
+    "shareAlike": true
+   },
+   "variants": [
+    {
+     "sourceDataset": "cshapes_europe",
+     "label": "CShapes-Europe",
+     "countries": 35,
+     "hexes": 63
+    },
+    {
+     "sourceDataset": "cshapes_europe_extended",
+     "label": "CShapes-Europe (period extended)",
+     "countries": 20,
+     "hexes": 30
+    }
+   ],
+   "countries": 55,
+   "hexes": 93,
+   "presentDay": 0,
+   "yearFrom": 1789,
+   "yearTo": 1871,
+   "inShortLine": true
+  },
+  {
+   "key": "historical_basemaps",
+   "title": "Historical Basemaps",
+   "shortLabel": "historical-basemaps",
+   "url": "https://github.com/aourednik/historical-basemaps",
+   "citation": "Ourednik, A. (2021). Historical Basemaps. https://doi.org/10.5281/zenodo.11212643",
+   "role": "World snapshots for 1783, 1800 and 1815, used only for the entities and years neither CShapes series reaches.",
+   "modifications": "One snapshot year's polygon carried across a span of years, reprojected to Equal Earth (EPSG:8857) and to Web Mercator (EPSG:3857), and cut into a hexagon mesh. Every polygon taken from a snapshot is graded low confidence for this reason.",
+   "license": {
+    "label": "GPL-3.0",
+    "url": "https://www.gnu.org/licenses/gpl-3.0.html",
+    "nonCommercial": false,
+    "shareAlike": true
+   },
+   "variants": [
+    {
+     "sourceDataset": "historical_basemaps",
+     "label": "Historical Basemaps snapshot",
+     "countries": 5,
+     "hexes": 10
+    }
+   ],
+   "countries": 5,
+   "hexes": 10,
+   "presentDay": 0,
+   "yearFrom": 1789,
+   "yearTo": 1867,
+   "inShortLine": true
+  },
+  {
+   "key": "demscore_custom",
+   "title": "Demscore project approximation",
+   "shortLabel": "Demscore approximation",
+   "url": null,
+   "citation": "Project-local approximation, this deployment.",
+   "role": "A low-confidence marker near Aden so V-Dem's pre-1967 South Yemen values are drawn somewhere honest rather than across the later People's Democratic Republic.",
+   "modifications": "Drawn by hand, reprojected and cut into a hexagon mesh like every other polygon.",
+   "license": {
+    "label": "Project-local approximation",
+    "url": null,
+    "nonCommercial": false,
+    "shareAlike": false
+   },
+   "variants": [
+    {
+     "sourceDataset": "demscore_custom_aden_approx",
+     "label": "Demscore approximation",
+     "countries": 1,
+     "hexes": 1
+    }
+   ],
+   "countries": 1,
+   "hexes": 1,
+   "presentDay": 0,
+   "yearFrom": 1900,
+   "yearTo": 1966,
+   "inShortLine": false
+  }
+ ],
+ "sourceLabels": {
+  "natural_earth_50m": "Natural Earth 50m",
+  "cshapes_2.0": "CShapes 2.0",
+  "cshapes_2.0_extended": "CShapes 2.0 (period extended)",
+  "cshapes_2.0_derived": "CShapes 2.0 (derived)",
+  "cshapes_europe": "CShapes-Europe",
+  "cshapes_europe_extended": "CShapes-Europe (period extended)",
+  "historical_basemaps": "Historical Basemaps snapshot",
+  "demscore_custom_aden_approx": "Demscore approximation"
+ },
+ "mapOutput": {
+  "statement": "The hexagon meshes and the map tiles rendered from them are adaptations of CC BY-NC-SA 4.0 boundary data, so they are offered onward under the same licence: attribution, non-commercial use, and share-alike. This deployment is itself non-commercial — no advertising, no paid access and no bundling into a commercial service.",
+  "note": "A view can mix GPL-3.0 and CC BY-NC-SA 4.0 polygons in one image; at 1830, for instance, the map draws both. The image is treated as a mixed-source map: each source stays credited above, and the GPL-3.0 notice travels here.",
+  "license": {
+   "label": "CC BY-NC-SA 4.0",
+   "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+   "nonCommercial": true,
+   "shareAlike": true
+  }
+ },
+ "indicatorDatasets": {
+  "v_dem": {
+   "title": "Varieties of Democracy (V-Dem)",
+   "url": "https://v-dem.net/",
+   "citation": "Coppedge, Michael, John Gerring, Carl Henrik Knutsen, Staffan I. Lindberg, Jan Teorell, David Altman, Fabio Angiolillo, Michael Bernhard, Agnes Cornell, M. Steven Fish, Linnea Fox, Lisa Gastaldi, Haakon Gjerløw, Adam Glynn, Ana Good God, Sandra Grahn, Allen Hicken, Katrin Kinzelbach, Kyle L. Marquardt, Kelly McMann, Valeriya Mechkova, Anja Neundorf, Pamela Paxton, Daniel Pemstein, Johannes von Römer, Brigitte Seim, Rachel Sigman, Svend-Erik Skaaning, Jeffrey Staton, Aksel Sundström, Marcus Tannenberg, Eitan Tzelgov, Yi-ting Wang, Felix Wiebrecht, Tore Wig, and Daniel Ziblatt. 2026. \"V-Dem Codebook v16\". Varieties of Democracy (V-Dem) Project.",
+   "alsoCite": "Pemstein, Daniel, Kyle L. Marquardt, Eitan Tzelgov, Yi-ting Wang, Juraj Medzihorsky, Joshua Krusell, Farhad Miri, and Johannes von Römer. 2025. \"The V-Dem Measurement Model: Latent Variable Analysis for Cross-National and Cross-Temporal Expert-Coded Data\". V-Dem Working Paper No. 21."
+  },
+  "qog": {
+   "title": "Quality of Government (QoG)",
+   "url": "https://www.gu.se/en/quality-government",
+   "citation": "Teorell, J., Sundström, A., Holmberg, S., Rothstein, B., Alvarado Pachon, N., Phiri, V. S., Chen, C. and Liu, Z. (2026b). The Quality of Government Standard Dataset, version Jan26. University of Gothenburg: The Quality of Government Institute.",
+   "alsoCite": null
+  },
+  "repdem": {
+   "title": "Representative Democracy Data Archive (REPDEM)",
+   "url": "https://repdem.org/",
+   "citation": "Hellström, Johan, Torbjörn Bergman, Jonas Lindahl, and Elsa Karlsson Gustafsson (2026). The Representative Democracy Data Archive (REPDEM) – Basic dataset, Version 2026.02.",
+   "alsoCite": null
+  }
+ },
+ "indicatorNote": "All three modules are distributed through Demscore, a Swedish national research infrastructure (Swedish Research Council grant 2021-00162). Each dataset asks to be cited as a condition of use; the codebook PDFs served with this map are the providers' own documents, redistributed unchanged.",
+ "software": [
+  {
+   "name": "OpenLayers",
+   "version": "10.10.0",
+   "license": "BSD-2-Clause",
+   "url": "https://openlayers.org/"
+  },
+  {
+   "name": "proj4js",
+   "version": "2.22.0",
+   "license": "MIT",
+   "url": "https://github.com/proj4js/proj4js"
+  },
+  {
+   "name": "Lucide",
+   "version": "1.48.0",
+   "license": "ISC",
+   "url": "https://lucide.dev/"
+  },
+  {
+   "name": "Lato and Open Sans",
+   "version": null,
+   "license": "SIL Open Font License 1.1",
+   "url": "https://fonts.google.com/"
+  },
+  {
+   "name": "MapServer",
+   "version": "8.4",
+   "license": "MIT",
+   "url": "https://mapserver.org/"
+  },
+  {
+   "name": "PostgreSQL",
+   "version": "16",
+   "license": "PostgreSQL Licence",
+   "url": "https://www.postgresql.org/"
+  },
+  {
+   "name": "PostGIS",
+   "version": "3.4",
+   "license": "GPL-2.0-or-later",
+   "url": "https://postgis.net/"
+  },
+  {
+   "name": "nginx",
+   "version": "1.27",
+   "license": "BSD-2-Clause",
+   "url": "https://nginx.org/"
+  }
+ ],
+ "media": [
+  {
+   "title": "Panel background photograph",
+   "credit": "Adrien Ledoux, via Unsplash",
+   "url": "https://unsplash.com/@adrienledoux",
+   "license": "Unsplash Licence",
+   "licenseUrl": "https://unsplash.com/license"
+  },
+  {
+   "title": "Demscore wordmark",
+   "credit": "Demscore",
+   "url": "https://demscore.se/",
+   "license": "Used with permission",
+   "licenseUrl": null
+  }
+ ]
+}

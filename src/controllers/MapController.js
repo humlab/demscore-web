@@ -17,6 +17,7 @@ import {
   paletteDescriptionFor,
   paletteLabelFor,
 } from "../core/palettes.js";
+import { ATTRIBUTION_OPEN_ATTR, buildAttributionHtml } from "../core/attribution.js";
 import {
   DEFAULT_PROJECTION_KEY,
   PROJECTION_KEYS,
@@ -187,13 +188,28 @@ function compileLegendMeaning(legendMeta) {
 }
 
 export class MapController extends BaseController {
-  constructor({ state, meta, legendMeta, mapServerBase, metadataController, onLayerParamsChange, onStateChange }) {
+  constructor({
+    state,
+    meta,
+    legendMeta,
+    attributionMeta,
+    mapServerBase,
+    metadataController,
+    onLayerParamsChange,
+    onStateChange,
+    onOpenAttribution,
+  }) {
     super();
     this.state = state;
     this.meta = meta;
     this.mapServerBase = mapServerBase;
     this.metadataController = metadataController;
     this.legendMeaning = compileLegendMeaning(legendMeta);
+    // Built once, here, rather than per layer: createWmsLayer() runs on every
+    // projection, palette, year and outline change, and an attribution assembled
+    // per call is an attribution that can come out different per call.
+    this.attributionHtml = buildAttributionHtml(attributionMeta);
+    this.onOpenAttribution = typeof onOpenAttribution === "function" ? onOpenAttribution : () => {};
     this.onLayerParamsChange = typeof onLayerParamsChange === "function" ? onLayerParamsChange : () => {};
     // Fired from refreshLegend, which is the one place every change of what the
     // map is showing passes through. MapDataController hangs the spoken summary
@@ -257,10 +273,14 @@ export class MapController extends BaseController {
   initialize() {
     this.projection = getMapProjection(this.projectionKey);
 
+    // The same string on both sources on purpose. OpenLayers keys attributions
+    // by their text and shows each once, so this prints a single line -- and it
+    // keeps printing it when either the land or the hex layer is switched off in
+    // the display options. The hex layer is the one derived from the licensed
+    // sources and used to be the one with no attribution at all.
     this.landLayer = new ol.layer.Vector({
       source: new ol.source.Vector({
-        attributions:
-          '<a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener noreferrer">Natural Earth</a>',
+        attributions: this.attributionHtml,
       }),
       style: new ol.style.Style({
         fill: new ol.style.Fill({ color: LAND_BASEMAP_COLOR }),
@@ -292,6 +312,19 @@ export class MapController extends BaseController {
         altShiftDragRotate: false,
         pinchRotate: false,
       }),
+    });
+
+    // The attribution control rewrites its own list whenever the sources change,
+    // so the button inside it is not an element that can be bound once. The
+    // listener sits on the map's viewport and finds it by attribute instead.
+    this.map.getViewport().addEventListener("click", (event) => {
+      const button = event.target.closest(`[${ATTRIBUTION_OPEN_ATTR}]`);
+      if (!button) return;
+      event.preventDefault();
+      // The button is handed on so focus can come back to it, but the control
+      // may have rebuilt it by then -- AboutController checks it is still in the
+      // document before focusing it.
+      this.onOpenAttribution(button);
     });
 
     this.initializeLegend();
@@ -659,6 +692,7 @@ export class MapController extends BaseController {
     const source = new ol.source.TileWMS({
       url: this.mapServerBase,
       projection: this.projection.projection,
+      attributions: this.attributionHtml,
       // The grid is the world box cut by the shared resolution ladder, so the
       // BBOX of every request is derived from the same two numbers the mapfile
       // and the mapcache preloader use.

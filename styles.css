@@ -115,37 +115,102 @@ textarea {
   padding: 16px;
 }
 
-/* The heading is the Demscore wordmark; the text lives in the image's alt. */
-#controls h1 {
-  margin: 0 0 12px;
+/* The wordmark and the About button share a row at the head of the sidebar.
+   The button used to float over the map at top-left, where it sat on tiles it
+   had nothing to do with. Here it reads as part of the masthead.
+
+   Every rule below is scoped `#controls`, and it has to be: the sidebar styles
+   a bare `button` as its primary action -- full width, navy fill, white text
+   (see `#controls button` further down). That selector is (1,0,1), so a plain
+   `.about-button` loses every declaration to it and the button renders as a
+   full-width blue slab that pushes the logo out of the row entirely. */
+#controls .app-header {
+  display: flex;
+  align-items: center;
+  /* 16px so the divider below can sit centred in the gap at -8px. */
+  gap: 16px;
+  margin: 2px 0 14px;
+}
+
+#controls .app-title {
+  /* No bottom margin: the row owns the spacing now. `line-height: 0` keeps the
+     block image from carrying a descender's worth of dead space under it. */
+  margin: 0;
   font-size: 1.2rem;
-}
-
-/* The heading is the Demscore wordmark; its text lives in the image's alt. */
-#controls .app-title {
-  margin: 2px 0 14px;
   line-height: 0;
 }
 
+/* The logo keeps its drawn size. The wordmark fills its 200x50 box edge to edge
+   -- measured, not assumed -- so the gap beside it is the only separation there
+   is, which is why the divider earns its place. */
 #controls .app-title img {
   display: block;
-  width: 100%;
-  max-width: 200px;
+  flex-shrink: 0;
+  width: 200px;
+  max-width: 100%;
   height: auto;
 }
 
-#controls .app-title {
-  margin: 2px 0 14px;
-  line-height: 0;
+/* Square, quiet and icon-only. Most readers never need it, so it carries no
+   fill and no border of its own: it is a glyph beside the wordmark until it is
+   pointed at. */
+#controls .about-button {
+  box-sizing: border-box;
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
 }
 
-#controls .app-title img {
-  display: block;
-  width: 100%;
-  max-width: 200px;
-  height: auto;
+/* The hint of a divider, holding the button off the wordmark. Drawn on the
+   button but outside its box, so the hover surface can light up without the
+   rule moving or lighting up with it. Shorter than both neighbours -- it is a
+   separation, not a border. */
+#controls .about-button::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -8px;
+  width: 1px;
+  height: 22px;
+  margin-top: -11px;
+  background: var(--rule);
 }
 
+#controls .about-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+#controls .about-button:hover {
+  background: var(--surface-hover);
+  color: var(--accent);
+}
+
+#controls .about-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Held-open, because the dialog it opens is modal and stays until dismissed. */
+#controls .about-button[aria-expanded="true"] {
+  background: var(--surface-hover);
+  color: var(--accent);
+}
+
+/* The phone header -- the variable trigger and its action row. Hidden here and
+   turned on at the 900px breakpoint, so this one declaration is the whole of
+   what keeps it off the desktop. */
 .mobile-controls {
   display: none;
 }
@@ -1072,6 +1137,331 @@ textarea {
 
 .map-data-dialog::backdrop {
   background: color-mix(in srgb, var(--navy-deep) 48%, transparent);
+}
+
+/* ---- About dialog ----
+   One dialog covering what the map is and what it is made of. The credits under
+   #aboutCredits are generated (see AboutController); everything here is layout,
+   and the rhythm is: a lede, then sections that can be folded away.
+
+   The sections that carry a licence obligation open by default. That is a
+   content decision, made in the controller — nothing in this file should ever
+   hide one. */
+.about-dialog {
+  box-sizing: border-box;
+  width: min(700px, calc(100vw - 24px));
+  max-height: calc(100vh - 40px);
+  padding: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  color: var(--text);
+}
+
+.about-dialog::backdrop {
+  background: color-mix(in srgb, var(--navy-deep) 48%, transparent);
+}
+
+.about-body {
+  max-height: min(72vh, 620px);
+  padding: 16px 18px 20px;
+  overflow: auto;
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.about-body:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.about-body p {
+  margin: 0 0 12px;
+}
+
+/* The one paragraph that has to be read. Set a step up and in the structural
+   navy, so the eye starts here rather than in the middle of the prose. */
+.about-body .about-lede {
+  margin-bottom: 14px;
+  color: var(--accent);
+  font-size: 1.02rem;
+  line-height: 1.45;
+}
+
+/* Hands the reader over to the sections. Quiet, because it is a signpost and
+   not a claim. */
+.about-body .about-bridge {
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+/* ---- sections ---- */
+
+.about-section {
+  border-top: 1px solid var(--rule);
+}
+
+.about-section:first-child {
+  border-top: 0;
+}
+
+/* The whole row is the control. `list-style: none` plus the `::-webkit-details-
+   marker` reset removes the native triangle so the chevron below can sit where
+   the rest of the interface puts its affordances — on the right, aligned with
+   the section's own metadata. */
+.about-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 13px 26px 13px 0;
+  position: relative;
+  list-style: none;
+  cursor: pointer;
+}
+
+.about-summary::-webkit-details-marker {
+  display: none;
+}
+
+.about-summary:hover .about-summary-title {
+  color: var(--accent-strong);
+}
+
+.about-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.about-summary-title {
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* How many sources, or which licence — the answer to the section's question
+   before it is opened, which is what makes folding one away safe. */
+.about-summary-meta {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Drawn rather than imported: it is two rules, and a Lucide icon here would
+   need the library to have finished replacing it before the dialog is opened. */
+.about-summary::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  margin-top: -5px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 120ms ease;
+}
+
+.about-section[open] > .about-summary::after {
+  margin-top: -2px;
+  transform: rotate(225deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .about-summary::after {
+    transition: none;
+  }
+}
+
+.about-body .about-lead {
+  margin: -2px 0 12px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.about-body .about-section > :last-child {
+  margin-bottom: 16px;
+}
+
+/* ---- entries ---- */
+
+.about-entry {
+  margin: 0 0 14px;
+  padding-left: 11px;
+  border-left: 2px solid var(--rule);
+}
+
+.about-entry:last-of-type {
+  margin-bottom: 16px;
+}
+
+.about-entry-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+/* The licence is the point of the entry, so it is a mark beside the title
+   rather than a line further down. `is-restrictive` is the terracotta the
+   handbook reserves for exactly this: a condition limiting what the reader may
+   do with what they are looking at. */
+.about-license {
+  padding: 1px 7px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-inline);
+  background: var(--muted-surface);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.about-license.is-restrictive {
+  border-color: color-mix(in srgb, var(--terracotta) 55%, var(--rule));
+  background: color-mix(in srgb, var(--terracotta) 10%, var(--paper));
+}
+
+.about-license a {
+  color: inherit;
+}
+
+.about-body .about-weight {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-family: var(--font-numeric);
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.about-citation {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.about-modified {
+  font-size: 0.78rem;
+}
+
+.about-body .about-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+/* ---- inner disclosures ---- */
+
+/* For text that has to be complete but would bury what is around it — a V-Dem
+   citation is thirty-six names. One press away, and never the only copy. */
+.about-disclosure {
+  margin-top: 4px;
+}
+
+.about-disclosure > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  list-style: none;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.about-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.about-disclosure > summary::before {
+  content: "+";
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-inline);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 12px;
+  text-align: center;
+}
+
+.about-disclosure[open] > summary::before {
+  content: "\2212";
+}
+
+.about-disclosure > summary:hover {
+  text-decoration: underline;
+}
+
+.about-disclosure > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.about-body .about-disclosure > p {
+  margin: 7px 0 0;
+}
+
+/* ---- odds and ends ---- */
+
+.about-body .about-note {
+  margin-top: 10px;
+  padding: 9px 11px;
+  border-radius: var(--radius-control);
+  background: var(--muted-surface);
+  color: var(--muted);
+  font-size: 0.79rem;
+}
+
+.about-list {
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+}
+
+.about-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.about-list li:last-child {
+  border-bottom: 0;
+}
+
+.about-list-license {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.74rem;
+  text-align: right;
+}
+
+.about-list-license a {
+  color: inherit;
+}
+
+.about-body .about-stamp {
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 
 .map-data-summary {
@@ -2477,7 +2867,7 @@ textarea {
    can slide underneath without hiding the keyboard model. */
 .map-choice-dashboard {
   position: absolute;
-  bottom: 10px;
+  bottom: 30px;
   left: 50%;
   z-index: 2;
   box-sizing: border-box;
@@ -2857,6 +3247,47 @@ textarea {
   }
 }
 
+/* ---- Attribution ----
+   Two surfaces: the line the OpenLayers attribution control always shows under
+   the map, and the dialog behind it. The line is where the CC BY-NC-SA and
+   GPL-3.0 obligations are actually discharged, so it is never collapsed and
+   never conditional on the year -- see docs/license_attribution_plan.md. */
+
+/* The control holds a whole sentence now rather than two words, so it is given
+   room to wrap and a cap on how much of the map it may take. */
+.ol-attribution.ol-uncollapsible {
+  max-width: min(640px, calc(100% - 8px));
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.ol-attribution.ol-uncollapsible ul {
+  white-space: normal;
+}
+
+/* A button that reads as part of the sentence it sits in. It is a button and
+   not a link because it opens a dialog on this page; the underline is what
+   tells a reader it can be pressed, and it is a real tab stop either way. */
+.attribution-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.attribution-open:hover {
+  text-decoration: none;
+}
+
+.attribution-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 @media (max-width: 900px) {
   :root {
     --map-legend-height: 82px;
@@ -2875,12 +3306,15 @@ textarea {
     padding: calc(8px + env(safe-area-inset-top, 0px)) 10px 9px;
   }
 
-  #controls .app-title {
+  /* The gap stays 16px: the divider is drawn at -8px, so narrowing it here
+     would slide the rule off centre and up against the wordmark. The sidebar
+     is a full-width band at this breakpoint, so there is room to spare. */
+  #controls .app-header {
     margin: 0 0 8px;
   }
 
   #controls .app-title img {
-    max-width: 148px;
+    width: 148px;
   }
 
   #datasetSection {
@@ -3324,6 +3758,16 @@ textarea {
     border-radius: 10px 10px 0 0;
   }
 
+  .about-dialog {
+    inset: auto 0 0;
+    width: 100%;
+    max-width: none;
+    max-height: calc(100dvh - 18px);
+    margin: auto 0 0;
+    border-width: 1px 0 0;
+    border-radius: 10px 10px 0 0;
+  }
+
   .mobile-picker-list {
     max-height: min(58vh, 560px);
   }
@@ -3449,5 +3893,41 @@ textarea {
 
   .timeline-controls {
     justify-content: stretch;
+  }
+}
+
+@media (max-width: 900px) {
+  /* The line still shows in full -- a collapsed attribution that starts hidden
+     is a weaker discharge than a visible one -- but it gets the width of the
+     viewport to wrap in rather than a corner of it. */
+  .ol-attribution.ol-uncollapsible {
+    max-width: 100%;
+    font-size: 0.62rem;
+    line-height: 1.45;
+  }
+
+  .about-body {
+    max-height: calc(100dvh - 120px);
+    padding: 14px 14px 18px;
+  }
+
+  .about-body .about-lede {
+    font-size: 0.96rem;
+  }
+
+  .about-entry-title {
+    font-size: 0.88rem;
+  }
+
+  /* Stacked, so a long licence label does not squeeze the title to one word a
+     line. The badge keeps its own line and stays scannable down the column. */
+  .about-list li {
+    display: block;
+  }
+
+  .about-list-license {
+    display: block;
+    margin-left: 0;
+    text-align: left;
   }
 }
