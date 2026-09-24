@@ -17,7 +17,7 @@ Primary user flows:
 - read a variable's codebook description in a hover card, or its full entry in a dialog,
   along with how to cite the dataset, and follow that card's footer to the module's codebook
   PDF or its Demscore download
-- read legend semantics/polarity-aware coloring
+- read legend semantics/polarity-aware colouring
 
 ## Architecture (Current)
 The app was refactored into a small class hierarchy with one top-level coordinator.
@@ -155,7 +155,7 @@ Common tasks and where to work:
 
 - Add/change dataset, variable ranges, defaults:
   - backend config payload (`variables` endpoint)
-  - UI behavior mostly in `MetadataController.refreshVariables()`
+  - UI behaviour mostly in `MetadataController.refreshVariables()`
 
 - Change how a variable row looks or reads:
   - `MetadataController.buildVariableOption()` (row markup: a `div` holding the picking
@@ -239,7 +239,7 @@ Common tasks and where to work:
   - during autoplay the breaks are fetched on hover only: prefetching per year would be stale
     before anyone could read it
 
-- Change variable title/metadata dialog behavior:
+- Change variable title/metadata dialog behaviour:
   - `MetadataController.refreshVariableMetadataPanel()`
 
 - Change the variable coverage strip:
@@ -290,7 +290,7 @@ Common tasks and where to work:
     caption; all three are listed in the `pointerdown` allowlist in `bindVariableTooltip()`,
     and a fourth has to be listed there too
 
-- Change polarity mapping behavior:
+- Change polarity mapping behaviour:
   - `config/variable_polarity.json`
   - resolution logic in `MetadataController.resolveConfiguredPolarity()`
 
@@ -316,7 +316,7 @@ Common tasks and where to work:
     to `palette=default`, but it is a different URL, and both the mapcache and the service
     worker key on the URL
 
-- Change legend text/rules/colors:
+- Change legend text/rules/colours:
   - `config/legend_semantics.json`
   - rendering in `MapController.refreshLegend()`
   - the bar is followed by a **No data** swatch (`.legend-nodata`), which is not part of
@@ -337,7 +337,7 @@ Common tasks and where to work:
     is why the dock is taller between roughly 900px and 1080px. Anything added here must keep
     to that: no `min-width` or track minimum on a legend column
 
-- Change autoplay/timeline behavior:
+- Change autoplay/timeline behaviour:
   - `DemscoreApp` methods: `scheduleAutoPlayTick`, `setYear`, `renderTimelineScale`
   - the speed stepper carries a `Speed` caption (`.speed-button-label`). It is absolutely
     positioned over the group on purpose: the multiplier has to stay the prominent, centred
@@ -540,7 +540,7 @@ Common tasks and where to work:
     and 2.6px at `MAX_ZOOM`, with 8 segments of 10360 over 1px even there. Not worth
     a densify step; re-measure before adding one
 
-- Change map baselayers or WMS swap behavior:
+- Change map baselayers or WMS swap behaviour:
   - `MapController.initialize()` and `MapController.loadNextLayer()`
   - the pending layer is added at `opacity: 0`, which OpenLayers still renders and so
     still loads tiles for — it only drops the layer at the compositing step. What says

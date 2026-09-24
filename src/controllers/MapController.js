@@ -157,7 +157,7 @@ function compileLegendMeaning(legendMeta) {
       title: "Quantile class (country-year)",
       low: "Lower value",
       high: "Higher value",
-      note: "Colors show relative rank for the selected year.",
+      note: "Colours show relative rank for the selected year.",
       direction: "low-to-high",
     },
     datasetDefaults: legendMeta?.dataset_defaults || {},

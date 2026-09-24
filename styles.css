@@ -397,8 +397,8 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-/* The Demscore homepage colorizes its hero photo with a navy color blend and
-   a second navy wash. The taller panel uses the same treatment with a centered
+/* The Demscore homepage colourises its hero photo with a navy colour blend and
+   a second navy wash. The taller panel uses the same treatment with a centred
    cover crop, while its controls stay on paper-like wells for readability. */
 .dataset-panel {
   box-sizing: border-box;

@@ -15,7 +15,7 @@ Simple OpenLayers frontend for the Demscore MapServer WMS layer.
 
 ## Polarity Configuration
 
-`config/variable_polarity.json` is served by `web-backend` and controls whether higher values map to blue (`positive`), red (`negative`), or a single-hue green scale (`neutral`).
+`config/variable_polarity.json` is served by `web-backend` and controls whether higher values map to the favourable end (`positive`), the unfavourable end (`negative`), or a sequential low-to-high scale (`neutral`).
 
 - `defaults.polarity`: global fallback
 - `dataset_defaults`: fallback per dataset
