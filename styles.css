@@ -2370,8 +2370,9 @@ textarea {
    before. Its default is a pill of brand-blue buttons, which belongs to no
    other control on this page. */
 .ol-zoom {
-  top: 104px;
+  top: 50%;
   left: 10px;
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -3310,6 +3311,7 @@ textarea {
 
   .ol-zoom {
     top: 132px;
+    transform: none;
   }
 
   .mobile-picker-dialog {
