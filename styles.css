@@ -2124,6 +2124,10 @@ textarea {
 
 .legend-scale {
   flex: 1.35 1 340px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(74px, 14%, 132px);
+  align-items: start;
+  column-gap: clamp(12px, 2vw, 18px);
   min-width: 0;
 }
 
@@ -2175,6 +2179,8 @@ textarea {
 
 .legend-bar {
   display: flex;
+  grid-column: 1;
+  grid-row: 1;
   height: 18px;
   border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 2px;
@@ -2281,6 +2287,8 @@ textarea {
 
 .legend-labels {
   display: flex;
+  grid-column: 1;
+  grid-row: 2;
   justify-content: space-between;
   font-family: var(--font-numeric);
   margin-top: 6px;
@@ -2298,10 +2306,13 @@ textarea {
    `--land-basemap` is written onto the legend by MapController from the same
    constant the basemap style uses, so the swatch cannot drift from the map. */
 .legend-nodata {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 7px 0 0;
+  display: grid;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  grid-template-rows: 18px auto;
+  align-items: start;
+  gap: 6px;
+  margin: 0;
   color: rgba(255, 255, 255, 0.88);
   font-size: 0.78rem;
   line-height: 1.2;
@@ -2309,15 +2320,22 @@ textarea {
 }
 
 .legend-nodata-swatch {
-  flex: 0 0 auto;
-  width: 18px;
-  height: 12px;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 18px;
   border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: 2px;
   background: var(--land-basemap, #fffaf0);
 }
 
+.legend-nodata-label {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
 .legend-note {
+  grid-column: 1 / -1;
   margin-top: 7px;
   color: rgba(255, 255, 255, 0.74);
   font-size: 0.76rem;
@@ -3271,8 +3289,10 @@ textarea {
   /* The note goes and this stays: the note restates what the ramp already
      shows, while nothing else on a phone says what the cream means. */
   .legend-nodata {
+    display: flex;
     grid-column: 2;
     grid-row: 1;
+    align-items: center;
     gap: 4px;
     margin: 0;
     font-size: 0.7rem;

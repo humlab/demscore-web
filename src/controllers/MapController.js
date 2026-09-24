@@ -1235,7 +1235,7 @@ export class MapController extends BaseController {
         <div class="legend-labels"><span></span><span></span></div>
         <p class="legend-nodata">
           <span class="legend-nodata-swatch" aria-hidden="true"></span>
-          <span>No data</span>
+          <span class="legend-nodata-label">No data</span>
         </p>
         <div class="legend-note"></div>
       </div>`;
