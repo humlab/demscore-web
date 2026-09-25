@@ -69,13 +69,20 @@
   --timeline-size: 180px;
 
   /* The handbook's cover lays a deep navy block against the photograph and
-     parts the two with one thin band of a lighter, greyer blue. Both colours
-     are lifted from that artwork rather than mixed here: #003c51 is the block
-     (and the colour the logo's mark is drawn in), #596681 the band. The
-     sidebar is that block stood on end, and --sidebar-rule is the band between
-     it and the map, which is the cover's photograph. */
+     parts the two with one thin band. The navy is lifted from that artwork
+     rather than mixed here -- #003c51 is the block, and the colour the logo's
+     mark is drawn in. The sidebar is that block stood on end, and
+     --sidebar-rule is the band between it and the map, which is the cover's
+     photograph.
+
+     The cover draws the band in a lighter, greyer blue (#596681); this takes
+     the handbook's terracotta instead, which is the one place in the interface
+     it is now spent. The brief asks for terracotta sparingly and as a thin
+     accent, and a band a few pixels wide against the navy is exactly that --
+     it also stops the only division on the page from being navy against navy.
+     Do not spend the colour a second time without moving it out of here. */
   --sidebar-navy: #003c51;
-  --sidebar-rule: #596681;
+  --sidebar-rule: var(--terracotta);
   /* The band is 13px in a 792px-wide cover. Held to that share of the page it
      would be a stripe of some 20px down a 340px column, which is a lot of
      nothing beside a map; this is the smallest width that still reads as a
@@ -148,7 +155,8 @@ textarea {
 
 /* The sidebar is the handbook cover's navy block, turned on its end: one
    colour field running edge to edge, the map standing in for the photograph,
-   and --sidebar-rule the thin lighter band the cover puts between the two.
+   and --sidebar-rule the thin band the cover puts between the two, in the
+   handbook's terracotta rather than the cover's lighter blue.
    Nothing inside it is a card any more -- the panel that used to carry this
    treatment on a rounded, inset slab now sits directly on the column, which is
    what makes it read as one block rather than a frame around a picture.
@@ -3763,8 +3771,8 @@ textarea {
   }
 
   /* The block turns back the way the cover has it: a band across the top with
-     the lighter rule along its bottom edge, and the map below standing in for
-     the photograph. */
+     the terracotta rule along its bottom edge, and the map below standing in
+     for the photograph. */
   #controls {
     border-right: 0;
     border-bottom: var(--sidebar-rule-width) solid var(--sidebar-rule);

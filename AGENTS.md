@@ -230,18 +230,20 @@ the structural colour, terracotta only as a thin accent, and soft neutral surfac
 - corners are `--radius-card` / `--radius-control` / `--radius-inline`, deliberately small:
   the brief calls out heavy rounded cards as the thing to avoid. Pills (`999px`) are for
   chips, which read as toggles by being pill-shaped
-- the brief asks for terracotta *sparingly*. It had one use, the rule above the legend dock,
-  and that dock is gone — so it is currently unspent. Do not spend it on buttons or active
-  states
+- the brief asks for terracotta *sparingly*. It has exactly one use: `--sidebar-rule`, the
+  band down the sidebar's outer edge (below). That is the whole of its budget — do not spend
+  it on buttons or active states as well. Its previous use, the rule above the legend dock,
+  went with that dock
 - the per-dataset palettes (`--ds-1`..`--ds-5`, from backend config) and the map's own
   colours — legend ramps, `LAND_BASEMAP_COLOR` — are data graphics, not interface chrome,
   and stand outside this system
 - **the sidebar is the handbook cover's navy block, stood on its end.** The cover sets a deep
   navy field (`#003c51`, `--sidebar-navy`) against a photograph and parts the two with one
-  thin band of a lighter, greyer blue (`#596681`, `--sidebar-rule`); turned a quarter, the
-  field is the column, the band is `#controls`' right border and the map is the photograph.
-  At the 900px breakpoint it turns back: the band is the column's bottom border and the map
-  is again below it. Three things follow, and each is load-bearing:
+  thin band (`--sidebar-rule`); turned a quarter, the field is the column, the band is
+  `#controls`' right border and the map is the photograph. At the 900px breakpoint it turns
+  back: the band is the column's bottom border and the map is again below it. The band is the
+  handbook's terracotta rather than the cover's lighter blue, which is where the interface
+  spends that colour — see the note above. Three things follow, and each is load-bearing:
   - **nothing inside the column is a card.** `#datasetPanel` used to carry the navy photo
     treatment on a rounded, bordered slab inset in a grey sidebar; it now has no background,
     border, radius or inset of its own, and the treatment is on `#controls`. Giving the panel
