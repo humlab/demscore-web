@@ -1,1 +1,4 @@
 Demscore_Handbook_Web_Style_Brief.docx
+dist/
+node_modules/
+npm-debug.log*

@@ -2,6 +2,19 @@
 
 Simple OpenLayers frontend for the Demscore MapServer WMS layer.
 
+## Build
+
+The browser app is bundled from npm packages rather than loaded from CDNs.
+
+```sh
+npm install
+npm run build
+```
+
+The production build writes `dist/`, with minified HTML/CSS/JS and precompressed
+`.gz`/`.br` copies of those files. The deployment `web` service serves that
+directory through nginx.
+
 ## Features
 
 - Select dataset (`qog`, `repdem`, `v_dem`)

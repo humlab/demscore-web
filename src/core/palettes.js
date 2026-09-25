@@ -75,11 +75,6 @@ export const MAP_PALETTES = {
     honoursPolarity: true,
     signed: { base: 0, colors: RD_YL_BU },
     neutral: { base: 40, colors: MAGMA },
-    directionHint: {
-      positive: "Higher values are mapped to blue tones.",
-      negative: "Higher values are mapped to red tones.",
-      neutral: "Higher values run from black-purple through rose to pale gold.",
-    },
   },
   indigo_amber: {
     label: "Indigo–amber",
@@ -87,11 +82,6 @@ export const MAP_PALETTES = {
     honoursPolarity: true,
     signed: { base: 20, colors: INDIGO_AMBER },
     neutral: { base: 50, colors: INDIGO_AMBER_SEQUENTIAL },
-    directionHint: {
-      positive: "Higher values are mapped to indigo tones.",
-      negative: "Higher values are mapped to amber tones.",
-      neutral: "Higher values run from deep indigo through blue to light amber.",
-    },
   },
   viridis: {
     label: "Viridis",
@@ -99,9 +89,6 @@ export const MAP_PALETTES = {
     honoursPolarity: false,
     signed: { base: 10, colors: VIRIDIS },
     neutral: { base: 10, colors: VIRIDIS },
-    directionHint: {
-      all: "Higher values run from deep purple through teal to light green, whichever end of the scale is the favourable one.",
-    },
   },
   cividis: {
     label: "Cividis",
@@ -109,9 +96,6 @@ export const MAP_PALETTES = {
     honoursPolarity: false,
     signed: { base: 30, colors: CIVIDIS },
     neutral: { base: 30, colors: CIVIDIS },
-    directionHint: {
-      all: "Higher values run from dark blue through grey-olive to yellow, whichever end of the scale is the favourable one.",
-    },
   },
 };
 
@@ -149,11 +133,6 @@ export function legendColorsFor(paletteKey, polarity) {
   if (!palette.honoursPolarity) return palette.signed.colors;
   if (polarity === "neutral") return palette.neutral.colors;
   return polarity === "positive" ? palette.signed.colors.slice().reverse() : palette.signed.colors;
-}
-
-export function directionHintFor(paletteKey, polarity) {
-  const hints = getPalette(paletteKey).directionHint;
-  return hints.all || hints[polarity] || hints.negative;
 }
 
 export function paletteLabelFor(paletteKey, polarity) {

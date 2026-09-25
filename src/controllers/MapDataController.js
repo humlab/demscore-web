@@ -107,7 +107,6 @@ export class MapDataController extends BaseController {
       // may have made, and a summary that described colours they are not
       // looking at would be worse than one that described none.
       `Colour scheme: ${legend.paletteLabel}.`,
-      legend.directionHint,
       legend.noDataNote,
       this.describeCoverage(breaks),
     ]

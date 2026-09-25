@@ -220,7 +220,7 @@ the structural colour, terracotta only as a thin accent, and soft neutral surfac
   `--charcoal`, `--muted-surface`, `--rule`, ...); every token the app already spoke in
   (`--accent`, `--text`, `--sidebar-navy`, `--map-cover-blue`) is *defined from* them, so a
   palette change is one edit at the top rather than a sweep through the file
-- the two families load from Google Fonts in `index.html`. Lato carries 100/300/400/700/900
+- the two families load from local npm font packages in `app.js`. Lato carries 100/300/400/700/900
   and no 500/600/800, so a weight in between rounds up at render time; write the weight that
   actually ships rather than one the family does not have
 - `--font-numeric` (Open Sans) belongs only to elements showing a number — the year readout,
@@ -597,8 +597,8 @@ Common tasks and where to work:
     *above* the picker that chose those colours: the bar is what the reader is reading the
     map against and the four schemes under it are the choice that made it, so key first,
     control second. The *words* — `.legend-title` and
-    `.legend-note` — are written into `#mapLegendCopy` in the timeline overlay, under the
-    variable caption, because what they qualify is the variable and not the bar. Both were
+    `.legend-note` — are written into `#mapLegendCopy`, the second line of the variable
+    caption in the timeline overlay, because what they qualify is the variable and not the bar. Both were
     one 154px navy dock across the foot of the pane; the dock is gone, `#map` is one grid
     row, and everything in `styles.css` under "Quantile legend" is dark on pale rather
     than white on navy because of it
@@ -637,16 +637,29 @@ Common tasks and where to work:
   - it is rendered from `refreshTimelineForActiveVariable()`, which is the one place the
     timeline is rebuilt for a new selection and therefore the only place either half of the
     caption can have changed. Setting it anywhere else means two places to keep in step
-  - it replaces its whole contents, so the boot placeholder in `index.html` goes with the
-    first render — see "Loading placeholders"
+  - it rewrites the name in `#timelineVariableName`, so the boot placeholder in `index.html`
+    goes with the first render — see "Loading placeholders"
   - it is now the only place the selection is named. The legend dock at the foot of the map
     used to repeat it word for word, which on a tall window put the year and the thing
     being counted a screen apart; the dock is gone and that repetition with it. Directly
-    under the caption is `#mapLegendCopy`, the legend's *words* — what the quantile classes
-    are and which way the colours run — on a pill of its own, because what they qualify is
-    the variable on the line above. On a phone both are hidden: the picker button above the
-    timeline already names the variable, and the strip of map is worth more
-  - the caption ends in an info button (`.timeline-variable-info`) that opens
+    under the name is `#mapLegendCopy`, the legend's *words*, in the same
+    `.timeline-caption` card: a quiet line with the dataset (`#timelineVariableDataset`)
+    and what the quantile classes are, then the two ends of the scale — each after a
+    square of the colour the map paints it in, the bar's first and last class for the
+    scheme and polarity in use — then the rule's `note` and its `takeaway` in bold.
+    `DemscoreApp` fills the name, the dataset and the info button's slot and
+    `MapController.refreshLegend()` fills the `.legend-*` parts; neither replaces the card,
+    since the other half lives in it. In `config/legend_semantics.json` a rule's
+    `lowMeans`/`highMeans` name the ends of the coders' scale in the codebook's words
+    (the 0 and 4 of its RESPONSES block) and `takeaway` says which way is less of the
+    thing ("Higher means less bribery."); check them against the codebook, since they are
+    written by hand. A rule without them shows its `low`/`high` ramp labels by the
+    squares instead, and such a rule's `note` must be set to `""` if the dataset default's
+    note does not apply, because rules are merged over it. There is
+    no sentence saying which colour is high: the ramp's end labels already say it. On a
+    phone the whole caption is hidden: the picker button above the timeline already names
+    the variable, and the strip of map is worth more
+  - the card's right edge is an info button (`.timeline-variable-info`, in `#timelineVariableInfoSlot`) that opens
     `MetadataController.openVariableInfoPopover()` — the same persistent card a row's own
     info button opens, for the variable actually on the map. It matters most on a desktop,
     where `.variable-option-info` is `display: none` above the coarse-pointer breakpoint and

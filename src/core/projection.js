@@ -1,5 +1,7 @@
 // The map is drawn in Equal Earth (EPSG:8857), the 2018 equal-area
 // pseudocylindrical projection, and so is every hexagon MapServer serves.
+import proj4 from "proj4";
+import { ol } from "./openlayers.js";
 //
 // The choice is not cosmetic. Web Mercator scales area by sec^2(latitude), so
 // it was inflating exactly the countries these indicators are most often read

@@ -2266,92 +2266,94 @@ textarea {
   color: var(--muted);
 }
 
-/* The caption under the timeline. It floats over the map like everything else
-   in this overlay, so it carries its own backdrop rather than borrowing the
-   card's — the card is only 72px tall and this sits well below it, under the
-   year label and the tick scale. */
-.timeline-variable-title {
+/* The caption under the timeline, as one card: the variable's name, then its
+   dataset and the kind of classes it is drawn in, then what the ends of its
+   scale mean, with the info button to the right of all three. It floats over
+   the map like everything else in this overlay, so it carries its own backdrop
+   rather than borrowing the timeline card's. Left-aligned, because three lines
+   of different lengths read as a ragged block when each is centred. */
+.timeline-caption {
   position: relative;
   z-index: 1;
   display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 8px;
-  width: fit-content;
-  max-width: 100%;
-  margin: 2px auto 0;
-  padding: 5px 14px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 6px 18px rgba(23, 56, 75, 0.1);
+  align-items: center;
+  gap: 16px;
+  box-sizing: border-box;
+  width: min(100%, 880px);
+  margin: 6px auto 0;
+  padding: 14px 18px 14px 22px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 6px 18px rgba(23, 56, 75, 0.08);
   backdrop-filter: blur(3px);
-  color: var(--timeline-ink);
-  font-size: 0.95rem;
-  line-height: 1.25;
-  text-align: center;
+  color: var(--text);
+  text-align: left;
+}
+
+.timeline-caption-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.timeline-caption-text p {
+  margin: 0;
 }
 
 .timeline-variable-name {
   overflow: hidden;
+  color: var(--text);
+  font-size: 1.3rem;
   font-weight: 700;
+  line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Which module it came from, kept quiet: the row in the sidebar carries the
-   same tag, and this line is read for the variable. */
-.timeline-variable-dataset {
+.timeline-caption-action {
   flex: 0 0 auto;
-  color: color-mix(in srgb, var(--timeline-ink) 65%, transparent);
-  font-size: 0.78rem;
-  font-weight: 700;
-  white-space: nowrap;
+  display: inline-flex;
 }
 
-.timeline-variable-dataset::before {
-  content: "\2022";
-  margin-right: 8px;
-}
-
-/* Opens the same card the sidebar rows carry, for the variable on the map.
-   Centred against the line rather than sitting on its baseline — a round
-   button aligned by baseline rides visibly high next to text. */
+/* Opens the same card the sidebar rows carry, for the variable on the map. A
+   bordered square at the card's right edge, centred against all three lines,
+   because the card it opens is about all three. */
 .timeline-variable-info {
-  flex: 0 0 auto;
-  align-self: center;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  margin: -4px -6px -4px 0;
+  width: 40px;
+  height: 40px;
   padding: 0;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  color: color-mix(in srgb, var(--timeline-ink) 55%, transparent);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: #fff;
+  color: color-mix(in srgb, var(--text) 80%, transparent);
   cursor: pointer;
 }
 
 .timeline-variable-info svg {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
 }
 
 .timeline-variable-info:hover:not(:disabled),
 .timeline-variable-info:focus-visible {
-  border-color: color-mix(in srgb, var(--timeline-ink) 30%, transparent);
-  background: color-mix(in srgb, var(--timeline-ink) 8%, transparent);
+  border-color: color-mix(in srgb, var(--timeline-ink) 40%, transparent);
+  background: color-mix(in srgb, var(--timeline-ink) 6%, #fff);
   color: var(--timeline-ink);
 }
 
 .timeline-variable-info:focus-visible {
   outline: 2px solid var(--timeline-ink);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 .timeline-variable-info:disabled {
-  color: color-mix(in srgb, var(--timeline-ink) 28%, transparent);
+  color: color-mix(in srgb, var(--text) 28%, transparent);
   cursor: not-allowed;
 }
 
@@ -3031,51 +3033,73 @@ textarea {
 }
 
 /* ---- the legend's words, over the timeline ----
-   What the colours mean and which way they run, on the line under the variable
-   caption. The bar they describe is at the foot of the map in the dashboard;
-   these are here because what they qualify is the variable, and that is the
-   line above. One line, clipped: the note runs to a sentence and a half for
-   some V-Dem indicators, and the overlay it sits in is standing on the map. */
+   The second and third lines of the variable caption (`.timeline-caption`):
+   the dataset and the kind of classes, quiet, then what the ends of the scale
+   mean with the rule's takeaway in bold. The bar they describe is at the foot
+   of the map in the dashboard; these are here because what they qualify is the
+   variable, and that is the line above. The note may wrap: the overlay's height
+   is observed (`DemscoreApp.syncTimelineInset`), so a second line moves the
+   map's top inset with it rather than under it. */
 .timeline-legend-copy {
-  position: relative;
-  z-index: 1;
   display: flex;
-  align-items: baseline;
-  justify-content: center;
+  flex-direction: column;
   gap: 8px;
-  width: fit-content;
-  max-width: 100%;
-  /* A pill of its own, for the same reason the caption above it has one: it is
-     text over a map, and at some projections and zooms what is behind it is
-     seven shades of hexagon rather than ocean. */
-  margin: 4px auto 0;
-  padding: 3px 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.86);
-  backdrop-filter: blur(3px);
-  font-size: 0.74rem;
+  min-width: 0;
+}
+
+.timeline-caption-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
   line-height: 1.3;
 }
 
-.timeline-legend-copy:empty,
+/* The separator belongs to the class line, so it goes when either side is empty. */
+.timeline-variable-dataset:not(:empty) + .legend-title:not(:empty)::before {
+  content: "\00B7";
+  margin-right: 6px;
+}
+
 .timeline-legend-copy .legend-title:empty,
-.timeline-legend-copy .legend-note:empty {
+.timeline-legend-copy .legend-note-text:empty,
+.timeline-legend-copy .legend-takeaway:empty {
   display: none;
 }
 
-.legend-title {
-  flex: 0 0 auto;
-  color: var(--accent);
-  font-weight: 700;
-  white-space: nowrap;
+.legend-note {
+  color: color-mix(in srgb, var(--text) 85%, transparent);
+  font-size: 0.92rem;
+  line-height: 1.4;
 }
 
-.legend-note {
-  min-width: 0;
-  overflow: hidden;
+.legend-takeaway {
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* An end of the scale: a square of the colour the map paints it in, then what
+   it means. Kept together on a line so a wrap never strands a square. */
+.legend-end {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.legend-end-swatch {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 2px;
+}
+
+.legend-end-sep {
+  margin: 0 2px;
   color: var(--muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* The bottom-left stack: the zoom readout over the display options. Leaflet
@@ -3442,6 +3466,10 @@ textarea {
   z-index: 0;
   top: 5px;
   left: 5px;
+  /* Border-box, or the 1px border makes the slab 2px wider than a track and --
+     since `translateX(100%)` is measured on the slab itself -- every step 2px
+     longer than one, so it drifts further off-centre with each scheme. */
+  box-sizing: border-box;
   width: calc((100% - 16px) / 4);
   height: calc(100% - 10px);
   border: 1px solid rgba(203, 213, 225, 0.95);
@@ -4234,12 +4262,6 @@ textarea {
     height: 10px;
   }
 
-  /* The note restates in prose what the ramp already shows, and the timeline
-     card it now sits in is already a third of a phone screen tall. */
-  .timeline-legend-copy {
-    display: none;
-  }
-
   .ol-zoom {
     top: 132px;
     transform: none;
@@ -4372,8 +4394,10 @@ textarea {
   /* The phone header is the variable picker, and it already reads "V-Dem /
      Electoral Democracy Index / Democracy / 1789-2025" a finger's width above
      the timeline. A caption under it would be the third time on one screen, for
-     a strip of map a phone can least afford to give up. */
-  .timeline-variable-title {
+     a strip of map a phone can least afford to give up. The legend's words
+     go with it: they restate in prose what the ramp already shows, and the
+     timeline card is already a third of a phone screen tall. */
+  .timeline-caption {
     display: none;
   }
 

@@ -1,4 +1,6 @@
 import { BaseController } from "../core/BaseController.js";
+import { refreshIcons } from "../core/icons.js";
+import { ol } from "../core/openlayers.js";
 import {
   readAreaOutlinesEnabled,
   readMapPalette,
@@ -12,7 +14,6 @@ import {
   DEFAULT_PALETTE_KEY,
   MAP_PALETTES,
   PALETTE_KEYS,
-  directionHintFor,
   legendColorsFor,
   paletteDescriptionFor,
   paletteLabelFor,
@@ -282,6 +283,9 @@ export class MapController extends BaseController {
     this.legendLowEl = null;
     this.legendHighEl = null;
     this.legendNoteEl = null;
+    this.legendNoteTextEl = null;
+    this.legendEndEls = [];
+    this.legendTakeawayEl = null;
     this.legendNoDataEl = null;
     this.legendSwatchEls = [];
 
@@ -947,9 +951,7 @@ export class MapController extends BaseController {
     this.syncPaletteSelector();
     this.syncOutlineToggle();
     this.syncPaletteSwatches();
-    if (window.lucide && typeof window.lucide.createIcons === "function") {
-      window.lucide.createIcons();
-    }
+    refreshIcons();
     // A child of the pane, not an OpenLayers control. A control lives inside
     // `#mapCanvas`, and the table view covers that element and makes it
     // `inert` -- so a View switch parked in there would be hidden and
@@ -1394,6 +1396,13 @@ export class MapController extends BaseController {
     // in index.html because that is where its position on the page is decided.
     this.legendTitleEl = this.legendCopyEl?.querySelector(".legend-title") || null;
     this.legendNoteEl = this.legendCopyEl?.querySelector(".legend-note") || null;
+    this.legendNoteTextEl = this.legendNoteEl?.querySelector(".legend-note-text") || null;
+    // Low end first, high end second, as in the markup.
+    this.legendEndEls = [...(this.legendNoteEl?.querySelectorAll(".legend-end") || [])].map((end) => ({
+      swatch: end.querySelector(".legend-end-swatch"),
+      label: end.querySelector(".legend-end-label"),
+    }));
+    this.legendTakeawayEl = this.legendNoteEl?.querySelector(".legend-takeaway") || null;
     this.legendBarEl = div.querySelector(".legend-bar");
     this.legendLowEl = div.querySelector(".legend-labels span:first-child");
     this.legendHighEl = div.querySelector(".legend-labels span:last-child");
@@ -1655,13 +1664,29 @@ export class MapController extends BaseController {
       this.legendHighEl.title = text.high;
     }
     if (this.legendNoteEl) {
-      const directionHint = this.legendDirectionHint(polarity);
-      const note = `${text.note} ${directionHint}`;
-      this.legendNoteEl.textContent = note;
-      // One line over the map, clipped where the pane is narrow: the note runs
-      // to a sentence and a half for some indicators and a line that wrapped
-      // would move the map's top inset under the reader. The full text is a
-      // hover away here, and is in `#mapSummary` in words for anyone not
+      // What each end of the scale means, after a square of the colour the map
+      // paints it in -- the bar's first and last class, so it follows the
+      // scheme and the polarity. A rule that quotes the codebook's anchors
+      // (`lowMeans`/`highMeans`) says those; any other falls back to the ramp's
+      // own end labels. Then the rule's note, and its takeaway in bold as the
+      // part to read if nothing else is.
+      const ends = [
+        { color: legendColors[0], label: text.lowMeans || text.low },
+        { color: legendColors[legendColors.length - 1], label: text.highMeans || text.high },
+      ];
+      const trailing = [text.note, text.takeaway].filter(Boolean);
+      this.legendEndEls.forEach((end, index) => {
+        const { color, label } = ends[index];
+        if (end.swatch) end.swatch.style.background = color;
+        // The line reads as a sentence, so the last end closes it when
+        // anything follows.
+        const closes = index === ends.length - 1 && trailing.length > 0;
+        if (end.label) end.label.textContent = closes ? `${label}.` : label;
+      });
+      if (this.legendNoteTextEl) this.legendNoteTextEl.textContent = text.note || "";
+      if (this.legendTakeawayEl) this.legendTakeawayEl.textContent = text.takeaway || "";
+      const note = [`${ends[0].label} · ${ends[1].label}.`, ...trailing].join(" ");
+      // The full text on hover, and in `#mapSummary` in words for anyone not
       // hovering.
       this.legendNoteEl.title = note;
     }
@@ -1716,7 +1741,9 @@ export class MapController extends BaseController {
       low: text.low,
       high: text.high,
       note: text.note,
-      directionHint: this.legendDirectionHint(polarity),
+      lowMeans: text.lowMeans || "",
+      highMeans: text.highMeans || "",
+      takeaway: text.takeaway || "",
       polarity,
       classCount: this.classCountForBreaks(),
       paletteLabel: paletteLabelFor(this.paletteKey, polarity),
@@ -1731,10 +1758,6 @@ export class MapController extends BaseController {
   // so the bar and the map cannot disagree about which end is which.
   legendColorsForPolarity(polarity) {
     return legendColorsFor(this.paletteKey, polarity);
-  }
-
-  legendDirectionHint(polarity) {
-    return directionHintFor(this.paletteKey, polarity);
   }
 
   getPaletteKey() {

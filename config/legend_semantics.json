@@ -1,6 +1,6 @@
 {
   "defaults": {
-    "title": "Quantile class (country-year)",
+    "title": "Quantile class, country-year",
     "low": "Lower value",
     "high": "Higher value",
     "note": "Colours show relative rank for the selected year.",
@@ -28,7 +28,10 @@
       "match": "^v2meharjrn(?:_|$)",
       "low": "More harassment",
       "high": "Less / no harassment",
-      "note": "V-Dem codes 0 as journalists never daring to offend powerful actors and 4 as journalists never being harassed, so higher values mean less harassment.",
+      "lowMeans": "No journalist dares offend powerful actors",
+      "highMeans": "Journalists are never harassed",
+      "note": "",
+      "takeaway": "Higher means less harassment.",
       "direction": "low-to-high"
     },
     {
@@ -36,7 +39,10 @@
       "match": "^v2mecenefm(?:_|$)",
       "low": "More censorship",
       "high": "Less censorship",
-      "note": "V-Dem codes 0 as direct and routine censorship and 4 as the government rarely attempting to censor, so higher values mean less censorship.",
+      "lowMeans": "Censorship is direct and routine",
+      "highMeans": "The government rarely attempts to censor",
+      "note": "",
+      "takeaway": "Higher means less censorship.",
       "direction": "low-to-high"
     },
     {
@@ -44,7 +50,10 @@
       "match": "^v2jupoatck(?:_|$)",
       "low": "More attacks",
       "high": "Fewer / no attacks",
-      "note": "V-Dem codes 0 as attacks on the judiciary's integrity carried out daily or weekly and 4 as no attacks at all, so higher values mean fewer attacks.",
+      "lowMeans": "Attacks on the judiciary daily or weekly",
+      "highMeans": "No attacks",
+      "note": "",
+      "takeaway": "Higher means fewer attacks.",
       "direction": "low-to-high"
     },
     {
@@ -52,7 +61,10 @@
       "match": "^v2smgovdom(?:_|$)",
       "low": "More false information",
       "high": "Less false information",
-      "note": "V-Dem codes 0 as the government disseminating false information extremely often and 4 as never or almost never, so higher values mean less false information.",
+      "lowMeans": "The government spreads false information extremely often",
+      "highMeans": "Never or almost never",
+      "note": "",
+      "takeaway": "Higher means less false information.",
       "direction": "low-to-high"
     },
     {
@@ -60,7 +72,10 @@
       "match": "^v2exbribe(?:_|$)",
       "low": "More bribery",
       "high": "Less bribery",
-      "note": "V-Dem codes 0 as bribery being routine and expected and 4 as it never or hardly ever happening, so higher values mean less bribery.",
+      "lowMeans": "Bribery is routine and expected",
+      "highMeans": "Never or hardly ever",
+      "note": "",
+      "takeaway": "Higher means less bribery.",
       "direction": "low-to-high"
     }
   ]

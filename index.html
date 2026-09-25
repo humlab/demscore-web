@@ -4,22 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Demscore Hex Map</title>
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/ol@10.10.0/ol.css"
-      integrity="sha256-q8iv1yzBC9KcwUP0Q7rkpoBL08s/smLmtqa8bJJOo08="
-      crossorigin="anonymous"
-    />
     <!-- Lato is the handbook's working typeface; Open Sans carries its statistics
          and metrics. See Demscore_Handbook_Web_Style_Brief.docx. Lato ships no
          500/600/800, so a weight in between rounds up to the next one loaded. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&family=Open+Sans:wght@300;400;700&display=swap"
-    />
-    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div id="app">
@@ -176,21 +163,45 @@
           </div>
         </div>
         <!-- What the map is showing, under the year it is showing it for, and
-             now the only place it is said: the legend dock that used to repeat
-             it at the foot of the map is gone. -->
-        <p id="timelineVariableTitle" class="timeline-variable-title">
-          <span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-        </p>
-        <!-- How the colours are to be read, directly under the variable they
-             are reading. This was the left half of the legend dock at the foot
-             of the map, which put the words a whole map away from the title
-             they qualify; the dock is gone and the bar itself now sits in the
-             map dashboard, so the sentence comes up here instead. Filled by
-             MapController.initializeLegend(). -->
-        <p id="mapLegendCopy" class="timeline-legend-copy">
-          <span class="legend-title"></span>
-          <span class="legend-note"></span>
-        </p>
+             how its colours are to be read, as one card: the variable's name,
+             then its dataset and the kind of classes it is drawn in, then what
+             the ends of its scale mean. The info button sits to the right of all
+             three because the card it opens is about all three. -->
+        <div id="timelineVariableTitle" class="timeline-caption">
+          <div class="timeline-caption-text">
+            <!-- Filled by DemscoreApp.renderTimelineVariableTitle(). -->
+            <p id="timelineVariableName" class="timeline-variable-name">
+              <span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            </p>
+            <!-- `.legend-*` filled by MapController.refreshLegend(); the dataset
+                 by DemscoreApp.renderTimelineVariableTitle(). -->
+            <div id="mapLegendCopy" class="timeline-legend-copy">
+              <p class="timeline-caption-meta">
+                <span id="timelineVariableDataset" class="timeline-variable-dataset"></span>
+                <span class="legend-title"></span>
+              </p>
+              <!-- The two ends of the scale, each after a square of the colour
+                   the map paints it in: the bar's first and last class for the
+                   scheme and polarity in use. -->
+              <p class="legend-note">
+                <span class="legend-end">
+                  <span class="legend-end-swatch" aria-hidden="true"></span>
+                  <span class="visually-hidden">Lowest class:</span>
+                  <span class="legend-end-label"></span>
+                </span>
+                <span class="legend-end-sep" aria-hidden="true">&middot;</span>
+                <span class="legend-end">
+                  <span class="legend-end-swatch" aria-hidden="true"></span>
+                  <span class="visually-hidden">Highest class:</span>
+                  <span class="legend-end-label"></span>
+                </span>
+                <span class="legend-note-text"></span>
+                <strong class="legend-takeaway"></strong>
+              </p>
+            </div>
+          </div>
+          <span id="timelineVariableInfoSlot" class="timeline-caption-action"></span>
+        </div>
         <!-- Not a live region any more. The slider announces its own value (and
              `aria-valuetext` makes that value say how many countries the year
              covers), so a second announcement was the year twice over — and
@@ -430,30 +441,5 @@
       <div id="mobileVariablePickerList" class="mobile-picker-list" aria-label="Variables"></div>
     </dialog>
 
-    <!-- The map is drawn in Equal Earth (EPSG:8857), which no mapping library
-         carries built in; proj4 supplies the projection and OpenLayers takes it
-         through ol.proj.proj4.register. See src/core/projection.js. proj4 loads
-         first because that registration happens on the first map build. -->
-    <script
-      src="https://unpkg.com/proj4@2.22.0/dist/proj4.js"
-      integrity="sha256-r332U9kepZHzPSb7lYmQu9MHGy22RKTtq6RBzJhhpHQ="
-      crossorigin=""
-    ></script>
-    <script
-      src="https://cdn.jsdelivr.net/npm/ol@10.10.0/dist/ol.js"
-      integrity="sha256-uJr47Dt29WTVFf0H/tPsQUrs+PM/aFt3tgdFHLDCAp8="
-      crossorigin="anonymous"
-    ></script>
-    <!-- Pinned, and with an integrity hash, like the two above it. `@latest`
-         meant the icon library could change under the page between two loads
-         with nothing recording which version drew what, and it was the one
-         script tag a subresource-integrity check could not cover. -->
-    <script
-      src="https://unpkg.com/lucide@1.48.0/dist/umd/lucide.min.js"
-      integrity="sha256-NE0xg1GH3zKVQdIjJfqbl/lLsBK1IKQbm0p0oaTZxjc="
-      crossorigin="anonymous"
-    ></script>
-    <script type="module" src="./app.js"></script>
-    <script>lucide.createIcons();</script>
   </body>
 </html>

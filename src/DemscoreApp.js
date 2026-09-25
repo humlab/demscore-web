@@ -1,5 +1,6 @@
 import { BaseController } from "./core/BaseController.js";
 import { BackendClient } from "./core/BackendClient.js";
+import { refreshIcons } from "./core/icons.js";
 import { readMapSelection, writeMapSelection, readMapView, writeMapView } from "./core/preferences.js";
 import { AboutController } from "./controllers/AboutController.js";
 import { MetadataController } from "./controllers/MetadataController.js";
@@ -37,6 +38,9 @@ export class DemscoreApp extends BaseController {
     this.timelinePreloadTrack = null;
     this.timelineWrap = null;
     this.timelineVariableTitle = null;
+    this.timelineVariableName = null;
+    this.timelineVariableDataset = null;
+    this.timelineVariableInfoSlot = null;
     this.yearPlayBtn = null;
     this.speedDownBtn = null;
     this.speedUpBtn = null;
@@ -374,6 +378,9 @@ export class DemscoreApp extends BaseController {
     this.timelineMarkTooltip = this.getEl("timelineMarkTooltip");
     this.timelineWrap = this.getEl("timelineWrap");
     this.timelineVariableTitle = this.getEl("timelineVariableTitle");
+    this.timelineVariableName = this.getEl("timelineVariableName");
+    this.timelineVariableDataset = this.getEl("timelineVariableDataset");
+    this.timelineVariableInfoSlot = this.getEl("timelineVariableInfoSlot");
     this.yearPlayBtn = this.getEl("yearPlayBtn");
     this.speedDownBtn = this.getEl("speedDownBtn");
     this.speedUpBtn = this.getEl("speedUpBtn");
@@ -533,8 +540,9 @@ export class DemscoreApp extends BaseController {
   //
   // Called from the one place the timeline is rebuilt for a new selection,
   // which is also the only place either half of this can have changed. It
-  // replaces the whole contents, so the boot placeholder in index.html goes
-  // with the first render rather than having to be swept up.
+  // fills the card's own slots rather than replacing the card, because the
+  // legend's words (MapController.refreshLegend) live in the same card; the
+  // boot placeholder in index.html goes with the first render of the name.
   renderTimelineVariableTitle() {
     if (!this.timelineVariableTitle) return;
 
@@ -543,21 +551,11 @@ export class DemscoreApp extends BaseController {
     const datasetMeta = this.meta.datasets?.[dataset];
     const datasetLabel = datasetMeta?.label || datasetMeta?.title || dataset;
 
-    this.timelineVariableTitle.innerHTML = "";
-
-    const name = document.createElement("span");
-    name.className = "timeline-variable-name";
-    name.textContent = title;
-    this.timelineVariableTitle.appendChild(name);
-
-    const source = document.createElement("span");
-    source.className = "timeline-variable-dataset";
-    source.textContent = datasetLabel;
+    if (this.timelineVariableName) this.timelineVariableName.textContent = title;
+    if (this.timelineVariableDataset) this.timelineVariableDataset.textContent = datasetLabel;
     // The full dataset name and the variable key are both a hover away rather
-    // than on the line: this caption has one line over the map and the title
-    // is the part that has to survive a narrow window.
+    // than on the card: the name is the part that has to survive a narrow window.
     this.timelineVariableTitle.title = `${title} (${variable}) — ${this.metadataController.getDatasetTitle(datasetMeta, dataset)}`;
-    this.timelineVariableTitle.appendChild(source);
 
     // The same card the sidebar rows open, for the variable actually on the
     // map. On a desktop the rows only ever show theirs on hover -- their own
@@ -578,11 +576,9 @@ export class DemscoreApp extends BaseController {
     info.setAttribute("aria-expanded", "false");
     info.setAttribute("aria-controls", "variableTooltip");
     info.innerHTML = '<i data-lucide="info" aria-hidden="true"></i>';
-    this.timelineVariableTitle.appendChild(info);
+    this.timelineVariableInfoSlot?.replaceChildren(info);
 
-    if (window.lucide && typeof window.lucide.createIcons === "function") {
-      window.lucide.createIcons();
-    }
+    refreshIcons();
   }
 
   setTimelineBounds(coverage) {
@@ -849,9 +845,7 @@ export class DemscoreApp extends BaseController {
     const label = this.state.isAutoPlaying ? "Pause" : "Animate";
 
     this.yearPlayBtn.innerHTML = `<span>${label}</span><i data-lucide="${iconName}" aria-hidden="true"></i>`;
-    if (window.lucide && typeof window.lucide.createIcons === "function") {
-      window.lucide.createIcons();
-    }
+    refreshIcons();
 
     this.yearPlayBtn.setAttribute("aria-label", this.state.isAutoPlaying ? "Pause timeline" : "Play timeline");
   }

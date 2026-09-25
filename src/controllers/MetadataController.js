@@ -1,4 +1,5 @@
 import { BaseController } from "../core/BaseController.js";
+import { refreshIcons } from "../core/icons.js";
 import { readVariableChoices, writeVariableChoices } from "../core/preferences.js";
 
 // V-Dem publishes each indicator several times over — `_codelow`, `_sd`, `_osp`
@@ -1585,9 +1586,7 @@ export class MetadataController extends BaseController {
   }
 
   refreshLucideIcons() {
-    if (window.lucide && typeof window.lucide.createIcons === "function") {
-      window.lucide.createIcons();
-    }
+    refreshIcons();
   }
 
   // Every dataset's main variables in one list, ordered by the title the reader
