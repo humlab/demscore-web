@@ -25,7 +25,8 @@
   --radius-control: 4px;
   --radius-inline: 3px;
 
-  --panel-bg: var(--muted-surface);
+  /* --panel-bg went with the sidebar's grey: the column is the cover's navy
+     block now and nothing else on the page was drawn on it. */
   --panel-border: var(--rule);
   /* A hover/well grey off the same neutral as the surfaces, not the blue-grey
      the panel used to mix its own. */
@@ -66,6 +67,21 @@
   --follow-ink-4: #6a5480;
   --follow-ink-5: #2f6d70;
   --timeline-size: 180px;
+
+  /* The handbook's cover lays a deep navy block against the photograph and
+     parts the two with one thin band of a lighter, greyer blue. Both colours
+     are lifted from that artwork rather than mixed here: #003c51 is the block
+     (and the colour the logo's mark is drawn in), #596681 the band. The
+     sidebar is that block stood on end, and --sidebar-rule is the band between
+     it and the map, which is the cover's photograph. */
+  --sidebar-navy: #003c51;
+  --sidebar-rule: #596681;
+  /* The band is 13px in a 792px-wide cover. Held to that share of the page it
+     would be a stripe of some 20px down a 340px column, which is a lot of
+     nothing beside a map; this is the smallest width that still reads as a
+     deliberate band rather than a border. */
+  --sidebar-rule-width: 8px;
+
   --map-cover-blue: var(--navy);
   --map-cover-brown: var(--terracotta);
   --map-ocean: var(--rule);
@@ -130,14 +146,55 @@ textarea {
   height: 100%;
 }
 
+/* The sidebar is the handbook cover's navy block, turned on its end: one
+   colour field running edge to edge, the map standing in for the photograph,
+   and --sidebar-rule the thin lighter band the cover puts between the two.
+   Nothing inside it is a card any more -- the panel that used to carry this
+   treatment on a rounded, inset slab now sits directly on the column, which is
+   what makes it read as one block rather than a frame around a picture.
+
+   The photograph is still under the navy, as three background layers rather
+   than the two pseudo-elements the panel used: #controls scrolls, and an
+   `inset: 0` pseudo-element inside a scroll container covers one viewport's
+   worth and then stops. A background does not -- `background-attachment:
+   scroll` pins it to the element's own box, so the column stays painted however
+   far the variable list is scrolled. The middle layer is the navy blended
+   `color` onto the photo (its hue, the photo's luma, exactly as the old
+   `mix-blend-mode: color` did); the top layer is the wash over the result. Both
+   have to be gradients because a background layer cannot be a flat colour. */
 #controls {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   overflow: auto;
-  background: var(--panel-bg);
-  border-right: 1px solid var(--panel-border);
-  padding: 16px;
+  background-color: var(--sidebar-navy);
+  background-image:
+    linear-gradient(rgba(0, 60, 81, 0.82), rgba(0, 60, 81, 0.82)),
+    linear-gradient(var(--sidebar-navy), var(--sidebar-navy)),
+    url("assets/images/adrien-ledoux-mBHuEkka5wM-unspla.2e16d0ba.fill-2500x1000.jpg");
+  background-blend-mode: normal, color, normal;
+  background-position: center;
+  background-size: cover;
+  border-right: var(--sidebar-rule-width) solid var(--sidebar-rule);
+  /* No padding: the column is full bleed, and each block inside sets its own
+     inset so the rule below the masthead can still run the whole width. */
+  padding: 0;
+}
+
+/* Everything the column holds shares one left edge. 18px rather than the 16px
+   the padded sidebar used: with no card border inside it there is nothing else
+   holding the controls off the rule, so the inset is the only margin there is. */
+#controls > * {
+  padding-left: 18px;
+  padding-right: 18px;
+}
+
+@supports not (background-blend-mode: color) {
+  #controls {
+    background-image:
+      linear-gradient(rgba(0, 60, 81, 0.9), rgba(0, 60, 81, 0.9)),
+      url("assets/images/adrien-ledoux-mBHuEkka5wM-unspla.2e16d0ba.fill-2500x1000.jpg");
+  }
 }
 
 /* The wordmark and the About button share a row at the head of the sidebar.
@@ -154,7 +211,9 @@ textarea {
   align-items: center;
   /* 16px so the divider below can sit centred in the gap at -8px. */
   gap: 16px;
-  margin: 2px 0 14px;
+  margin: 0;
+  padding-top: 20px;
+  padding-bottom: 16px;
 }
 
 #controls .app-title {
@@ -168,12 +227,18 @@ textarea {
 /* The logo keeps its drawn size. The wordmark fills its 200x50 box edge to edge
    -- measured, not assumed -- so the gap beside it is the only separation there
    is, which is why the divider earns its place. */
+/* The mark is drawn in the same navy the column is now filled with, so on this
+   background it is invisible. `brightness(0) invert(1)` flattens both of its
+   inks -- the black wordmark and the navy glyph -- to white, which is what a
+   reverse version of the mark would be anyway; doing it here rather than
+   shipping a second SVG keeps one file to be kept in step with Demscore's. */
 #controls .app-title img {
   display: block;
   flex-shrink: 0;
   width: 200px;
   max-width: 100%;
   height: auto;
+  filter: brightness(0) invert(1);
 }
 
 /* Square, quiet and icon-only. Most readers never need it, so it carries no
@@ -193,7 +258,7 @@ textarea {
   border: 0;
   border-radius: var(--radius-control);
   background: none;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.72);
   cursor: pointer;
 }
 
@@ -209,7 +274,7 @@ textarea {
   width: 1px;
   height: 22px;
   margin-top: -11px;
-  background: var(--rule);
+  background: rgba(255, 255, 255, 0.3);
 }
 
 #controls .about-button svg {
@@ -218,19 +283,21 @@ textarea {
 }
 
 #controls .about-button:hover {
-  background: var(--surface-hover);
-  color: var(--accent);
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
 }
 
+/* White, not navy: the ring is drawn on the column, and navy on navy is no ring
+   at all. */
 #controls .about-button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid #fff;
   outline-offset: 2px;
 }
 
 /* Held-open, because the dialog it opens is modal and stays until dismissed. */
 #controls .about-button[aria-expanded="true"] {
-  background: var(--surface-hover);
-  color: var(--accent);
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
 }
 
 /* The phone header -- the variable trigger and its action row. Hidden here and
@@ -327,7 +394,9 @@ textarea {
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  margin: 4px 0 10px;
+  /* The column's own bottom margin. Left and right come from `#controls > *`. */
+  margin: 0;
+  padding-bottom: 18px;
 }
 
 /* Free-text search over the rows already in the browser, above the two chip
@@ -487,9 +556,13 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-/* The Demscore homepage colourises its hero photo with a navy colour blend and
-   a second navy wash. The taller panel uses the same treatment with a centred
-   cover crop, while its controls stay on paper-like wells for readability. */
+/* The navy-blended photograph this panel used to carry now fills the whole
+   column (see `#controls`), so the panel is no longer a slab sitting on the
+   sidebar: it is the sidebar's contents. No border, no radius, no inset, no
+   background of its own -- the picker runs to the column's edges, which is the
+   whole point of the cover's flat block. Everything below that styles its
+   contents for white-on-navy is unchanged, because the background under them
+   has not changed, only its extent. */
 .dataset-panel {
   box-sizing: border-box;
   display: flex;
@@ -498,47 +571,12 @@ textarea {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  padding: 10px 12px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.62);
-  border-radius: var(--radius-card);
-  background-color: #1e3c50;
-  background-image: url("assets/images/adrien-ledoux-mBHuEkka5wM-unspla.2e16d0ba.fill-2500x1000.jpg");
-  background-position: center;
-  background-size: cover;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
   color: var(--text);
-  isolation: isolate;
-}
-
-.dataset-panel::before,
-.dataset-panel::after {
-  position: absolute;
-  z-index: -1;
-  inset: 0;
-  content: "";
-  background: #1e3c50;
-}
-
-.dataset-panel::before {
-  mix-blend-mode: color;
-}
-
-.dataset-panel::after {
-  opacity: 0.8;
-}
-
-.dataset-panel > * {
-  position: relative;
-  z-index: 1;
-}
-
-@supports not (mix-blend-mode: color) {
-  .dataset-panel::before {
-    display: none;
-  }
-
-  .dataset-panel::after {
-    opacity: 0.9;
-  }
 }
 
 /* The panel itself is no longer a tab stop, so it has no focus state; what used
@@ -3724,19 +3762,29 @@ textarea {
     grid-template-rows: auto 1fr;
   }
 
+  /* The block turns back the way the cover has it: a band across the top with
+     the lighter rule along its bottom edge, and the map below standing in for
+     the photograph. */
   #controls {
     border-right: 0;
-    border-bottom: 1px solid var(--panel-border);
+    border-bottom: var(--sidebar-rule-width) solid var(--sidebar-rule);
     max-height: none;
     overflow: visible;
-    padding: calc(8px + env(safe-area-inset-top, 0px)) 10px 9px;
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 0 0;
+  }
+
+  #controls > * {
+    padding-left: 12px;
+    padding-right: 12px;
   }
 
   /* The gap stays 16px: the divider is drawn at -8px, so narrowing it here
      would slide the rule off centre and up against the wordmark. The sidebar
      is a full-width band at this breakpoint, so there is room to spare. */
   #controls .app-header {
-    margin: 0 0 8px;
+    margin: 0;
+    padding-top: 0;
+    padding-bottom: 8px;
   }
 
   #controls .app-title img {
@@ -3751,6 +3799,7 @@ textarea {
     display: flex;
     flex-direction: column;
     gap: 7px;
+    padding-bottom: 10px;
   }
 
   #controls .mobile-picker-trigger {

@@ -40,7 +40,7 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - the sidebar search box, the topic/dataset filter chips (render, pressed state) and the flat
     cross-dataset variable list
   - per-dataset palette, stamped as `--ds-1`..`--ds-5` onto each row, dataset chip and info
-    card — the panel uses the Demscore homepage hero image treatment
+    card — the sidebar column behind them is one flat navy field and takes no dataset colour
   - variable hover card (lazy per-variable metadata fetch, placement, arrow)
   - variable list rendering (a `role="radiogroup"` of hidden radios)
   - metadata caching and dialog content
@@ -218,7 +218,7 @@ the structural colour, terracotta only as a thin accent, and soft neutral surfac
 
 - the handbook's own tokens are the first block of `styles.css` (`--navy`, `--terracotta`,
   `--charcoal`, `--muted-surface`, `--rule`, ...); every token the app already spoke in
-  (`--accent`, `--text`, `--panel-bg`, `--map-cover-blue`) is *defined from* them, so a
+  (`--accent`, `--text`, `--sidebar-navy`, `--map-cover-blue`) is *defined from* them, so a
   palette change is one edit at the top rather than a sweep through the file
 - the two families load from Google Fonts in `index.html`. Lato carries 100/300/400/700/900
   and no 500/600/800, so a weight in between rounds up at render time; write the weight that
@@ -236,6 +236,26 @@ the structural colour, terracotta only as a thin accent, and soft neutral surfac
 - the per-dataset palettes (`--ds-1`..`--ds-5`, from backend config) and the map's own
   colours — legend ramps, `LAND_BASEMAP_COLOR` — are data graphics, not interface chrome,
   and stand outside this system
+- **the sidebar is the handbook cover's navy block, stood on its end.** The cover sets a deep
+  navy field (`#003c51`, `--sidebar-navy`) against a photograph and parts the two with one
+  thin band of a lighter, greyer blue (`#596681`, `--sidebar-rule`); turned a quarter, the
+  field is the column, the band is `#controls`' right border and the map is the photograph.
+  At the 900px breakpoint it turns back: the band is the column's bottom border and the map
+  is again below it. Three things follow, and each is load-bearing:
+  - **nothing inside the column is a card.** `#datasetPanel` used to carry the navy photo
+    treatment on a rounded, bordered slab inset in a grey sidebar; it now has no background,
+    border, radius or inset of its own, and the treatment is on `#controls`. Giving the panel
+    a frame back puts a picture inside a block, which is the thing the cover does not do
+  - the photograph is three background layers on `#controls`, not the two pseudo-elements the
+    panel used. `#controls` scrolls, and an `inset: 0` pseudo-element in a scroll container
+    covers one viewport's worth and stops; a background with the default
+    `background-attachment: scroll` is pinned to the element's own box and always fills it.
+    The middle layer is the navy blended `color` onto the photo — its hue, the photo's luma —
+    which is what `mix-blend-mode: color` did, and the top layer is the wash over the result
+  - the column has no padding. Each block inside it sets its own, from one `#controls > *`
+    rule, so the inset is 18px everywhere and the block runs edge to edge behind it. The
+    masthead's logo is reversed with `brightness(0) invert(1)`: the mark is drawn in this
+    very navy, so unreversed it is invisible on it
 
 ### Loading placeholders
 Config arrives over the network, so the sidebar and the timeline are on screen for a moment
@@ -314,8 +334,9 @@ Common tasks and where to work:
     `overlayDatasetPresentation()` note; a dataset without a palette gets five shades mixed
     from its `color`, so it stays legible before anyone picks any
   - `MetadataController.applyDatasetPalette()` stamps `--ds-accent` and `--ds-1`..`--ds-5` on
-    each variable row, each dataset chip and each info card. The panel uses the Demscore homepage
-    hero image treatment; do not tint it with whichever dataset happens to be selected
+    each variable row, each dataset chip and each info card. The column behind them is the
+    handbook cover's navy block (see the Visual System note); do not tint it with whichever
+    dataset happens to be selected
   - a row is `--ds-4` mixed 55% toward white, hover is `--ds-4` raw, selection is `--ds-3` plus
     an inset edge in `--ds-1`. The mixing is not decoration: V-Dem's shades are far more
     saturated than QoG's or REPDEM's at the same step, so the raw shade made every V-Dem row
