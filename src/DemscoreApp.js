@@ -37,10 +37,7 @@ export class DemscoreApp extends BaseController {
     this.timelineScale = null;
     this.timelinePreloadTrack = null;
     this.timelineWrap = null;
-    this.timelineVariableTitle = null;
-    this.timelineVariableName = null;
-    this.timelineVariableDataset = null;
-    this.timelineVariableInfoSlot = null;
+    this.mapVariableTitle = null;
     this.yearPlayBtn = null;
     this.speedDownBtn = null;
     this.speedUpBtn = null;
@@ -266,9 +263,9 @@ export class DemscoreApp extends BaseController {
   // How much of the top of the map pane the timeline is standing on.
   //
   // `.table-view` reads it for the padding that keeps its first rows out from
-  // under the overlay. Measured rather than written down: the overlay's height
-  // changes with the window width, with the variable's year span, and with
-  // whether the caption and the legend line under it are shown.
+  // under the overlay, and `.map-variable-title` to sit just below it.
+  // Measured rather than written down: the overlay's height changes with the
+  // window width and with the variable's year span.
   syncTimelineInset() {
     const height = this.timelineOverlayEl?.getBoundingClientRect().height;
     if (!Number.isFinite(height) || height <= 0) return;
@@ -377,10 +374,7 @@ export class DemscoreApp extends BaseController {
     this.timelinePreloadTrack = this.getEl("timelinePreloadTrack");
     this.timelineMarkTooltip = this.getEl("timelineMarkTooltip");
     this.timelineWrap = this.getEl("timelineWrap");
-    this.timelineVariableTitle = this.getEl("timelineVariableTitle");
-    this.timelineVariableName = this.getEl("timelineVariableName");
-    this.timelineVariableDataset = this.getEl("timelineVariableDataset");
-    this.timelineVariableInfoSlot = this.getEl("timelineVariableInfoSlot");
+    this.mapVariableTitle = this.getEl("mapVariableTitle");
     this.yearPlayBtn = this.getEl("yearPlayBtn");
     this.speedDownBtn = this.getEl("speedDownBtn");
     this.speedUpBtn = this.getEl("speedUpBtn");
@@ -462,18 +456,6 @@ export class DemscoreApp extends BaseController {
     this.timelineSelectedMarker.addEventListener("pointerup", (event) => this.endMarkerDrag(event));
     this.timelineSelectedMarker.addEventListener("pointercancel", (event) => this.endMarkerDrag(event));
 
-    // Delegated, because the caption is rebuilt whenever the selection changes
-    // and a listener bound to the button would go with the button.
-    this.timelineVariableTitle.addEventListener("click", (event) => {
-      const button = event.target.closest(".timeline-variable-info");
-      if (!button || !this.timelineVariableTitle.contains(button)) return;
-      event.preventDefault();
-      void this.metadataController.openVariableInfoPopover(button.dataset.dataset, button.dataset.variable, {
-        anchor: button,
-        triggerButton: button,
-      });
-    });
-
     this.speedDownBtn.addEventListener("click", () => {
       this.setAutoPlaySpeed(this.state.autoPlaySpeed - 1);
     });
@@ -521,7 +503,7 @@ export class DemscoreApp extends BaseController {
   refreshTimelineForActiveVariable() {
     const coverage = this.getActiveTimelineCoverage();
     this.setTimelineBounds(coverage);
-    this.renderTimelineVariableTitle();
+    this.renderMapVariableTitle();
   }
 
   rememberMapSelection() {
@@ -532,53 +514,19 @@ export class DemscoreApp extends BaseController {
     });
   }
 
-  // The caption under the timeline: which variable the colours on the map
-  // stand for, and which dataset it came from. The legend dock carries the
-  // same pair, but it is docked to the foot of the map and the timeline is at
-  // the top, so on anything taller than a laptop the year and the thing being
-  // counted were a screen apart.
-  //
-  // Called from the one place the timeline is rebuilt for a new selection,
-  // which is also the only place either half of this can have changed. It
-  // fills the card's own slots rather than replacing the card, because the
-  // legend's words (MapController.refreshLegend) live in the same card; the
-  // boot placeholder in index.html goes with the first render of the name.
-  renderTimelineVariableTitle() {
-    if (!this.timelineVariableTitle) return;
+  // The variable's name in the map's top-left corner, under the timeline, so
+  // the colours are never without the thing they stand for. Only the name:
+  // the dataset and key are a hover away, and the variable list and the
+  // legend carry the rest. Hidden from assistive technology because
+  // `#mapSummary` already says it.
+  renderMapVariableTitle() {
+    if (!this.mapVariableTitle) return;
 
     const { dataset, variable } = this.state;
     const title = this.metadataController.getVariableTitle(dataset, variable);
     const datasetMeta = this.meta.datasets?.[dataset];
-    const datasetLabel = datasetMeta?.label || datasetMeta?.title || dataset;
-
-    if (this.timelineVariableName) this.timelineVariableName.textContent = title;
-    if (this.timelineVariableDataset) this.timelineVariableDataset.textContent = datasetLabel;
-    // The full dataset name and the variable key are both a hover away rather
-    // than on the card: the name is the part that has to survive a narrow window.
-    this.timelineVariableTitle.title = `${title} (${variable}) — ${this.metadataController.getDatasetTitle(datasetMeta, dataset)}`;
-
-    // The same card the sidebar rows open, for the variable actually on the
-    // map. On a desktop the rows only ever show theirs on hover -- their own
-    // info buttons are `display: none` above the coarse-pointer breakpoint --
-    // so until now there was no way to open the card and keep it open, and no
-    // way at all to reach it without going back to the list. The dataset and
-    // variable are stamped on the button rather than read from state when it
-    // fires, exactly as `.variable-option-info` does it.
-    const info = document.createElement("button");
-    info.type = "button";
-    info.className = "timeline-variable-info";
-    info.dataset.dataset = dataset;
-    info.dataset.variable = variable;
-    info.disabled = !this.metadataController.hasVariableMetadataSummary(dataset, variable);
-    info.title = info.disabled ? "No variable information available" : `Variable information: ${title}`;
-    info.setAttribute("aria-label", `Variable information: ${title}`);
-    info.setAttribute("aria-haspopup", "dialog");
-    info.setAttribute("aria-expanded", "false");
-    info.setAttribute("aria-controls", "variableTooltip");
-    info.innerHTML = '<i data-lucide="info" aria-hidden="true"></i>';
-    this.timelineVariableInfoSlot?.replaceChildren(info);
-
-    refreshIcons();
+    this.mapVariableTitle.textContent = title;
+    this.mapVariableTitle.title = `${title} (${variable}) — ${this.metadataController.getDatasetTitle(datasetMeta, dataset)}`;
   }
 
   setTimelineBounds(coverage) {
@@ -740,11 +688,9 @@ export class DemscoreApp extends BaseController {
 
     const note = document.createElement("p");
     note.className = "timeline-mark-tooltip-note";
-    note.textContent =
-      "Bar height is how much data this variable has for those years. The dark fill is how much of it has already been read ahead — " +
-      (this.state.view === "table"
-        ? "the rows for those years, held in the browser."
-        : "the map tiles for those years, held in the browser's tile cache.");
+    // Only what the height means. The fill is read-ahead progress, and a bar
+    // filling up says "loading" well enough without naming caches.
+    note.textContent = "Bar height is how much data this variable has for those years.";
     this.timelineMarkTooltip.appendChild(note);
 
     this.timelineMarkTooltip.hidden = false;

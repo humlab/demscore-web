@@ -162,46 +162,6 @@
             </div>
           </div>
         </div>
-        <!-- What the map is showing, under the year it is showing it for, and
-             how its colours are to be read, as one card: the variable's name,
-             then its dataset and the kind of classes it is drawn in, then what
-             the ends of its scale mean. The info button sits to the right of all
-             three because the card it opens is about all three. -->
-        <div id="timelineVariableTitle" class="timeline-caption">
-          <div class="timeline-caption-text">
-            <!-- Filled by DemscoreApp.renderTimelineVariableTitle(). -->
-            <p id="timelineVariableName" class="timeline-variable-name">
-              <span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-            </p>
-            <!-- `.legend-*` filled by MapController.refreshLegend(); the dataset
-                 by DemscoreApp.renderTimelineVariableTitle(). -->
-            <div id="mapLegendCopy" class="timeline-legend-copy">
-              <p class="timeline-caption-meta">
-                <span id="timelineVariableDataset" class="timeline-variable-dataset"></span>
-                <span class="legend-title"></span>
-              </p>
-              <!-- The two ends of the scale, each after a square of the colour
-                   the map paints it in: the bar's first and last class for the
-                   scheme and polarity in use. -->
-              <p class="legend-note">
-                <span class="legend-end">
-                  <span class="legend-end-swatch" aria-hidden="true"></span>
-                  <span class="visually-hidden">Lowest class:</span>
-                  <span class="legend-end-label"></span>
-                </span>
-                <span class="legend-end-sep" aria-hidden="true">&middot;</span>
-                <span class="legend-end">
-                  <span class="legend-end-swatch" aria-hidden="true"></span>
-                  <span class="visually-hidden">Highest class:</span>
-                  <span class="legend-end-label"></span>
-                </span>
-                <span class="legend-note-text"></span>
-                <strong class="legend-takeaway"></strong>
-              </p>
-            </div>
-          </div>
-          <span id="timelineVariableInfoSlot" class="timeline-caption-action"></span>
-        </div>
         <!-- Not a live region any more. The slider announces its own value (and
              `aria-valuetext` makes that value say how many countries the year
              covers), so a second announcement was the year twice over — and
@@ -240,6 +200,11 @@
         <div id="mapCanvas" class="map-canvas">
           <div id="loading-indicator" aria-hidden="true"></div>
         </div>
+
+        <!-- Which variable the colours stand for, in the map's top-left corner
+             just under the timeline (`--timeline-inset`). Filled by
+             DemscoreApp.renderMapVariableTitle(). -->
+        <p id="mapVariableTitle" class="map-variable-title" aria-hidden="true"></p>
 
         <!-- The other reading of the same year, over the map rather than
              beside it: both want the whole pane, and a half-height map at a

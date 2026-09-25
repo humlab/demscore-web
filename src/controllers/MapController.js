@@ -277,15 +277,9 @@ export class MapController extends BaseController {
     this.mapChoiceDashboardEl = null;
 
     this.legend = null;
-    this.legendCopyEl = this.getEl("mapLegendCopy");
-    this.legendTitleEl = null;
     this.legendBarEl = null;
     this.legendLowEl = null;
     this.legendHighEl = null;
-    this.legendNoteEl = null;
-    this.legendNoteTextEl = null;
-    this.legendEndEls = [];
-    this.legendTakeawayEl = null;
     this.legendNoDataEl = null;
     this.legendSwatchEls = [];
 
@@ -1366,14 +1360,11 @@ export class MapController extends BaseController {
     return matchingRule ? { ...merged, ...matchingRule } : merged;
   }
 
-  // The legend is in two places now, because it says two kinds of thing. The
-  // *scale* -- the ramp, the two ends of it, and the colour that means "no
+  // The legend -- the ramp, the two ends of it, and the colour that means "no
   // value" -- is a key to the picture and sits in the map dashboard's Colours
-  // panel, immediately under the picker that chose those colours. The *words*
-  // go up under the variable caption over the timeline, because what they
-  // qualify is the variable, not the bar.
+  // panel, immediately under the picker that chose those colours.
   //
-  // Both used to be one dock across the foot of the pane, 154px of the window
+  // It used to be one dock across the foot of the pane, 154px of the window
   // spent on a block that was mostly air, and a whole map away from either of
   // the things it belonged to.
   initializeLegend() {
@@ -1392,17 +1383,6 @@ export class MapController extends BaseController {
         <span class="legend-nodata-label">No data</span>
       </p>`;
 
-    // Written into the timeline overlay rather than built here: the markup is
-    // in index.html because that is where its position on the page is decided.
-    this.legendTitleEl = this.legendCopyEl?.querySelector(".legend-title") || null;
-    this.legendNoteEl = this.legendCopyEl?.querySelector(".legend-note") || null;
-    this.legendNoteTextEl = this.legendNoteEl?.querySelector(".legend-note-text") || null;
-    // Low end first, high end second, as in the markup.
-    this.legendEndEls = [...(this.legendNoteEl?.querySelectorAll(".legend-end") || [])].map((end) => ({
-      swatch: end.querySelector(".legend-end-swatch"),
-      label: end.querySelector(".legend-end-label"),
-    }));
-    this.legendTakeawayEl = this.legendNoteEl?.querySelector(".legend-takeaway") || null;
     this.legendBarEl = div.querySelector(".legend-bar");
     this.legendLowEl = div.querySelector(".legend-labels span:first-child");
     this.legendHighEl = div.querySelector(".legend-labels span:last-child");
@@ -1634,16 +1614,11 @@ export class MapController extends BaseController {
   }
 
   refreshLegend() {
-    // The variable, its key, its dataset and the year used to be repeated here
-    // as a legend subtitle. They are the caption over the timeline, word for
-    // word, and the legend's words now sit directly under that caption -- so
-    // the line said the same thing twice in a row and one of them has gone.
     const text = this.resolveLegendMeaning(this.state.dataset, this.state.variable);
     const polarity = this.metadataController.getActivePolarity();
     const legendColors = this.legendColorsForPolarity(polarity);
     this.syncPaletteSwatches();
 
-    if (this.legendTitleEl) this.legendTitleEl.textContent = text.title;
     // Swatch i always stands for quantile class i + 1, low to high: the mapfile
     // reorders the classes per polarity, and reversing the colours here is what
     // keeps the bar reading left-to-right low-to-high whichever way it does.
@@ -1663,34 +1638,6 @@ export class MapController extends BaseController {
       this.legendHighEl.textContent = text.high;
       this.legendHighEl.title = text.high;
     }
-    if (this.legendNoteEl) {
-      // What each end of the scale means, after a square of the colour the map
-      // paints it in -- the bar's first and last class, so it follows the
-      // scheme and the polarity. A rule that quotes the codebook's anchors
-      // (`lowMeans`/`highMeans`) says those; any other falls back to the ramp's
-      // own end labels. Then the rule's note, and its takeaway in bold as the
-      // part to read if nothing else is.
-      const ends = [
-        { color: legendColors[0], label: text.lowMeans || text.low },
-        { color: legendColors[legendColors.length - 1], label: text.highMeans || text.high },
-      ];
-      const trailing = [text.note, text.takeaway].filter(Boolean);
-      this.legendEndEls.forEach((end, index) => {
-        const { color, label } = ends[index];
-        if (end.swatch) end.swatch.style.background = color;
-        // The line reads as a sentence, so the last end closes it when
-        // anything follows.
-        const closes = index === ends.length - 1 && trailing.length > 0;
-        if (end.label) end.label.textContent = closes ? `${label}.` : label;
-      });
-      if (this.legendNoteTextEl) this.legendNoteTextEl.textContent = text.note || "";
-      if (this.legendTakeawayEl) this.legendTakeawayEl.textContent = text.takeaway || "";
-      const note = [`${ends[0].label} · ${ends[1].label}.`, ...trailing].join(" ");
-      // The full text on hover, and in `#mapSummary` in words for anyone not
-      // hovering.
-      this.legendNoteEl.title = note;
-    }
-
     // The card on screen belongs to the variable-year that just left.
     this.hideLegendTip();
     // Autoplay walks a year per frame-ish; its breaks would be stale before

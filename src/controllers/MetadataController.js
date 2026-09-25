@@ -1156,7 +1156,7 @@ export class MetadataController extends BaseController {
       // Every trigger that opens the persistent card has to be listed here, or
       // its own opening click is read as a click outside and shuts the card in
       // the same gesture that asked for it.
-      if (event.target.closest(".variable-option-info, .timeline-variable-info, #mobileVariableInfoBtn")) return;
+      if (event.target.closest(".variable-option-info, #mobileVariableInfoBtn")) return;
       this.hideVariableTooltip();
     });
 
