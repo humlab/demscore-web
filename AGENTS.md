@@ -10,12 +10,13 @@ Primary user flows:
 - choose variable from the always-visible variable list, which spans *every* dataset at once;
   each row carries its dataset's colour on its left edge, and picking a row is also what
   switches the dataset
-- switch between the two readings of a year — the **map** and the **table** — with
-  the Map/Table control at the left of the map pane. One at a time; the table
-  replaces the map rather than sitting beside it
+- pick how to see a year from the **View** switch in the map dashboard: Equal Earth,
+  Mercator, or the **table**. One radiogroup over three answers, because the two
+  projections and the table are one question — how to show this year — asked once. The
+  table replaces the map rather than sitting beside it, and picking a projection from the
+  table view sets it and brings the map back
 - sort the table on any column, and watch the order rearrange itself as the years
-  play: a ranking sorted by value is the one reading neither the map nor a modal
-  can give
+  play: a ranking sorted by value is the one reading the map cannot give
 - scrub or animate year timeline
 - compare at a glance which years a variable covers, from the coverage strip under each
   row and the two years written under that — the one part of a row that works on touch,
@@ -59,16 +60,46 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - legend rendering and overlap rebalancing
   - legend swatch hover card (which value span each colour stands for)
 - `src/controllers/MapDataController.js`
-  - the map's non-visual equivalent: the standing summary (`#mapSummary`), the one-sentence
-    live announcement (`#mapAnnouncer`), and the data table dialog with its CSV download
+  - the map's non-visual equivalent: the standing summary (`#mapSummary`) and the
+    one-sentence live announcement (`#mapAnnouncer`). It used to own a third, the
+    `#mapDataDialog` modal of the same rows, opened from a **Data table** button on the
+    legend; the table view is that without the modal and without the year standing still,
+    so the dialog, its button and the half of this controller that drew it are gone
   - hangs off `MapController`'s `onStateChange`, fired from `refreshLegend()`
 - `src/controllers/TableViewController.js`
   - the **table view**: the second reading of the year the map is drawing, from the
     same `demscore.country_scores()` call, so the two can never disagree about what
     a year holds
-  - one row per country, columns `#` / Country / ISO3 / Value / Class / Boundary,
-    sorted on any of them but `#` — which *is* the position in whatever sort is in
-    force, so sorting on it is either a no-op or a contradiction
+  - one row per country, columns `±` / `#` / Country / ISO3 / Value / Class /
+    Boundary, sorted on any of them but the first two — each of those *is* a
+    reading of the sort, so sorting on either is a question about its own answer
+  - **`±` is movement, not value.** Whether the row is higher or lower in the
+    table than it was in the previous year the series has, as a coloured
+    triangle and nothing else: no figure, because a column of arrows and numbers
+    reads as a share price and the question while the animation runs is the
+    simpler one. The number of places is in the cell's `title` and in the words
+    a screen reader gets. It compares *positions under the current sort*, so
+    re-sorting rebuilds it — `resolvePreviousPositions()` keys its cache on the
+    sort as well as on the year
+  - **rows can be followed.** Clicking one, or pressing Enter on it, marks it;
+    the mark is on the country (by `rowKey`) and survives the year stepping and
+    the table re-sorting, which is the whole of it — a marked row is how a
+    reader keeps hold of one country while 245 change places. Escape clears
+    every mark, and so does the **Deselect all (n)** button in the head, which
+    is `hidden` until there is something to undo and carries the only count of
+    how many marks are out. The rows carry a roving `tabindex` so this is not a
+    mouse-only feature
+  - **each mark gets its own ink**, handed out in the order they are made and
+    handed back when a row is unmarked (`nextFollowInk` takes the lowest free
+    one). Six of them, named in `FOLLOW_INK_NAMES` and coloured in `styles.css`
+    against `[data-follow-ink]` — the names and the colours are in two files and
+    are kept in step by hand, because a mark is spoken as well as shown. Past
+    six they repeat: following more rows than that is past what eyes do, and
+    past what six muted colours can stay distinct through
+  - the mark is a `visually-hidden` "(followed, blue)" inside the row's name as
+    well as a highlight. A highlight is not something a reader who cannot see it
+    can be told, and the colour is the part that distinguishes one mark from
+    another — so it is named rather than left as "followed"
   - rows are **moved, not redrawn**, when the year steps. A `<tr>` is kept per
     country in `rowEls` and reordered with `appendChild`, and a FLIP pass gives
     it a transform back to where it was so the browser tweens the difference.
@@ -91,14 +122,15 @@ The app was refactored into a small class hierarchy with one top-level coordinat
     citations, map boundaries and the map's own licence carry obligations and are expanded on
     open; only the software list, whose notices travel in the files themselves, starts closed.
     Nothing in `styles.css` may hide one
-  - modal `<dialog>`, on the `mapDataDialog` pattern — the focus trap and Escape come from the
-    browser. Three openers: the **About** button on the map, the credit line under it, and the
-    data table's boundary footnote. The last two pass `"boundary"`, so they land on the
-    section that answers the question they were asked from
+  - modal `<dialog>` — the focus trap and Escape come from the browser. Two openers: the
+    **About** button on the map and the credit line under it. The second passes
+    `"boundary"`, so it lands on the section that answers the question it was asked from.
+    There was a third, the data-table dialog's boundary footnote, which went with that
+    dialog; the table view's own footnote is plain text
 - `src/core/csv.js`
   - the countries of one variable-year as a file, and the only place that file is
-    spelled. Both downloads — the table view's own button and the data-table
-    dialog's — go through it, so a file that came out of this application has one
+    spelled. The table view's download goes through it, as the data-table dialog's did
+    before that dialog was removed, so a file that came out of this application has one
     shape whichever button produced it
   - **every row carries its own `dataset`, `variable` and `year`.** The download
     used to name the variable-year in the filename alone, which is a place a file
@@ -172,8 +204,8 @@ Runtime endpoints:
   without looking at it — the swatch labels, the summary, the announcement — comes from this
   one response, so none of them costs a request of its own
 - `GET /api/map-data?dataset=&variable=&year=` — one row per country on the map (name, ISO3,
-  value, class, no-data), for the data table. Fetched only when the dialog is opened, and not
-  cached: a stale table is worse than a second request
+  value, class, no-data), for the table view. Fetched when that view is on, with the years
+  around the one on screen read ahead, so an animation in it is paced by this route
 
 WMS source:
 - Same-origin `/mapserver` route through the Demscore router. Server/browser tile caching is
@@ -198,8 +230,9 @@ the structural colour, terracotta only as a thin accent, and soft neutral surfac
 - corners are `--radius-card` / `--radius-control` / `--radius-inline`, deliberately small:
   the brief calls out heavy rounded cards as the thing to avoid. Pills (`999px`) are for
   chips, which read as toggles by being pill-shaped
-- the brief asks for terracotta *sparingly*. Its one use is the rule above the legend dock;
-  do not spend it on buttons or active states
+- the brief asks for terracotta *sparingly*. It had one use, the rule above the legend dock,
+  and that dock is gone — so it is currently unspent. Do not spend it on buttons or active
+  states
 - the per-dataset palettes (`--ds-1`..`--ds-5`, from backend config) and the map's own
   colours — legend ramps, `LAND_BASEMAP_COLOR` — are data graphics, not interface chrome,
   and stand outside this system
@@ -310,16 +343,61 @@ Common tasks and where to work:
   - `src/controllers/TableViewController.js`; `COLUMNS` at the top is the single
     statement of what a column is, and the header, the body, the sort and the CSV
     are all built from it. Adding one means an entry there and nothing else
-  - **`renderRows()` is FLIP and its passes may not be interleaved.** Each is all
-    reads or all writes: write the cells, read where every row is, write the new
-    order, read where each has landed, write one transform each, flush, play.
-    Reading a row's position between two writes forces a layout of the whole
-    table, and at 244 rows and eight years a second that is the difference
-    between an animation and a slideshow
-  - the flush in pass 6 (`void this.bodyEl.offsetHeight`) cannot be a
+  - **a column's `width` is written onto its `<col>` as `--col-width`, never as
+    `width`.** An inline `width` beats every rule in the stylesheet, so the
+    breakpoints that drop a column could not take its width away with it and the
+    dropped columns went on reserving their space — which, once there were seven
+    of them, left Country with none of the row at all. The stylesheet reads the
+    variable, so a media query can still override it
+  - `.table-view` and `.table-view-scroll` both need `min-width: 0`. Neither a
+    grid item nor a flex item shrinks below its content by default, and under
+    `table-layout: fixed` the table is as wide as its `<col>`s add up to — so
+    without them the table's width pushes on the pane instead of on the box that
+    exists to scroll
+  - **`renderRows()` is FLIP, and there is nothing left in it to read.** It used
+    to measure `offsetTop` on every row twice — once before the reorder and once
+    after — and each of those forces a synchronous layout of the whole table.
+    Three forced layouts of a 245-row table per frame (those two and the flush)
+    held the animation at **18fps with 6.3s of long tasks in 8s**; a quarter of
+    all time at 8x was in the second read alone. It is now arithmetic: every row
+    is one line tall — every cell clips rather than wraps — so a row's position
+    *is* its index times the row pitch, and both indices are already in hand
+    (`renderedIndex` from the last render, `orderKeys` from this one). **55fps
+    with no long tasks.**
+  - the pitch (`rowPitch()`) is measured once and cached until the row count or
+    the window changes. A stale pitch is a cosmetic risk and not a correctness
+    one: the transform is transient and every glide ends at zero, so where a row
+    *finishes* is the DOM order and nothing else
+  - **only rows near the scroller's viewport glide** (`visibleRowBand`,
+    `FLIP_BAND_BUFFER_ROWS`). A row that starts and ends off screen costs exactly
+    what a visible one costs — a transform, a transition, a stacking context, a
+    repaint — and buys nothing. 20 rows move on a year step instead of 245, and
+    44 on a re-sort, which moves rows further
+  - **`is-entering` is not used during autoplay, and comes off on a timer.** A
+    reorder takes every row out of the document for the length of one statement,
+    which *cancels* a running CSS animation — so at four years a second the
+    260ms entrance restarted before it could finish, `animationend` never fired,
+    the class never came off, and the row sat at opacity 0 for the whole
+    animation. The pre-unification German and Italian states, which join the
+    table when the year crosses back past 1871, were invisible the entire time.
+    A row that is on screen for 125ms has no entrance to make anyway
+  - a reorder landing *inside* a glide is the one case that still reads the DOM
+    (`readCarriedOffsets`), and `glideEndsAt` — one timestamp for the whole
+    batch, since a batch shares its duration — means the common frame answers
+    "is anything still moving" without touching it. `flipDuration()` keeps the
+    glide inside the frame, so this is for frames that bunch behind a slow
+    request rather than for the ordinary run
+  - the flush (`void this.bodyEl.offsetHeight`) cannot be a
     `requestAnimationFrame`. rAF callbacks run *before* the style recalculation,
     so the invert and the play would land in one recalculation and the rows would
-    simply appear in their new places with no movement at all
+    simply appear in their new places with no movement at all. It is now the only
+    forced layout in the pass
+  - **guard every per-row write.** `fillRow` runs 245 times a frame, and a style
+    or class write dirties the node whether or not the value changed — the class
+    swatch's background was 245 identical writes a frame. `cellText` memoises the
+    formatted value on the row the first time it is drawn: formatting it when the
+    payload arrives is *worse*, because the read-ahead fetches dozens of years
+    and most are never drawn. Both were measured
   - `flipDuration()` caps the glide below the interval between two years. A row
     still travelling when the next year arrives never gets anywhere, and a table
     in which nothing settles cannot be read. `shouldAnimate()` is the other half:
@@ -335,7 +413,9 @@ Common tasks and where to work:
     - `table-layout: fixed`, with the widths in the `width` of each `COLUMNS`
       entry and a `<colgroup>` built from them. An auto-layout table re-measures
       every column against its widest cell on each redraw, so a value going from
-      `0.9` to `0.912` shifts every column beside it — the same jitter sideways
+      `0.9` to `0.912` shifts every column beside it — the same jitter sideways.
+      It is also why the `±` column carries no figure: a number that grows from
+      one digit to two inside a 2.6rem column has nowhere to grow
     - the boundary note under the table is one clipped line, because the sources
       in view change with the year as CShapes entities come and go
     A column added here needs a `width` (Country is the one without: under fixed
@@ -349,20 +429,33 @@ Common tasks and where to work:
   - the class swatch is painted from `MapController.legendColorsForPolarity()` —
     the legend's own ramp, through the same polarity-aware reversal — so map and
     table cannot end up describing one year in two colour schemes
-  - `.table-view*` and `.view-switch*` in `styles.css`. The switcher's `top` is
-    `--timeline-inset`, measured from the overlay by
-    `DemscoreApp.syncTimelineInset()`: the timeline is centred on the map pane and
-    as wide as it can be, so the gutter beside it is 200px on a 1920 window and
-    24px on a 1440 one, and nothing parked at the top-left corner survives every
-    width. Anything else floated over the map pane has to read the same variable
-  - `#tableView` and `.map-canvas` are both grid item 1/1 in `#map`, which is why
-    both are placed explicitly: an auto-placed canvas would find 1/1 taken and
-    step down into the legend dock's row
+  - `.table-view*` in `styles.css`. Its two insets are both measured and both
+    written on `#map` by `DemscoreApp`: `--timeline-inset` for the overlay it must
+    clear at the top (`syncTimelineInset()`) and `--dashboard-inset` for the map
+    dashboard it must clear at the foot (`syncDashboardInset()`). Anything else
+    floated over the map pane has to read the same two
+  - `#tableView`, `.map-canvas` and `.map-choice-dashboard` are all grid item 1/1
+    in `#map`, which is why all three are placed explicitly: an auto-placed canvas
+    would find 1/1 taken and step down into a row of its own. The dashboard is a
+    child of the *pane* rather than an OpenLayers control for the same reason the
+    switcher used to be a sibling of the canvas — the table view covers
+    `#mapCanvas` and makes it `inert`, and the way back to the map is in there
 
 - Change which view is on screen, or add a third:
   - `VIEW_KEYS` in `DemscoreApp`, `applyView()` — the one statement of what each
     view turns on and off, which both the switcher and startup come through —
     `startReadAhead()` and `advanceAutoPlayFrame()`
+  - the control itself is in `MapController`: `VIEW_CHOICE_KEYS`, `chooseView()`,
+    `onViewKeydown()`, `syncViewSelector()`, and `.map-view-*` in `styles.css`. It
+    is one radiogroup over the two projections and the table, so the answer lives
+    in two places on purpose — the projection in `MapController`, `state.view` in
+    `DemscoreApp` — and `currentViewChoiceIndex()` is where the two are read as
+    one. The table wins when it is on: the projection it will come back to is
+    remembered but is not the answer while nothing is being projected
+  - the sliding selection is `--selected` plus `--past-divider`, both written by
+    `syncViewSelector()`. The `100%` in its `translateX` is the slab's *own* width,
+    which is one track — a percentage inside a transform resolves against the
+    element, not the container, so the track expression cannot be reused there
   - **autoplay is paced by the view on screen.** The map's frame is done when its
     tiles are drawn; the table's when its rows are. Neither is a timer, so a slow
     stretch plays slowly rather than skipping — and a view added without a pacing
@@ -472,16 +565,41 @@ Common tasks and where to work:
     Antarctica reading as a shade the ramp had run out of. The swatch is painted from
     `--land-basemap`, which `initializeLegend()` writes onto the legend from the same
     `LAND_BASEMAP_COLOR` the basemap style uses, so the two cannot drift
-  - it is the one thing in the scale column that survives the phone breakpoint, where
-    `.legend-note` is hidden: the note restates what the ramp already shows, and nothing
-    else on a phone says what the cream means
-  - `.map-legend` is a wrapping flex row, not a grid: the dock is only as wide as the map
-    column, which on a tablet-width window is a good deal narrower than the viewport its
-    padding is sized from. Track minimums are a floor a container cannot push past, so the
-    old grid overflowed there and `#map { overflow: hidden }` cut the scale in half. The copy
-    column shrinks first and the scale drops to its own line when they no longer fit, which
-    is why the dock is taller between roughly 900px and 1080px. Anything added here must keep
-    to that: no `min-width` or track minimum on a legend column
+  - it is the one thing in the scale that survives the phone breakpoint, where
+    `.timeline-legend-copy` is hidden: the note restates what the ramp already shows, and
+    nothing else on a phone says what the cream means
+  - **the legend is in two places, because it says two kinds of thing.** The *scale* —
+    `.legend-scale`, the ramp with its two end labels and the no-data patch — is a key to
+    the picture and is built into `.map-legend-slot` in the dashboard's Colours panel,
+    *above* the picker that chose those colours: the bar is what the reader is reading the
+    map against and the four schemes under it are the choice that made it, so key first,
+    control second. The *words* — `.legend-title` and
+    `.legend-note` — are written into `#mapLegendCopy` in the timeline overlay, under the
+    variable caption, because what they qualify is the variable and not the bar. Both were
+    one 154px navy dock across the foot of the pane; the dock is gone, `#map` is one grid
+    row, and everything in `styles.css` under "Quantile legend" is dark on pale rather
+    than white on navy because of it
+  - the two end labels are clipped to one line with their full text in `title` where the
+    pane is narrow. Wrapped they take three lines apiece at 900-1200px, and the dashboard
+    is as tall as this panel — three lines there is what turned the View buttons into tall
+    rectangles. They still wrap on a phone, where there is no tooltip to recover them from
+    and nothing else visible says which way the colours run
+  - the note is one line with an ellipsis and its full text in `title`. It runs to a
+    sentence and a half for some indicators, and the overlay it sits in is standing on the
+    map — a line that wrapped would move `--timeline-inset` and with it the top of the
+    table view. It is in `#mapSummary` in full for anyone not hovering
+  - **the dashboard's height is the Colours panel's height**, because the panel is the
+    tallest of the three and `.map-choice-section` is a flex column whose control fills it.
+    Everything that makes this panel taller comes out of the map, which is why the scheme
+    names are a `visually-hidden` span plus a tooltip rather than a line of text under each
+    swatch strip: four names cost a line of the whole dashboard. Keep the View buttons near
+    square by keeping this panel short, not by capping them
+  - the dashboard is a single grid row, so it cannot spend more width than `#map` has.
+    A window between 900 and 1200px still has the sidebar, which leaves the pane
+    560–840px, and at full size the three panels do not fit it — hence the
+    `(min-width: 901px) and (max-width: 1200px)` block, where every panel gives a little.
+    `#map { overflow: hidden }` does not clip politely: what does not fit disappears, and
+    the legend with it
 
 - Change autoplay/timeline behaviour:
   - `DemscoreApp` methods: `scheduleAutoPlayTick`, `setYear`, `renderTimelineScale`
@@ -498,10 +616,13 @@ Common tasks and where to work:
     caption can have changed. Setting it anywhere else means two places to keep in step
   - it replaces its whole contents, so the boot placeholder in `index.html` goes with the
     first render — see "Loading placeholders"
-  - the legend dock says the same thing, but it is docked to the foot of the map while the
-    timeline is at the top, so on a tall window the year and the thing being counted were a
-    screen apart. On a phone the caption is hidden instead: the picker button above the
-    timeline already names the variable, and a third printing is not worth the strip of map
+  - it is now the only place the selection is named. The legend dock at the foot of the map
+    used to repeat it word for word, which on a tall window put the year and the thing
+    being counted a screen apart; the dock is gone and that repetition with it. Directly
+    under the caption is `#mapLegendCopy`, the legend's *words* — what the quantile classes
+    are and which way the colours run — on a pill of its own, because what they qualify is
+    the variable on the line above. On a phone both are hidden: the picker button above the
+    timeline already names the variable, and the strip of map is worth more
   - the caption ends in an info button (`.timeline-variable-info`) that opens
     `MetadataController.openVariableInfoPopover()` — the same persistent card a row's own
     info button opens, for the variable actually on the map. It matters most on a desktop,
@@ -596,7 +717,9 @@ Common tasks and where to work:
   - `src/core/projection.js`. The map is drawn in Equal Earth (EPSG:8857) by default
     and so is every hexagon MapServer generates; Web Mercator is offered beside it,
     as a toggle, because comparing the two is the clearest way to see what a
-    projection does to the data
+    projection does to the data. The toggle is two thirds of the View switch —
+    see "Change which view is on screen" — so a third projection is a fourth
+    option in that radiogroup, not a control of its own
   - everything projection-shaped goes through `getMapProjection(key)`, which hands
     back one plane's OpenLayers projection, world box, view box, tile grid, MapServer
     layer pair and hex size ladder. Add a third projection there and the toggle, the
@@ -733,16 +856,20 @@ Common tasks and where to work:
     one layer or two. One request means one image and one cache entry, so outlines can
     never lag a year behind the colours they belong to; the cost is that toggling
     rewrites every tile URL and therefore refetches
-  - the checkbox lives in the one bottom-left control `installDisplayOptions()` builds,
-    beside the projection radios and the layer toggles. OpenLayers has no layer switcher
-    of its own — the price of it drawing every layer into one canvas rather than into
-    stacked panes — so that control replaces what Leaflet spread over `L.control.layers`
-    and a custom one
-  - only the projection radios are on screen by default. The zoom reading, this checkbox
-    and the layer toggles carry `.map-display-extra`, which `styles.css` hides until
-    Shift+D puts `shows-extras` on the stack (`installDisplayExtrasShortcut()`). They are
-    hidden, not absent: their inputs still exist, so `syncDisplayOptions()` and the
-    cookie-backed state work whether or not anyone has pressed Shift+D
+  - the checkbox is the Outlines panel of the bottom-centre dashboard
+    (`installMapChoiceDashboard()`), beside the View switch and the colour picker. The
+    layer toggles and the zoom reading are a separate bottom-left stack
+    (`installDisplayOptions()`); OpenLayers has no layer switcher of its own — the price
+    of it drawing every layer into one canvas rather than into stacked panes — so the two
+    together replace what Leaflet spread over `L.control.layers` and a custom one
+  - the layer toggles and the zoom reading carry `.map-display-extra`, which `styles.css`
+    hides until Shift+D puts `shows-extras` on the stack
+    (`installDisplayExtrasShortcut()`). They are hidden, not absent: their inputs still
+    exist, so `syncDisplayOptions()` and the cookie-backed state work whether or not
+    anyone has pressed Shift+D
+  - the Outlines panel is made `inert` by `syncViewSelector()` while the table view is on.
+    An outline is something the picture has and the table has not, so the control is
+    turned off rather than left to do nothing when pressed
   - `MapController.setAreaOutlinesEnabled()` stores the choice in a cookie
     (`core/preferences.js`) and calls `onLayerParamsChange`, which `DemscoreApp` wires to
     `restartPreload` — the preload marks count tiles under the old URL and would
@@ -780,10 +907,11 @@ Common tasks and where to work:
       has stopped moving (`ANNOUNCE_SETTLE_MS`), and never during autoplay. A polite region
       that fires per keystroke is worse than none: the reader hears the first word of each
       announcement and none of the rest
-    - `#mapDataDialog` — the countries as sortable rows, with the same rows as a CSV built in
-      the browser from what was already fetched
-  - the trigger button is built into the legend by `MapController.initializeLegend()`, so
-    `MapDataController` is constructed *after* `MapController.initialize()`
+    - the **table view** (`TableViewController`) — the countries as sortable rows, with the
+      same rows as a CSV built in the browser from what was already fetched. It replaced a
+      modal of the same rows, `#mapDataDialog`, opened from a **Data table** button on the
+      legend; the view is reached from the View switch instead and stays on while the year
+      moves
   - a change that colours the map from anything other than `demscore.country_scores()` has to
     bring all of this with it; nothing enforces that the picture and the text agree beyond
     their both being read from that function
@@ -886,19 +1014,42 @@ Then do a manual smoke test in browser:
   axis are the same shape as that variable's row in the variable list. Hovering one names
   its years and says what the height and the fill mean; hovering does not interrupt a scrub,
   and dragging the marker dismisses it
-- Map/Table switch: the control sits clear of the timeline at every window width —
-  drag the window across the whole range and it is never under the timeline card;
-  picking Table replaces the map, picking Map brings it back looking at the same
-  place at the same zoom, and the choice survives a reload
+- View switch: all three options fit their panel at every window width — drag the
+  window across the whole range and the dashboard is never clipped by `#map`'s
+  `overflow: hidden`, and the selection slab lands exactly on the chosen option at
+  each of the three positions. Picking Table replaces the map, picking either
+  projection brings it back looking at the same place at the same zoom, and both
+  choices survive a reload
 - CSV download: open one in a spreadsheet and check the first five columns name
   the dataset, the variable and the year on *every* row — not just in the
   filename; scrub to another year, download again, and the two files should
   concatenate into one table that still reads correctly. Both buttons (the table
-  view's and the data-table dialog's) must produce the same columns
-- table view: rows sort on every column but `#`, the arrow and `aria-sort` agree,
-  the class swatch matches the legend bar's colour for the same class, a country
-  with no value for the year keeps its place and sorts to the end whichever way
-  the column points, and the CSV is the rows in the order shown
+  view's, and any other added later) must produce the same columns
+- table view: rows sort on every column but `±` and `#`, the arrow and
+  `aria-sort` agree, the class swatch matches the legend bar's colour for the
+  same class, a country with no value for the year keeps its place and sorts to
+  the end whichever way the column points, and the CSV is the rows in the order
+  shown
+- table view columns: drag the window across the whole range — Country must have
+  real width at every one of them and the table must never push the pane
+  sideways. The bands are 900px (ISO3 and Boundary go) and 1100px (Boundary
+  goes); those two edges are where it fails first
+- table view `±`: scrub a year and check a row that moved reports the direction it
+  moved *in the current sort* — re-sort by Country, where almost nothing moves,
+  and the column should go almost all dots. Sort by Value descending and it
+  should agree with the rows that just changed places
+- following a row: click one, press Animate, and it stays marked and findable as
+  the order rearranges. Enter does the same from the keyboard, Escape clears, and
+  the mark survives a re-sort and a change of year but is on the country rather
+  than on the variable
+- following several: mark six rows and check each takes a different ink, that
+  unmarking one and marking another gives the freed colour back rather than
+  walking the rest along, and that **Deselect all (n)** appears with the first
+  mark, counts correctly and goes when the last is cleared
+- rows joining mid-animation: animate backwards past 1871 on a V-Dem variable
+  and watch for rows that never fade in. The German and Italian states are the
+  ones that arrive there; a row stuck at opacity 0 means the entrance animation
+  is being restarted by the reorder again
 - table view stability: press Animate and watch the table's top edge and its
   column boundaries — neither may move. The summary stays two lines and the
   columns stay put whatever the values do; only the rows move
@@ -907,6 +1058,13 @@ Then do a manual smoke test in browser:
   lands; under `prefers-reduced-motion: reduce` the order still changes and
   nothing moves. The timeline marks fill in as the *rows* are read ahead, and the
   mark card says "Table rows" rather than "Map tiles"
+- table view animation, cost: profile it rather than watching it. At 8x the
+  budget is roughly **55fps and no long tasks**; if long tasks come back, the
+  thing to look for is a DOM *read* that has crept back into `renderRows` — one
+  `offsetTop` or `getBoundingClientRect` on every row is a forced layout of the
+  whole table, and three of them a frame is what took it down to 18fps before.
+  Scroll halfway down the table and step a year: the rows that glide should be
+  the ones on screen, not all 245
 - switching view mid-animation: the timeline keeps moving, does not stall on the
   frame that was in flight, and the button never sticks on "Pause"
 - year scrub + autoplay; the caption under the timeline names the variable the map is drawing
@@ -924,12 +1082,16 @@ Then do a manual smoke test in browser:
   in the row it points at, and its end years are the shared axis, not the variable's own
 - metadata dialog open/close
 - legend update and map tile refresh
-- legend containment: drag the window across the whole range — every width must show the
-  title, the bar, both end labels and the note inside the dock, with nothing clipped. The
-  in-between widths (a window wide enough to keep the sidebar but not to sit the two columns
-  side by side) are the ones that used to fail
+- dashboard containment: drag the window across the whole range — every width must show
+  all three View options, all four colour schemes (or the phone's select), the outline
+  toggle, the bar and both end labels, with the whole dashboard inside `#map`. The
+  in-between widths (a window wide enough to keep the sidebar but not wide enough for the
+  panels at full size, roughly 900–1200px) are the ones that fail first, and `#map`'s
+  `overflow: hidden` makes a failure invisible rather than ugly. The credit line at the
+  foot must not be under the dashboard at any width either — it is where the CC BY-NC-SA
+  and GPL-3.0 attribution is discharged
 - keyboard: the pass in the repository root's `ACCESSIBILITY.md`. Tab order should run
-  sidebar -> timeline -> map controls -> legend, which is the visible layout and the reason
+  sidebar -> timeline -> map -> map dashboard, which is the visible layout and the reason
   `#timeline-overlay` sits before `<main id="map">` in the source despite being painted over
   it
 - colour schemes: each of the four repaints the hexagons *and* the legend bar together, the

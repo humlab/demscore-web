@@ -183,20 +183,18 @@ export class DemscoreApp extends BaseController {
       },
       // The credit line asks about the boundaries, so that is the section it lands on.
       onOpenAttribution: (opener) => this.aboutController.open(opener, "boundary"),
+      // The View switch in the map dashboard is one radiogroup over three
+      // answers, two of them projections and the third the table. The map owns
+      // the projections; `state.view` is owned here, so the third comes back.
+      onViewChange: (view) => this.setView(view),
     });
     this.mapController.initialize();
 
-    // After the map, because the "Data table" button it binds is built by
-    // MapController.initializeLegend().
     this.mapDataController = new MapDataController({
       state: this.state,
       meta,
-      attributionMeta,
       metadataController: this.metadataController,
       mapController: this.mapController,
-      // The table's boundary footnote is the other way into the credits, and
-      // the one that arrives with a reason to read them.
-      onOpenAttribution: (opener) => this.aboutController.open(opener, "boundary"),
     });
     this.mapDataController.initialize();
 
@@ -263,18 +261,10 @@ export class DemscoreApp extends BaseController {
 
   // How much of the top of the map pane the timeline is standing on.
   //
-  // The timeline overlay is centred on the map pane and as wide as it can be --
-  // `min(1180px, calc(100vw - 340px - 48px))` -- so the gutter beside it is
-  // 200px on a 1920 window and 24px on a 1440 one. Nothing can be parked beside
-  // it at the top-left corner and still be there at every width, which is where
-  // the view switcher started and where it was promptly buried.
-  //
-  // So it is parked *under* the timeline instead, and this is the number that
-  // says where that is. Measured rather than written down: the overlay's height
+  // `.table-view` reads it for the padding that keeps its first rows out from
+  // under the overlay. Measured rather than written down: the overlay's height
   // changes with the window width, with the variable's year span, and with
-  // whether the caption under it is shown. `.view-switch` reads it for its
-  // `top` and `.table-view` for the padding that keeps its first rows out from
-  // under both.
+  // whether the caption and the legend line under it are shown.
   syncTimelineInset() {
     const height = this.timelineOverlayEl?.getBoundingClientRect().height;
     if (!Number.isFinite(height) || height <= 0) return;
@@ -283,50 +273,25 @@ export class DemscoreApp extends BaseController {
     this.mapContainer.style.setProperty("--timeline-inset", `${Math.round(height) + 20}px`);
   }
 
-  // The switcher is a radiogroup, so it owes the reader a roving tabindex and
-  // arrow keys: exactly one option is in the tab order, and the arrows move
-  // between them. Two buttons with `role="radio"` and neither of those is a
-  // promise the control does not keep.
-  bindViewSwitch() {
-    this.viewSwitchEl.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-view]");
-      if (!button) return;
-      this.setView(button.dataset.view);
-    });
-
-    this.viewSwitchEl.addEventListener("keydown", (event) => {
-      const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
-      if (!keys.includes(event.key)) return;
-      event.preventDefault();
-
-      const current = Math.max(0, VIEW_KEYS.indexOf(this.state.view));
-      let next = current;
-      if (event.key === "Home") {
-        next = 0;
-      } else if (event.key === "End") {
-        next = VIEW_KEYS.length - 1;
-      } else {
-        const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
-        next = (current + step + VIEW_KEYS.length) % VIEW_KEYS.length;
-      }
-
-      this.setView(VIEW_KEYS[next]);
-      // By name rather than by index: nothing makes the DOM order of the two
-      // buttons agree with the order of VIEW_KEYS, and a swap of one would
-      // silently move the focus to the option that was not chosen.
-      this.viewSwitchEl.querySelector(`button[data-view="${VIEW_KEYS[next]}"]`)?.focus();
-    });
+  // ...and how much of the foot of it the map dashboard is standing on, for the
+  // same reason: the dashboard floats over the map, so the map does not care,
+  // but the table view is a document under it and its last rows would be read
+  // through a translucent panel. Measured from the canvas rather than from the
+  // pane, because the pane's own foot is a breakpoint away from the canvas's.
+  syncDashboardInset() {
+    const dashboard = this.mapController.getMapChoiceDashboard();
+    if (!dashboard) return;
+    const inset = this.mapCanvas.getBoundingClientRect().bottom - dashboard.getBoundingClientRect().top;
+    if (!Number.isFinite(inset) || inset <= 0) return;
+    this.mapContainer.style.setProperty("--dashboard-inset", `${Math.round(inset)}px`);
   }
 
+  // The switcher lives in the map dashboard now, built and bound by
+  // MapController alongside the two projections it shares a radiogroup with.
+  // What is left here is the half of the answer this class owns: `state.view`,
+  // and what each view turns on and off.
   syncViewSwitch() {
-    this.viewSwitchButtons.forEach((button) => {
-      const isCurrent = button.dataset.view === this.state.view;
-      button.setAttribute("aria-checked", isCurrent ? "true" : "false");
-      button.classList.toggle("is-active", isCurrent);
-      // The roving part: only the chosen option is a tab stop, so Tab leaves
-      // the group in one press rather than in one press per option.
-      button.tabIndex = isCurrent ? 0 : -1;
-    });
+    this.mapController.syncViewSelector();
   }
 
   setView(view) {
@@ -414,8 +379,6 @@ export class DemscoreApp extends BaseController {
     this.speedUpBtn = this.getEl("speedUpBtn");
     this.speedDisplay = this.getEl("speedDisplay");
     this.timelineOverlayEl = this.getEl("timeline-overlay");
-    this.viewSwitchEl = this.getEl("viewSwitch");
-    this.viewSwitchButtons = Array.from(this.viewSwitchEl.querySelectorAll("button[data-view]"));
     this.mapContainer = this.getEl("map");
     this.mapCanvas = this.getEl("mapCanvas");
   }
@@ -452,6 +415,7 @@ export class DemscoreApp extends BaseController {
       this.updateTimelineMarker();
       this.redrawTimelineScale();
       this.syncTimelineInset();
+      this.syncDashboardInset();
     });
   }
 
@@ -475,14 +439,16 @@ export class DemscoreApp extends BaseController {
       }
     });
 
-    this.bindViewSwitch();
     // The overlay changes height when the timeline is rebuilt for a new
     // variable, not only when the window moves, so this watches the element
     // rather than the window alone.
     if (typeof ResizeObserver === "function") {
       new ResizeObserver(() => this.syncTimelineInset()).observe(this.timelineOverlayEl);
+      const dashboard = this.mapController.getMapChoiceDashboard();
+      if (dashboard) new ResizeObserver(() => this.syncDashboardInset()).observe(dashboard);
     }
     this.syncTimelineInset();
+    this.syncDashboardInset();
     this.bindTimelineMarkTooltip();
     this.timelineSelectedMarker.addEventListener("pointerdown", (event) => this.startMarkerDrag(event));
     this.timelineSelectedMarker.addEventListener("pointermove", (event) => this.moveMarkerDrag(event));

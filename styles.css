@@ -39,10 +39,35 @@
   --timeline-paper: var(--paper);
   --timeline-fill: var(--accent);
   --timeline-fail: #b91c1c;
+  /* Up and down the table, in the table view's leading column. Terracotta is
+     the handbook's own accent and its one previous use — the rule over the
+     legend dock — went with that dock, so it is spent here instead, darkened to
+     clear 4.5:1 on white. The green is its counterpart at the same lightness,
+     which is deliberate: the two are indistinguishable to the commonest colour
+     blindness and in greyscale, so the arrow's shape has to carry the direction
+     on its own, and it does. */
+  --change-up: #2f7d62;
+  --change-down: #b4553a;
+
+  /* The marks a reader can put on rows in the table view, handed out in this
+     order by TableViewController.nextFollowInk(). Their names are in
+     FOLLOW_INK_NAMES in that file, because a mark is spoken as well as shown,
+     and the two are kept in step by hand.
+
+     All six are the same kind of colour: dark, and greyed most of the way to
+     the navy the rest of the interface is built from. A row's tint is a 20% mix
+     of its ink on white, so what separates two marked rows at a glance is hue
+     at low saturation — enough to tell apart, quiet enough that six of them on
+     one screen is still a table rather than a paint chart. */
+  --follow-ink-0: #2f5068;
+  --follow-ink-1: #9c4f48;
+  --follow-ink-2: #4b7355;
+  --follow-ink-3: #8a6b33;
+  --follow-ink-4: #6a5480;
+  --follow-ink-5: #2f6d70;
   --timeline-size: 180px;
   --map-cover-blue: var(--navy);
   --map-cover-brown: var(--terracotta);
-  --map-legend-height: 154px;
   --map-ocean: var(--rule);
 }
 
@@ -1121,24 +1146,6 @@ textarea {
   text-decoration: underline;
 }
 
-/* ---- Data table dialog ----
-   The map's contents as rows. Modal, so the browser traps the focus and
-   handles Escape; everything here is layout. */
-.map-data-dialog {
-  box-sizing: border-box;
-  width: min(760px, calc(100vw - 24px));
-  max-height: calc(100vh - 40px);
-  padding: 0;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-card);
-  background: #fff;
-  color: var(--text);
-}
-
-.map-data-dialog::backdrop {
-  background: color-mix(in srgb, var(--navy-deep) 48%, transparent);
-}
-
 /* ---- About dialog ----
    One dialog covering what the map is and what it is made of. The credits under
    #aboutCredits are generated (see AboutController); everything here is layout,
@@ -1462,124 +1469,6 @@ textarea {
   border-top: 1px solid var(--rule);
   color: var(--muted);
   font-size: 0.72rem;
-}
-
-.map-data-summary {
-  margin: 0;
-  padding: 11px 14px 9px;
-  color: var(--text);
-  font-size: 0.84rem;
-  line-height: 1.4;
-}
-
-.map-data-table-wrap {
-  max-height: min(58vh, 560px);
-  margin: 0 14px;
-  overflow: auto;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-control);
-}
-
-.map-data-table-wrap:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.map-data-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.82rem;
-}
-
-.map-data-table th,
-.map-data-table td {
-  padding: 5px 9px;
-  border-bottom: 1px solid var(--rule);
-  text-align: left;
-  white-space: nowrap;
-}
-
-.map-data-table tbody th {
-  font-weight: 400;
-}
-
-.map-data-table .is-numeric {
-  font-family: var(--font-numeric);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.map-data-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 0;
-  background: var(--muted-surface);
-}
-
-.map-data-sort {
-  box-sizing: border-box;
-  display: block;
-  width: 100%;
-  padding: 7px 9px;
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
-  font-weight: 700;
-  text-align: inherit;
-  cursor: pointer;
-}
-
-.map-data-table .is-numeric .map-data-sort {
-  text-align: right;
-}
-
-.map-data-sort:hover {
-  background: var(--surface-hover);
-}
-
-.map-data-sort:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -3px;
-}
-
-/* Which way the column is sorted, as a mark as well as in `aria-sort`: the
-   arrow is what a sighted reader has, the attribute is what a screen reader
-   has, and neither stands in for the other. */
-.map-data-sort.is-asc::after {
-  content: " \25B2";
-  font-size: 0.72em;
-}
-
-.map-data-sort.is-desc::after {
-  content: " \25BC";
-  font-size: 0.72em;
-}
-
-.map-data-footer {
-  margin: 0;
-  padding: 11px 14px 13px;
-}
-
-.map-data-download {
-  padding: 7px 13px;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-control);
-  background: #fff;
-  color: var(--accent);
-  font-size: 0.82rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.map-data-download:hover:not(:disabled) {
-  background: var(--surface-hover);
-}
-
-.map-data-download:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 .mobile-picker-dialog {
@@ -2439,10 +2328,15 @@ textarea {
   line-height: 1.4;
 }
 
+/* One row, and it used to be two: the second was the legend dock across the
+   foot, 154px of window spent on a block a whole map away from both the picture
+   it keyed and the variable it named. The legend's bar moved into the map
+   dashboard and its words up under the timeline caption, and the pane became
+   the map. */
 #map {
   position: relative;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -2453,7 +2347,7 @@ textarea {
 /* Explicitly placed, and it has to be: #tableView claims 1/1 so that it covers
    the canvas exactly, and an explicitly placed item is laid out before the
    auto-placed ones. Left to auto-placement the canvas would find 1/1 taken and
-   step down into the legend dock's row. */
+   step down into a row of its own. */
 .map-canvas {
   grid-row: 1;
   grid-column: 1;
@@ -2473,78 +2367,6 @@ textarea {
   height: 100%;
 }
 
-/* ---- the Map / Table switcher -------------------------------------------
-
-   Floating over the map pane at the left, the mirror of the display-options
-   stack at bottom-left. It is not an OpenLayers control: it is a sibling of the
-   canvas rather than a child of the viewport, so a click on it never reaches
-   the map and there is nothing to keep out of the map's event handling.
-
-   *Under* the timeline, not beside it. The timeline overlay is centred on the
-   map pane and as wide as it can be, so the gutter beside it is 200px on a 1920
-   window and 24px on a 1440 one -- there is no left-corner position that
-   survives every width, and the first one tried was buried. `--timeline-inset`
-   is that height, measured by DemscoreApp.syncTimelineInset(); the fallback is
-   only for the moment before the first measurement lands.
-
-   z-index over the canvas and under #timeline-overlay (1200): they no longer
-   overlap, and if a future timeline grows into this one the timeline is the one
-   that should win. */
-.view-switch {
-  position: absolute;
-  top: var(--timeline-inset, 150px);
-  left: 12px;
-  z-index: 900;
-  display: flex;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-control);
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 6px 18px rgba(23, 56, 75, 0.14);
-  backdrop-filter: blur(3px);
-}
-
-.view-switch-option {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  padding: 6px 11px;
-  border: 0;
-  border-radius: var(--radius-inline);
-  background: transparent;
-  color: var(--muted);
-  font-family: inherit;
-  font-size: 0.82rem;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.view-switch-option svg {
-  width: 15px;
-  height: 15px;
-}
-
-.view-switch-option:hover:not(.is-active) {
-  background: var(--surface-hover);
-  color: var(--text);
-}
-
-.view-switch-option:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-/* Navy fill on the chosen one. The handbook keeps terracotta for the rule over
-   the legend dock and nothing else, so the selected state is the structural
-   colour rather than the accent. */
-.view-switch-option.is-active {
-  background: var(--accent);
-  color: #fff;
-}
-
 /* ---- the table view -----------------------------------------------------
 
    Stacked on the canvas rather than beside it: both are grid item 1/1 in #map,
@@ -2552,11 +2374,14 @@ textarea {
    Opaque, because the map is still laid out underneath -- see the note over
    #tableView in index.html.
 
-   The top inset clears the timeline *and* the switcher parked under it, which
-   is why it is the measured `--timeline-inset` plus the switcher's own height.
-   The inset has to be measured: the overlay's height changes with the window
-   width, with whether the variable caption is shown, and with the timeline's
-   own layout. */
+   Both insets are measured, because both things it has to clear change size on
+   their own. The top one is the timeline overlay (`--timeline-inset`), whose
+   height moves with the window width, with the variable's year span and with
+   whether the caption and legend line under it are shown. The bottom one is the
+   map dashboard (`--dashboard-inset`), which floats over the foot of the pane
+   in this view as much as in the map view -- the View switch that gets a reader
+   back to the map is in it -- and would otherwise be read through by the last
+   rows of the table. Both are written by DemscoreApp. */
 .table-view {
   grid-row: 1;
   grid-column: 1;
@@ -2564,8 +2389,13 @@ textarea {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  /* A grid item will not shrink below its content either, so this is the outer
+     half of the same guard the scroller carries: without it the pane, not the
+     scroller, is what the table's width pushes on. */
   min-height: 0;
-  padding: calc(var(--timeline-inset, 150px) + 46px) clamp(12px, 3vw, 32px) 14px;
+  min-width: 0;
+  padding: calc(var(--timeline-inset, 150px) + 8px) clamp(12px, 3vw, 32px)
+    calc(var(--dashboard-inset, 150px) + 12px);
   background: #fff;
 }
 
@@ -2616,6 +2446,43 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+/* The head's two whole-table actions, kept together at its end. */
+.table-view-head-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Quieter than Download: it undoes something rather than producing something,
+   and it is only on screen while there is something to undo. */
+.table-view-clear-follow {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.table-view-clear-follow:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.table-view-clear-follow:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.table-view-clear-follow[hidden] {
+  display: none;
+}
+
 .table-view-download {
   flex: 0 0 auto;
   padding: 7px 13px;
@@ -2644,7 +2511,13 @@ textarea {
    from the keyboard at all. */
 .table-view-scroll {
   flex: 1 1 auto;
+  /* Both, and `min-width` is the one that is easy to leave out. A flex item
+     will not shrink below its content by default, and under `table-layout:
+     fixed` the table is as wide as its <col>s add up to -- so without this the
+     scroller grew to the table's width, pushed `.table-view` past `#map`, and
+     the pane scrolled sideways instead of the box that exists to scroll. */
   min-height: 0;
+  min-width: 0;
   overflow: auto;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-control);
@@ -2669,6 +2542,18 @@ textarea {
   border-collapse: separate;
   border-spacing: 0;
   font-size: 0.84rem;
+}
+
+/* `--col-width` is written onto each <col> by
+   TableViewController.renderColumnWidths() from the column's own spec. It is a
+   variable and not an inline `width` because an inline width beats every rule
+   here, which is what made the phone breakpoint's `width: 0` below do nothing
+   at all -- the dropped columns went on reserving their widths and, once there
+   were seven columns, left Country with none of the row. Country declares no
+   width: under `table-layout: fixed` the column without one takes whatever the
+   others leave. */
+.table-view-table col {
+  width: var(--col-width, auto);
 }
 
 /* A fixed column clips instead of growing, so every cell needs somewhere for
@@ -2790,6 +2675,83 @@ textarea {
   background: var(--surface-hover);
 }
 
+/* Whether the row moved up or down the table since the previous year the series
+   has — the leading column, beside the position it is about. Glyph only: the
+   number of places is in the cell's `title` and in the words a screen reader
+   gets, because a column of arrows *and* figures reads as a share price, and
+   the question a reader is asking while the animation runs is the simpler one.
+   Colour is a second channel and never the only one; see `--change-up`. */
+.table-view-table :is(th, td)[data-column="change"] {
+  text-align: center;
+}
+
+.table-view-change-arrow {
+  display: inline-block;
+  font-size: 0.8em;
+  line-height: 1;
+}
+
+.table-view-table td[data-column="change"] {
+  /* The rows that did not move are most of them in most years, so their dot is
+     quiet enough to read past. */
+  color: #b5bcc0;
+}
+
+.table-view-table td[data-column="change"].is-up {
+  color: var(--change-up);
+}
+
+.table-view-table td[data-column="change"].is-down {
+  color: var(--change-down);
+}
+
+/* A row the reader has marked so they can keep hold of it while the order
+   rearranges under them. It has to read at a glance in a table where every row
+   is moving, so it is a bar down the leading edge *and* a tint — a tint alone
+   is lost against the striping once the rows are in motion. The bar is drawn on
+   the first cell because a <tr> takes no border under `border-collapse:
+   separate`.
+
+   Each mark gets its own ink, in the order they are made, so following three
+   rows at once is following three colours rather than three identical
+   highlights. `data-follow-ink` is written by
+   TableViewController.applyFollowState(); the attribute is the state and the
+   guard both, so nothing is written on a frame where no mark moved. */
+.table-view-row.is-followed {
+  background: color-mix(in srgb, var(--follow-ink) 20%, #fff);
+}
+
+.table-view-row.is-followed > *:first-child {
+  box-shadow: inset 5px 0 0 var(--follow-ink);
+}
+
+.table-view-row.is-followed:hover {
+  background: color-mix(in srgb, var(--follow-ink) 30%, #fff);
+}
+
+.table-view-row[data-follow-ink="0"] { --follow-ink: var(--follow-ink-0); }
+.table-view-row[data-follow-ink="1"] { --follow-ink: var(--follow-ink-1); }
+.table-view-row[data-follow-ink="2"] { --follow-ink: var(--follow-ink-2); }
+.table-view-row[data-follow-ink="3"] { --follow-ink: var(--follow-ink-3); }
+.table-view-row[data-follow-ink="4"] { --follow-ink: var(--follow-ink-4); }
+.table-view-row[data-follow-ink="5"] { --follow-ink: var(--follow-ink-5); }
+
+/* The affordance: the rows are the only thing here that can be pressed, and
+   nothing else on screen says so. A hover that lifts a faint version of the
+   first mark's bar is what makes the mark discoverable before it is made. */
+.table-view-row {
+  cursor: pointer;
+}
+
+.table-view-row:hover > *:first-child {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--follow-ink-0) 35%, transparent);
+}
+
+.table-view-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 /* A country the source did not measure for this year. It keeps its place in the
    order -- see sortedRows: "no data" is not a small number -- and says so by
    being quiet rather than by being absent. */
@@ -2842,120 +2804,32 @@ textarea {
   }
 }
 
-/* The data-table dialog is the same rows in a modal, which is exactly what this
-   view already is -- so its opener goes while this view is the one on screen. */
-#map.is-table-view .legend-data-button {
-  display: none;
-}
+/* ---- Quantile legend ----
 
-.map-legend-dock {
-  grid-row: 2;
-  grid-column: 1;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  min-height: var(--map-legend-height);
-  min-width: 0;
-  padding: 24px clamp(20px, 5vw, 74px);
-  border-top: 12px solid var(--map-cover-brown);
-  background: var(--map-cover-blue);
-  color: #ffffff;
-}
+   The key to the picture, and it now sits inside the map dashboard's Colours
+   panel, directly under the picker that chose those colours. It used to be half
+   of a navy dock across the foot of the pane; what is left of that here is the
+   colour inversion -- everything below is dark on the dashboard's pale slate
+   rather than white on navy.
 
-/* ---- Quantile legend ---- */
-/* Two columns where they both fit and two rows where they do not. It has to be
-   flex and not a grid of `minmax()` tracks: a track minimum is a floor the
-   container cannot push past, so on an in-between width -- a tablet window wide
-   enough to keep the sidebar, leaving the dock a good deal narrower than the
-   viewport its padding is sized from -- the row overflowed and `#map`'s
-   `overflow: hidden` sliced the scale down the middle. Here the copy gives way
-   first, and once the two can no longer share a line the scale takes one of its
-   own, so the whole legend is on screen at every width. */
-.map-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  /* A wide gutter between the columns, a narrow one between the rows they
-     become — 4vw of air under the title would push the map out for nothing. */
-  gap: 12px clamp(14px, 4vw, 56px);
-  width: min(980px, 100%);
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  font-family: var(--font-sans);
-  color: var(--paper);
-  box-shadow: none;
-}
-
-/* The grow factors are the old `0.9fr`/`1.35fr` split; the bases are what the
-   two need before wrapping is the better answer. */
-.legend-copy {
-  flex: 0.9 1 240px;
-  min-width: 0;
-}
-
+   The bar and its two end labels take the left column; "no data" takes a
+   narrow one of its own at the right, because it is off the end of the ramp
+   rather than part of it. */
 .legend-scale {
-  flex: 1.35 1 340px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(74px, 14%, 132px);
+  grid-template-columns: minmax(0, 1fr) clamp(52px, 18%, 78px);
   align-items: start;
-  column-gap: clamp(12px, 2vw, 18px);
+  column-gap: 10px;
   min-width: 0;
-}
-
-.legend-title {
-  margin-bottom: 5px;
-  color: var(--paper);
-  font-size: clamp(1.25rem, 2vw, 1.62rem);
-  /* Light 300, the weight the handbook gives its section titles; the size
-     carries the emphasis, not the stroke. */
-  font-weight: 300;
-  letter-spacing: 0.01em;
-  line-height: 1.1;
-}
-
-.legend-subtitle {
-  max-width: 34rem;
-  color: rgba(255, 255, 255, 0.84);
-  font-size: 0.84rem;
-  line-height: 1.35;
-}
-
-/* The way into the map's contents that is not the picture: opens the same
-   country values the hexagons were coloured by, as a table. It sits in the
-   legend because the legend is already the key to the map, and it survives the
-   phone breakpoint where `.legend-note` does not -- on a phone it is the only
-   way to read an exact value at all. */
-.legend-data-button {
-  margin-top: 9px;
-  padding: 5px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--paper);
-  font-size: 0.78rem;
-  font-weight: 700;
-  line-height: 1.3;
-  cursor: pointer;
-}
-
-.legend-data-button:hover {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: var(--paper);
-}
-
-.legend-data-button:focus-visible {
-  outline: 2px solid var(--paper);
-  outline-offset: 2px;
+  margin-bottom: 7px;
 }
 
 .legend-bar {
   display: flex;
   grid-column: 1;
   grid-row: 1;
-  height: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  height: 16px;
+  border: 1px solid rgba(71, 85, 105, 0.38);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -2979,7 +2853,7 @@ textarea {
 
 /* Legend swatch hover card: like `.variable-tooltip` it sits on <body> and is
    placed in viewport coordinates by `MapController.placeLegendTip()`, because
-   the legend dock clips anything that leaves it. It points down at the bar,
+   the dashboard panel clips anything that leaves it. It points down at the bar,
    and flips to `.is-below` only where there is no room above. */
 .legend-tip {
   position: fixed;
@@ -3058,16 +2932,19 @@ textarea {
   line-height: 1.2;
 }
 
+/* The two ends of the ramp in words. They are sentences -- "Lower democratic
+   performance" -- in a panel a third of the window wide, so each takes half the
+   bar's width and wraps inside it rather than pushing the other off. */
 .legend-labels {
-  display: flex;
+  display: grid;
   grid-column: 1;
   grid-row: 2;
-  justify-content: space-between;
-  font-family: var(--font-numeric);
-  margin-top: 6px;
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 0.8rem;
-  line-height: 1.2;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 5px;
+  color: #475569;
+  font-size: 0.7rem;
+  line-height: 1.15;
 }
 
 .legend-labels span:last-child {
@@ -3082,13 +2959,13 @@ textarea {
   display: grid;
   grid-column: 2;
   grid-row: 1 / span 2;
-  grid-template-rows: 18px auto;
+  grid-template-rows: 16px auto;
   align-items: start;
-  gap: 6px;
+  gap: 5px;
   margin: 0;
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 0.78rem;
-  line-height: 1.2;
+  color: #475569;
+  font-size: 0.7rem;
+  line-height: 1.15;
   cursor: help;
 }
 
@@ -3096,8 +2973,8 @@ textarea {
   display: block;
   width: 100%;
   min-width: 0;
-  height: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.45);
+  height: 16px;
+  border: 1px solid rgba(71, 85, 105, 0.45);
   border-radius: 2px;
   background: var(--land-basemap, #fffaf0);
 }
@@ -3107,12 +2984,52 @@ textarea {
   overflow-wrap: break-word;
 }
 
-.legend-note {
-  grid-column: 1 / -1;
-  margin-top: 7px;
-  color: rgba(255, 255, 255, 0.74);
-  font-size: 0.76rem;
+/* ---- the legend's words, over the timeline ----
+   What the colours mean and which way they run, on the line under the variable
+   caption. The bar they describe is at the foot of the map in the dashboard;
+   these are here because what they qualify is the variable, and that is the
+   line above. One line, clipped: the note runs to a sentence and a half for
+   some V-Dem indicators, and the overlay it sits in is standing on the map. */
+.timeline-legend-copy {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  /* A pill of its own, for the same reason the caption above it has one: it is
+     text over a map, and at some projections and zooms what is behind it is
+     seven shades of hexagon rather than ocean. */
+  margin: 4px auto 0;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(3px);
+  font-size: 0.74rem;
   line-height: 1.3;
+}
+
+.timeline-legend-copy:empty,
+.timeline-legend-copy .legend-title:empty,
+.timeline-legend-copy .legend-note:empty {
+  display: none;
+}
+
+.legend-title {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.legend-note {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The bottom-left stack: the zoom readout over the display options. Leaflet
@@ -3245,32 +3162,64 @@ textarea {
   cursor: pointer;
 }
 
-/* Projection, colour and outline choices, docked bottom-centre over the map.
-   The first two are roving radiogroups built from buttons so the selected state
-   can slide underneath without hiding the keyboard model. */
+/* View, colour and outline choices, docked bottom-centre over the map, with the
+   legend bar under the colours that made it. The first two are roving
+   radiogroups built from buttons so the selected state can slide underneath
+   without hiding the keyboard model.
+
+   A grid item of `#map`, not an OpenLayers control and not `position:
+   absolute`. A control lives inside `#mapCanvas`, which the table view covers
+   and makes `inert` -- and this is where the switch back to the map now is, so
+   it has to be a sibling of both. Placed in the canvas's own row and pinned to
+   the foot of it, so it sits over the map and not over anything below. */
 .map-choice-dashboard {
-  position: absolute;
-  bottom: 30px;
-  left: 50%;
-  z-index: 2;
+  grid-row: 1;
+  grid-column: 1;
+  align-self: end;
+  justify-self: center;
+  z-index: 500;
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: minmax(150px, 0.82fr) 1px minmax(320px, 2fr) 1px minmax(132px, 0.72fr);
+  grid-template-columns: minmax(218px, 1.2fr) 1px minmax(320px, 2fr) 1px minmax(132px, 0.72fr);
   align-items: stretch;
   gap: 12px;
   width: min(950px, calc(100% - 24px));
+  margin-bottom: 30px;
   padding: 10px;
   border: 1px solid rgba(148, 163, 184, 0.55);
   border-radius: 8px;
   background: rgba(241, 245, 249, 0.94);
   box-shadow: 0 5px 18px rgba(15, 23, 42, 0.22), 0 1px 3px rgba(15, 23, 42, 0.12);
-  transform: translateX(-50%);
   backdrop-filter: blur(10px);
   color: #334155;
 }
 
+/* An outline is something the picture has and the table has not. The panel is
+   made `inert` by MapController.syncViewSelector() while the table is on; this
+   is only so it looks the way it behaves. */
+.map-choice-dashboard .map-outline-panel[inert] {
+  opacity: 0.4;
+}
+
+/* A column, so the control under each label fills whatever height the tallest
+   panel sets. That used to be a non-question -- three controls of much the same
+   height sat side by side -- and became one when the legend bar moved in under
+   the colour picker and made the middle panel the tall one. */
 .map-choice-section {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.map-view-switch,
+.map-palette-list,
+.map-outline-toggle {
+  flex: 1 1 auto;
+}
+
+/* The legend bar and its labels, under the picker that chose the colours. */
+.map-legend-slot {
   min-width: 0;
 }
 
@@ -3291,7 +3240,7 @@ textarea {
   text-transform: uppercase;
 }
 
-.map-projection-switch,
+.map-view-switch,
 .map-palette-list {
   position: relative;
   display: grid;
@@ -3301,8 +3250,20 @@ textarea {
   background: rgba(221, 228, 230, 0.9);
 }
 
-.map-projection-switch {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+/* Two projections and the table: one question -- how to show this year -- with
+   three answers, so one radiogroup. The rule before the last is a 1px track,
+   and `--track` is what is left over for each of the three once the padding,
+   the three gaps and that rule are taken out. The sliding slab is sized and
+   moved from it, which is why it is a variable rather than three `calc`s. */
+.map-view-switch {
+  --track: calc((100% - 17px) / 3);
+  grid-template-columns: repeat(2, minmax(0, 1fr)) 1px minmax(0, 1fr);
+}
+
+.map-view-divider {
+  align-self: stretch;
+  margin: 12px 0;
+  background: rgba(148, 163, 184, 0.75);
 }
 
 .map-palette-list {
@@ -3343,9 +3304,9 @@ textarea {
   display: grid;
   align-content: center;
   justify-items: center;
-  gap: 8px;
-  min-height: 76px;
-  padding: 8px 8px 7px;
+  gap: 7px;
+  min-height: 56px;
+  padding: 7px 8px 6px;
   border-radius: 8px;
   background: rgba(221, 228, 230, 0.9);
   color: #586a72;
@@ -3408,17 +3369,24 @@ textarea {
   text-align: center;
 }
 
-.map-projection-selection {
+/* The `100%` in the transform is the slab's *own* width -- one track -- which
+   is why the width is set from `--track` and the travel is not: a percentage
+   inside `translateX` resolves against the element, and the same `--track`
+   expression used there would have measured 17px out of 84 instead of out of
+   the switch. `--past-divider` is 0 or 1, written by
+   MapController.syncViewSelector(): the slab crosses one extra gap and the 1px
+   rule on its way to the third option, and that is the 3px. */
+.map-view-selection {
   position: absolute;
   z-index: 0;
   top: 5px;
   left: 5px;
-  width: calc((100% - 12px) / 2);
+  width: var(--track);
   height: calc(100% - 10px);
   border-radius: 6px;
   background: var(--accent);
   box-shadow: 0 4px 10px rgba(23, 56, 75, 0.24);
-  transform: translateX(calc(var(--selected, 0) * (100% + 2px)));
+  transform: translateX(calc(var(--selected, 0) * (100% + 2px) + var(--past-divider, 0) * 3px));
   transition: transform 0.28s cubic-bezier(0.2, 0.85, 0.25, 1);
   will-change: transform;
 }
@@ -3439,7 +3407,7 @@ textarea {
   will-change: transform;
 }
 
-.map-projection-choice,
+.map-view-choice,
 .map-palette-option {
   position: relative;
   z-index: 1;
@@ -3451,12 +3419,16 @@ textarea {
   user-select: none;
 }
 
-.map-projection-choice {
+/* Near enough square: the height comes from the Colours panel beside it, which
+   is why compacting that panel is what shapes these. `min-height` is only a
+   floor for the case where the legend has not loaded yet. */
+.map-view-choice {
   display: grid;
+  align-content: center;
   justify-items: center;
-  gap: 5px;
-  min-height: 66px;
-  padding: 10px 8px 8px;
+  gap: 4px;
+  min-height: 56px;
+  padding: 6px 6px 5px;
   border: 0;
   color: #586a72;
   font-size: 0.76rem;
@@ -3466,20 +3438,23 @@ textarea {
   transition: color 0.15s ease;
 }
 
+/* The scheme's name used to be printed under its swatches. Four names is a line
+   of the dashboard's height for something the swatches already say, and that
+   height is taken out of the map -- so the name is a tooltip and an accessible
+   name now, and the button is the strip. */
 .map-palette-option {
   display: grid;
   align-content: center;
   justify-items: center;
-  gap: 8px;
-  min-height: 66px;
-  padding: 10px 9px 9px;
+  min-height: 34px;
+  padding: 6px 7px;
   border: 1px solid transparent;
   border-radius: 7px;
   color: #5b6775;
   transition: color 0.15s ease, background 0.15s ease;
 }
 
-.map-projection-choice:hover {
+.map-view-choice:hover {
   color: var(--accent-strong);
 }
 
@@ -3487,7 +3462,7 @@ textarea {
   color: #253649;
 }
 
-.map-projection-choice.is-selected {
+.map-view-choice.is-selected {
   color: #ffffff;
 }
 
@@ -3495,30 +3470,23 @@ textarea {
   color: #253649;
 }
 
-.map-projection-icon,
-.map-projection-choice svg {
+.map-view-icon,
+.map-view-choice svg {
   display: block;
   width: 26px;
   height: 22px;
   stroke-width: 2.2;
 }
 
-.map-palette-name {
-  max-width: 100%;
-  overflow: hidden;
-  font-size: 0.78rem;
-  font-weight: 700;
-  line-height: 1.05;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+/* Taller than it was, because it is now the whole of the button rather than the
+   picture over its name -- a 13px strip with nothing under it reads as a rule
+   rather than as something to press. */
 .map-palette-swatches {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   width: 100%;
   max-width: 116px;
-  height: 13px;
+  height: 20px;
   overflow: hidden;
   border-radius: 2px;
   box-shadow: 0 0 0 1px rgba(35, 51, 68, 0.14);
@@ -3540,7 +3508,7 @@ textarea {
 
 .map-outline-toggle:has(input:focus-visible),
 .map-palette-mobile:has(.map-palette-select:focus-visible),
-.map-projection-choice:focus-visible,
+.map-view-choice:focus-visible,
 .map-palette-option:focus-visible {
   outline: 3px solid #7ca8dd;
   outline-offset: 2px;
@@ -3611,7 +3579,7 @@ textarea {
    it keeps its ring and drops the rotation; the preload boxes still have to
    fill, so they fill in one step rather than sliding. */
 @media (prefers-reduced-motion: reduce) {
-  .map-projection-selection,
+  .map-view-selection,
   .map-palette-selection,
   .map-outline-track,
   .map-outline-thumb {
@@ -3671,11 +3639,86 @@ textarea {
   outline-offset: 2px;
 }
 
-@media (max-width: 900px) {
-  :root {
-    --map-legend-height: 82px;
+/* The desktop table's columns add up to 37rem of fixed width, and a window
+   between 900 and 1100px still has the sidebar -- so the pane is 560-700px and
+   Country, the column that takes whatever the others leave, is left with
+   nothing. Boundary is the one to give: it is 15rem of the 37, it is per-row
+   provenance rather than the reading the view is for, and the note under the
+   table still names every source the year rests on. The same trade the phone
+   makes, one breakpoint earlier. */
+@media (min-width: 901px) and (max-width: 1100px) {
+  .table-view-table :is(th, td)[data-column="boundary"] {
+    display: none;
   }
 
+  .table-view-table col[data-column="boundary"] {
+    width: 0;
+  }
+}
+
+/* Between the phone layout and a pane wide enough for the dashboard's natural
+   widths there is a band -- a 900-1200px window still has the sidebar, so the
+   pane is 560-840px -- where the three panels and the legend under the middle
+   one do not fit a single row at full size. `#map` is `overflow: hidden`, so
+   what does not fit is not clipped politely: it disappears, and the legend with
+   it. Everything gives a little rather than one thing giving way. */
+@media (min-width: 901px) and (max-width: 1200px) {
+  .map-choice-dashboard {
+    grid-template-columns: minmax(166px, 1.15fr) 1px minmax(210px, 1.9fr) 1px minmax(100px, 0.68fr);
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .map-view-choice {
+    min-height: 44px;
+    padding: 5px 4px 4px;
+    font-size: 0.68rem;
+  }
+
+  .map-view-icon,
+  .map-view-choice svg {
+    width: 20px;
+    height: 18px;
+  }
+
+  .map-palette-option {
+    min-height: 28px;
+    padding: 4px 5px;
+  }
+
+  .map-outline-toggle {
+    min-height: 46px;
+  }
+
+  .map-outline-copy {
+    max-width: 6.4rem;
+    font-size: 0.7rem;
+  }
+
+  /* One line each, clipped, with the full text in `title`. Wrapped they take
+     three lines apiece at this width, and the whole dashboard is as tall as
+     this panel -- three lines here is what turns the View buttons into tall
+     rectangles. The words are also under the timeline caption and in
+     `#mapSummary`, so nothing is only here. */
+  .legend-labels {
+    font-size: 0.62rem;
+  }
+
+  .legend-labels span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Same collision as on the phone: the dashboard is nearly the width of the
+     pane here, so the credit line at the foot of the canvas has to clear it.
+     See the note in the phone block. */
+  .ol-attribution.ol-uncollapsible {
+    bottom: var(--dashboard-inset, 60px);
+  }
+}
+
+@media (max-width: 900px) {
   #app {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr;
@@ -3851,26 +3894,12 @@ textarea {
     bottom: 56px;
   }
 
-  /* The timeline is a card across the top of the map pane at this breakpoint,
-     roughly a third of a phone screen tall, so the switcher cannot stay at the
-     top-left corner. Bottom-right instead: clear of the timeline, clear of the
-     display stack at bottom-left, and clear of the legend dock below both. */
-  .view-switch {
-    top: auto;
-    left: auto;
-    right: 8px;
-    /* Measured from the foot of #map, which includes the legend dock -- unlike
-       .map-display-stack, which is an OpenLayers control inside the canvas and
-       so measures from the foot of the canvas. */
-    bottom: calc(var(--map-legend-height) + 8px);
-  }
-
-  /* ...which means the table's last rows would scroll under it, so the pane
-     keeps a gutter at the foot instead of at the head: nothing is parked under
-     the timeline at this breakpoint, so the top inset is the timeline alone. */
+  /* Nothing is parked under the timeline at this breakpoint -- the timeline is
+     a card across the top of the pane -- so the top inset is the timeline
+     alone. The gutter at the foot is the dashboard's, as it is on the desktop,
+     and is measured. */
   .table-view {
     padding-top: calc(var(--timeline-inset, 240px) + 4px);
-    padding-bottom: 48px;
   }
 
   /* Six columns do not fit a phone. ISO3 is the one the country name already
@@ -3890,6 +3919,26 @@ textarea {
   .table-view-table col[data-column="boundary"] {
     width: 0;
   }
+
+  /* Five columns is already more than a phone wants, so the ones that stay give
+     back what they can. Country takes whatever these leave. */
+  .table-view-table col[data-column="rank"] {
+    width: 2.6rem;
+  }
+
+  .table-view-table col[data-column="value"] {
+    width: 4.6rem;
+  }
+
+  .table-view-table col[data-column="change"] {
+    width: 1.9rem;
+  }
+
+  .table-view-table col[data-column="classIndex"] {
+    width: 4.2rem;
+  }
+
+
 
   .table-view-head {
     flex-direction: column;
@@ -3925,7 +3974,7 @@ textarea {
     white-space: nowrap;
   }
 
-  .map-projection-switch,
+  .map-view-switch,
   .map-palette-mobile,
   .map-outline-toggle {
     min-height: 34px;
@@ -3933,14 +3982,21 @@ textarea {
     border-radius: 7px;
   }
 
-  .map-projection-selection {
+  .map-view-switch {
+    --track: calc((100% - 13px) / 3);
+  }
+
+  .map-view-divider {
+    margin: 5px 0;
+  }
+
+  .map-view-selection {
     top: 3px;
     left: 3px;
-    width: calc((100% - 8px) / 2);
     height: calc(100% - 6px);
   }
 
-  .map-projection-choice {
+  .map-view-choice {
     place-items: center;
     align-content: center;
     gap: 2px;
@@ -3949,8 +4005,8 @@ textarea {
     font-size: 0.64rem;
   }
 
-  .map-projection-icon,
-  .map-projection-choice svg {
+  .map-view-icon,
+  .map-view-choice svg {
     width: 16px;
     height: 16px;
   }
@@ -4031,12 +4087,12 @@ textarea {
       padding: 4px;
     }
 
-    .map-projection-choice {
+    .map-view-choice {
       width: 32px;
       padding: 2px;
     }
 
-    .map-projection-choice span {
+    .map-view-choice span {
       position: absolute;
       width: 1px;
       height: 1px;
@@ -4078,68 +4134,15 @@ textarea {
     }
   }
 
-  .map-legend-dock {
-    align-items: stretch;
-    padding: 7px 10px 8px;
-    border-top-width: 5px;
-  }
-
-  /* Stacked outright, and `nowrap` with it: a column that wraps sizes its one
-     line to the items' own width rather than to the dock, which put both of
-     them 24px -- the dock's gutters -- past its right edge. */
-  .map-legend {
-    flex-direction: column;
-    flex-wrap: nowrap;
-    align-items: stretch;
-    gap: 4px;
-  }
-
-  /* Down the column a `flex-basis` is a height, and the dock stretches the
-     legend to its own, so the two would grow to 240px and 340px of empty band.
-     Stacked, each is simply as tall as what is in it. */
-  .legend-copy,
+  /* The whole scale on one line at this width: the bar with its two end labels
+     in the left column and the no-data patch beside them, all of it inside the
+     dashboard's Colours panel rather than in a dock of its own. */
   .legend-scale {
-    flex: 0 0 auto;
-  }
-
-  .legend-copy {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    column-gap: 8px;
-  }
-
-  .legend-title {
-    grid-column: 1;
-    margin-bottom: 1px;
-    font-size: 1rem;
-  }
-
-  .legend-subtitle {
-    grid-column: 1;
-    overflow: hidden;
-    font-size: 0.72rem;
-    line-height: 1.2;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .legend-data-button {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    align-self: center;
-    margin-top: 0;
-    padding: 4px 8px;
-    font-size: 0.68rem;
-    white-space: nowrap;
-  }
-
-  .legend-scale {
-    display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     column-gap: 8px;
     row-gap: 3px;
+    margin-top: 5px;
   }
 
   .legend-bar {
@@ -4151,12 +4154,13 @@ textarea {
   .legend-labels {
     grid-column: 1;
     grid-row: 2;
-    margin-top: 0;
-    font-size: 0.7rem;
+    gap: 6px;
+    margin-top: 3px;
+    font-size: 0.6rem;
+    line-height: 1.1;
   }
 
-  /* The note goes and this stays: the note restates what the ramp already
-     shows, while nothing else on a phone says what the cream means. */
+  /* Nothing else on a phone says what the cream on the map means. */
   .legend-nodata {
     display: flex;
     grid-column: 2;
@@ -4164,7 +4168,7 @@ textarea {
     align-items: center;
     gap: 4px;
     margin: 0;
-    font-size: 0.7rem;
+    font-size: 0.66rem;
     white-space: nowrap;
   }
 
@@ -4173,13 +4177,26 @@ textarea {
     height: 10px;
   }
 
-  .legend-note {
+  /* The note restates in prose what the ramp already shows, and the timeline
+     card it now sits in is already a third of a phone screen tall. */
+  .timeline-legend-copy {
     display: none;
   }
 
   .ol-zoom {
     top: 132px;
     transform: none;
+  }
+
+  /* The credit line sits at the foot of the canvas and the dashboard sits over
+     the foot of the pane; on a desktop the dashboard is 950px of a much wider
+     pane and the line clears it at the right, but here the dashboard is the
+     full width and the two are on top of each other. Lifted by the measured
+     height, which is the same number the table view leaves at its foot. The
+     line may not be obscured: it is where the CC BY-NC-SA and GPL-3.0
+     attribution is discharged. */
+  .ol-attribution.ol-uncollapsible {
+    bottom: var(--dashboard-inset, 60px);
   }
 
   .mobile-picker-dialog {

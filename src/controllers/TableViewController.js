@@ -50,6 +50,33 @@ const FLIP_MS = 380;
 const FLIP_MIN_MS = 110;
 const FLIP_FRAME_SHARE = 0.82;
 
+// How many rows past each edge of the scroller still get a glide. A row that
+// starts and ends outside the window is one nobody can watch move, and moving
+// it costs the same as moving one they can: a transform, a transition, a
+// stacking context and a repaint. At 245 rows and ~15 of them on screen this is
+// the difference between animating 27 rows and animating all of them.
+//
+// The buffer is there so a row gliding in from just past the edge is already in
+// motion when it arrives, rather than appearing at the boundary.
+const FLIP_BAND_BUFFER_ROWS = 6;
+
+// The marks a reader can put on rows, in the order they are handed out. Six,
+// because following more than a handful of rows through a reordering is beyond
+// what eyes do anyway, and because past that the colours stop being tellable
+// apart -- they are deliberately muted, which is what makes several of them
+// bearable on screen at once but also what limits how many can be distinct.
+//
+// Only the *names* are here; the colours themselves are in `styles.css` against
+// `[data-follow-ink]`, which is where every other colour in this app is
+// written. The name is what a reader hears, so the two have to be kept in step
+// by hand -- there is no third place to generate them from.
+const FOLLOW_INK_NAMES = ["blue", "red", "green", "amber", "purple", "teal"];
+
+// The `table-view-row-in` keyframe's length in `styles.css`, which the cleanup
+// timer has to outlast. Kept as a number here because the class has to come off
+// whether or not the keyframe ever finished -- see buildRow.
+const ROW_ENTER_MS = 260;
+
 const COLLATOR = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
 
 // The upper end of the WMS year clamp, which the resolution policy also uses to
@@ -69,6 +96,18 @@ const OPEN_ENDED_YEAR = 2100;
 // four-decimal value, a boundary label with a year span — because a fixed column
 // clips rather than grows.
 const COLUMNS = [
+  // First, and beside the position it is about. It is not sortable for the same
+  // reason `rank` is not: it *is* a reading of the sort, so sorting on it would
+  // be a question about its own answer.
+  {
+    key: "change",
+    label: "±",
+    numeric: false,
+    sortable: false,
+    srLabel: "Change in position since the previous year",
+    width: "2.6rem",
+    note: "Whether the row moved up or down the table since the previous year this variable has data for.",
+  },
   { key: "rank", label: "#", numeric: true, sortable: false, srLabel: "Position in this sort", width: "3.5rem" },
   { key: "country", label: "Country", numeric: false, rowHeader: true, clips: true },
   { key: "iso3", label: "ISO3", numeric: false, width: "4.5rem" },
@@ -109,6 +148,7 @@ export class TableViewController extends BaseController {
     this.scrollEl = this.getEl("tableViewScroll");
     this.noteEl = this.getEl("tableViewNote");
     this.downloadBtn = this.getEl("tableViewDownloadBtn");
+    this.clearFollowBtn = this.getEl("tableViewClearFollowBtn");
     this.statusEl = this.getEl("tableViewStatus");
 
     this.active = false;
@@ -122,8 +162,38 @@ export class TableViewController extends BaseController {
     this.rowEls = new Map();
     this.renderedKey = null;
     this.renderedOrder = [];
+    // The same order as a lookup, so a row's place last time is a map read
+    // rather than an indexOf over 245 keys per row.
+    this.renderedIndex = new Map();
     this.renderedSort = null;
+    // The rows carrying a transform right now, and when the last batch of them
+    // is due to have finished. One timestamp for the batch: they all share a
+    // duration, so this answers "is anything still moving" without touching the
+    // DOM.
+    this.movingRows = new Set();
+    this.glideEndsAt = 0;
+    // Every row is one line tall, so one number places all of them. Measured
+    // lazily and thrown away when the row count or the window changes.
+    this.rowPitchValue = 0;
+    this.rowPitchRows = 0;
+    this.scrollTop = 0;
+    this.scrollHeight = 0;
     this.rows = [];
+    // The rows the reader has marked, by `rowKey`, so a mark survives the year
+    // stepping -- which is the whole point of it: a highlighted row is how you
+    // keep your eye on one country while 177 of them change places. Not cleared
+    // when the variable changes: the mark is on the country, not on the series.
+    // rowKey -> which of FOLLOW_INK_NAMES it is marked with. A map rather than a
+    // set because the mark now has a colour, and the colour is what makes two
+    // marked rows tellable apart while they change places.
+    this.followed = new Map();
+    // Which row is the tab stop inside the body. A table of 177 focusable rows
+    // cannot put 177 stops in the tab order, so exactly one carries it and the
+    // arrow keys move it -- the roving pattern the variable list already uses.
+    this.activeRowKey = null;
+    // Where each row stood in the previous year, derived once per render rather
+    // than per row and kept until either the year or the sort moves.
+    this.previousPositions = { signature: null, year: null, positions: null };
     // What `advanceAutoPlayFrame` waits on: the render for the year the timeline
     // has just moved to.
     this.pendingRender = Promise.resolve();
@@ -143,6 +213,32 @@ export class TableViewController extends BaseController {
       this.applySort(button.dataset.column);
     });
     this.downloadBtn.addEventListener("click", () => this.downloadCsv());
+    this.clearFollowBtn.addEventListener("click", () => {
+      this.clearFollowed();
+      // The button is about to be taken off screen, and focus left on a hidden
+      // element goes to the document body. It goes back to the rows, which is
+      // what the reader was working on.
+      this.scrollEl.focus();
+    });
+    // Delegated, because every `<tr>` is kept and reordered rather than rebuilt
+    // -- a listener per row would survive, but 177 of them for one behaviour is
+    // 177 things to get wrong when a row is dropped.
+    this.bodyEl.addEventListener("click", (event) => {
+      const tr = event.target.closest("tr[data-row-key]");
+      if (!tr || !this.bodyEl.contains(tr)) return;
+      this.setActiveRow(tr.dataset.rowKey);
+      this.toggleFollow(tr.dataset.rowKey);
+    });
+    // On the scroller rather than the body, so Escape clears the marks whether
+    // the reader is standing on a row or on the scroll region itself -- the
+    // region is a tab stop of its own and a keypress there never reaches the
+    // rows below it.
+    this.scrollEl.addEventListener("keydown", (event) => this.onRowKeydown(event));
+    // The row pitch is the one measurement the animation rests on, and a resize
+    // is the only thing besides the row count that can move it.
+    window.addEventListener("resize", () => {
+      this.rowPitchValue = 0;
+    });
     this.renderColumnWidths();
     this.renderHead();
   }
@@ -158,8 +254,11 @@ export class TableViewController extends BaseController {
     this.active = true;
     this.pane.hidden = false;
     // A view that was left and come back to should not replay the last
-    // animation it was in the middle of.
+    // animation it was in the middle of, and the pane it comes back to may be a
+    // different size from the one it left.
     this.renderedKey = null;
+    this.rowPitchValue = 0;
+    this.settleGlides();
     this.refresh();
     this.startPrefetch();
   }
@@ -198,6 +297,221 @@ export class TableViewController extends BaseController {
     el.title = text;
   }
 
+  // ---- following a row ----------------------------------------------------
+
+  // A mark on a country, kept across years and across sorts. It changes nothing
+  // about the data and nothing about the map: it is there so a reader watching
+  // an animation can keep hold of one row while the order rearranges under it,
+  // which is the one thing this view does that the map cannot.
+  toggleFollow(rowKey) {
+    if (!rowKey) return;
+    const wasFollowed = this.followed.has(rowKey);
+    let ink = null;
+    if (wasFollowed) {
+      this.followed.delete(rowKey);
+    } else {
+      ink = this.nextFollowInk();
+      this.followed.set(rowKey, ink);
+    }
+
+    const tr = this.rowEls.get(rowKey);
+    if (tr) this.applyFollowState(tr, rowKey);
+    this.syncFollowControls();
+
+    const name = this.rows.find((row) => row.rowKey === rowKey)?.country || "Row";
+    this.announce(
+      wasFollowed ? `${name} no longer followed.` : `${name} followed, ${FOLLOW_INK_NAMES[ink]} mark.`,
+    );
+  }
+
+  // The lowest colour nobody is using, so unmarking a row gives its colour back
+  // rather than leaving a gap and walking the rest along. Past six, two rows
+  // share one -- which is honest about what is left to distinguish rather than
+  // inventing a seventh colour nobody could tell from the first.
+  nextFollowInk() {
+    const taken = new Set(this.followed.values());
+    for (let index = 0; index < FOLLOW_INK_NAMES.length; index += 1) {
+      if (!taken.has(index)) return index;
+    }
+    return this.followed.size % FOLLOW_INK_NAMES.length;
+  }
+
+  clearFollowed() {
+    if (this.followed.size === 0) return;
+    const count = this.followed.size;
+    this.followed.clear();
+    for (const [rowKey, tr] of this.rowEls) this.applyFollowState(tr, rowKey);
+    this.syncFollowControls();
+    this.announce(count === 1 ? "Row no longer followed." : `${count} rows no longer followed.`);
+  }
+
+  // The visible mark and the spoken one together, so neither can be set without
+  // the other. The highlight is the whole feature for a reader watching the
+  // animation; for one who is not watching it, the row has to say so in words.
+  applyFollowState(tr, rowKey) {
+    const ink = this.followed.get(rowKey);
+    const wanted = ink === undefined ? "" : String(ink);
+    // Guarded because fillRow calls this for every row of every frame: one
+    // comparison, and nothing is written or queried for unless the mark has
+    // actually moved. The attribute is both the state and the guard, so the two
+    // cannot disagree.
+    if ((tr.dataset.followInk ?? "") === wanted) return;
+
+    const marker = tr.querySelector("[data-follow-marker]");
+    if (wanted === "") {
+      delete tr.dataset.followInk;
+      tr.classList.remove("is-followed");
+      if (marker) marker.textContent = "";
+      return;
+    }
+    tr.dataset.followInk = wanted;
+    tr.classList.add("is-followed");
+    // The colour is named as well as shown. It is noise to a reader who cannot
+    // see it -- but to one who can see colour and not detail, which is who the
+    // mark is most use to, it is the difference between "one of my rows" and
+    // "the one I was watching".
+    if (marker) marker.textContent = ` (followed, ${FOLLOW_INK_NAMES[ink]})`;
+  }
+
+  // On screen only while it has something to undo, and carrying the count --
+  // which is the one place the number of marks is written down, and the reason
+  // it is a count and not a bare label.
+  syncFollowControls() {
+    const count = this.followed.size;
+    this.clearFollowBtn.hidden = count === 0;
+    const label = count === 0 ? "Deselect all" : `Deselect all (${count})`;
+    if (this.clearFollowBtn.textContent !== label) this.clearFollowBtn.textContent = label;
+  }
+
+  // The roving tab stop. Exactly one row carries `tabindex=0`; everything else
+  // is reachable from it with the arrow keys.
+  setActiveRow(rowKey) {
+    if (!rowKey || rowKey === this.activeRowKey) return;
+    const previous = this.activeRowKey ? this.rowEls.get(this.activeRowKey) : null;
+    if (previous) previous.tabIndex = -1;
+    this.activeRowKey = rowKey;
+    const next = this.rowEls.get(rowKey);
+    if (next) next.tabIndex = 0;
+  }
+
+  syncRowTabStop(orderKeys) {
+    // The row that had the stop may have left with the year -- a country whose
+    // series ends -- in which case the stop goes to the top of the table rather
+    // than nowhere.
+    if (!this.activeRowKey || !this.rowEls.has(this.activeRowKey)) {
+      this.activeRowKey = orderKeys[0] || null;
+    }
+    for (const [rowKey, tr] of this.rowEls) {
+      const wanted = rowKey === this.activeRowKey ? 0 : -1;
+      if (tr.tabIndex !== wanted) tr.tabIndex = wanted;
+    }
+  }
+
+  onRowKeydown(event) {
+    if (event.key === "Escape") {
+      if (this.followed.size === 0) return;
+      event.preventDefault();
+      this.clearFollowed();
+      return;
+    }
+
+    const tr = event.target.closest("tr[data-row-key]");
+    if (!tr) return;
+
+    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+      event.preventDefault();
+      this.toggleFollow(tr.dataset.rowKey);
+      return;
+    }
+
+    const rows = Array.from(this.bodyEl.children);
+    const index = rows.indexOf(tr);
+    if (index === -1) return;
+    let next = index;
+    if (event.key === "ArrowDown") next = Math.min(rows.length - 1, index + 1);
+    else if (event.key === "ArrowUp") next = Math.max(0, index - 1);
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = rows.length - 1;
+    else return;
+
+    event.preventDefault();
+    const target = rows[next];
+    this.setActiveRow(target.dataset.rowKey);
+    target.focus();
+    // `nearest`, so moving one row down scrolls by one row rather than
+    // recentring the whole table under the reader.
+    target.scrollIntoView({ block: "nearest" });
+  }
+
+  // ---- the year before ----------------------------------------------------
+
+  // The previous year *this variable has data for*, which is not always the year
+  // before: QoG runs annually, but plenty of series here are every few years,
+  // and comparing 2015 against an empty 2014 would report every country as
+  // having no comparison rather than as having risen or fallen since 2012.
+  previousYearWithData() {
+    const coverage = this.metadataController.getActiveVariableCoverage();
+    const years = Array.isArray(coverage?.availableYears) ? coverage.availableYears : [];
+    const selected = Number(this.state.year);
+    let best = null;
+    for (const year of years) {
+      if (year < selected && (best === null || year > best)) best = year;
+    }
+    return best;
+  }
+
+  // Where every row *stood* that year, in the order the table is in now. The
+  // signature carries the sort as well as the year: a position only means
+  // something against the same ordering, so re-sorting the table has to rebuild
+  // this. Returns `positions: null` while the year is still being fetched --
+  // which is a different thing from there being no year to compare against, and
+  // the two read differently in the cell.
+  resolvePreviousPositions() {
+    const year = this.previousYearWithData();
+    if (year === null) return { signature: null, year: null, positions: null };
+
+    const key = `${this.state.dataset}|${this.state.variable}|${year}`;
+    const signature = `${key}|${this.sort.column}|${this.sort.direction}`;
+    if (this.previousPositions.signature === signature) return this.previousPositions;
+
+    const payload = this.rowCache.get(key);
+    if (!payload) {
+      this.requestPreviousRows(key, year);
+      return { signature, year, positions: null };
+    }
+    const positions = new Map();
+    this.sortedRows(payload.rows).forEach((row, index) => positions.set(row.rowKey, index + 1));
+    this.previousPositions = { signature, year, positions };
+    return this.previousPositions;
+  }
+
+  // Asked for on its own rather than waited for. The read-ahead usually has it
+  // already, and when it does not the column fills in a moment later -- a column
+  // that is blank for no visible reason is worse than one that arrives late, and
+  // blocking the frame on it would make the animation wait for a year nobody is
+  // looking at.
+  requestPreviousRows(key, year) {
+    if (this.rowRequests.has(key)) return;
+    void this.ensureRows(key).then((payload) => {
+      if (!payload || !this.active) return;
+      if (this.renderedKey !== this.currentKey()) return;
+      if (this.previousYearWithData() !== year) return;
+      this.renderRows(this.renderedKey, { reason: "change" });
+    });
+  }
+
+  // How far up or down the table a row has moved. A *smaller* rank is higher up,
+  // so the places gained is `before - now`. `null` where there is nothing to say
+  // -- no earlier year in the series, or a country that was not in the table
+  // that year -- and `undefined` where the answer is not known yet.
+  changeFor(rowKey, rank, previous) {
+    if (previous.year === null) return null;
+    if (previous.positions === null) return undefined;
+    const before = previous.positions.get(rowKey);
+    if (before === undefined) return null;
+    return { places: before - rank, from: previous.year };
+  }
+
   // ---- refresh ------------------------------------------------------------
 
   // Hangs off the same `onStateChange` everything else that reads the map does:
@@ -215,7 +529,13 @@ export class TableViewController extends BaseController {
     // header carries the same sentence as a `title` for everyone else.
     this.captionEl.textContent =
       `${variableTitle}, ${datasetTitle}, ${year}. ` +
-      "Class 1 is the lowest seventh of the values, class 7 the highest.";
+      "Class 1 is the lowest seventh of the values, class 7 the highest. " +
+      // The rows are the only interactive thing here and a highlight is not a
+      // fact a reader can be shown, so the caption is where the interaction is
+      // stated. Enter on a row marks it; the mark stays on that country as the
+      // year moves, which is what the arrow keys and Escape are for.
+      "Arrow keys move between rows; Enter follows a row so it stays marked as " +
+      "the year changes, and Escape clears every mark.";
     this.setSummaryLine(this.selectionEl, `${variableTitle} (${variable}) — ${datasetTitle}, ${year}`);
 
     const cached = this.rowCache.get(key);
@@ -444,10 +764,13 @@ export class TableViewController extends BaseController {
     );
   }
 
-  sortedRows() {
+  // Takes the rows rather than reading `this.rows`, because the change column
+  // needs the *previous* year put in this same order to know whether a row has
+  // moved up or down the table.
+  sortedRows(rows = this.rows) {
     const { column, direction } = this.sort;
     const sign = direction === "asc" ? 1 : -1;
-    return [...this.rows].sort((a, b) => {
+    return [...rows].sort((a, b) => {
       const left = this.cellValue(a, column);
       const right = this.cellValue(b, column);
       // A country with no value sorts to the end whichever way the column is
@@ -466,7 +789,9 @@ export class TableViewController extends BaseController {
   }
 
   cellValue(row, column) {
-    if (column === "rank") return null;
+    // Neither is a field on the row, and neither is sortable: both are readings
+    // of the sort itself.
+    if (column === "rank" || column === "change") return null;
     const value = row[column];
     return value === undefined || value === null || value === "" ? null : value;
   }
@@ -484,12 +809,18 @@ export class TableViewController extends BaseController {
       // lose its <col> too, or `table-layout: fixed` goes on reserving the
       // width for cells that are no longer drawn and leaves a gap.
       col.dataset.column = column.key;
-      if (column.width) col.style.width = column.width;
+      // A custom property, not `width`. An inline `width` beats every rule in
+      // the stylesheet, so the phone breakpoint's `width: 0` on the columns it
+      // drops was silently doing nothing and their widths went on being
+      // reserved -- which at seven columns left Country with none of the row
+      // at all. Set as a variable, the declared width is what the stylesheet
+      // starts from and a media query can still take it away.
+      if (column.width) col.style.setProperty("--col-width", column.width);
       this.colsEl.appendChild(col);
     }
   }
 
-  // Rebuilt only when the sort has actually moved. It is six cells, so cost is
+  // Rebuilt only when the sort has actually moved. It is seven cells, so cost is
   // not the reason: a header redrawn on every frame of an animation takes the
   // focus off the sort button somebody is standing on, once a second.
   renderHead() {
@@ -522,6 +853,10 @@ export class TableViewController extends BaseController {
         label.className = "table-view-head-static";
         label.setAttribute("aria-hidden", "true");
         label.textContent = column.label;
+        // A column that is not a button still gets its explanation, and "±" is
+        // a header that needs one. The spoken name below carries it for anyone
+        // a `title` never reaches.
+        if (column.note) cell.title = column.note;
         cell.appendChild(label);
         const spoken = document.createElement("span");
         spoken.className = "visually-hidden";
@@ -578,6 +913,14 @@ export class TableViewController extends BaseController {
   }
 
   renderRows(key, { reason = "state" } = {}) {
+    // Read first, before a single write: where the reader is looking decides
+    // which rows are worth animating, and asking for it now costs nothing
+    // because nothing has dirtied the layout yet. Asking after the cell writes
+    // would force the very layout this pass exists to avoid.
+    this.scrollTop = this.scrollEl.scrollTop;
+    this.scrollHeight = this.scrollEl.clientHeight;
+
+    const previous = this.resolvePreviousPositions();
     const order = this.sortedRows();
     const animate = this.shouldAnimate(key, reason);
     const legendColors = this.mapController.legendColorsForPolarity(
@@ -586,14 +929,25 @@ export class TableViewController extends BaseController {
 
     this.renderHead();
 
-    // ---- FLIP, in four passes, each of which is all reads or all writes ----
+    // ---- FLIP, and the whole of it is arithmetic ----
     //
-    // Interleaving a read of a row's position with a write to another row's
-    // contents forces the browser to lay the whole table out again between
-    // every pair, which at 177 rows and eight years a second is the difference
-    // between an animation and a slideshow. So: write the cells, read where
-    // every row is, write the new order, read where every row has landed, write
-    // one transform each.
+    // It used to read `offsetTop` off every row twice -- once before the
+    // reorder and once after -- and each of those reads forces the browser to
+    // lay out the whole table synchronously. Three forced layouts of a 245-row
+    // table per frame (those two and the flush below) is what held the
+    // animation at 18fps: at 8x the profile put a quarter of all time in the
+    // second of them alone.
+    //
+    // None of it was necessary. Every row in this table is one line tall --
+    // every cell clips rather than wraps -- so a row's position *is* its index
+    // times the row pitch, and the index before and the index after are both
+    // already in hand: `renderedOrder` from the last render and `orderKeys`
+    // from this one. The pitch is measured once and cached.
+    //
+    // A stale pitch is a cosmetic risk and not a correctness one: the transform
+    // is transient and every glide ends at zero, so where a row *finishes* is
+    // the DOM order and nothing else. The worst a wrong pitch can do is make
+    // one frame's glide start from the wrong place.
 
     // 1. Write: cell contents, and a `<tr>` for any row that is new.
     const seen = new Set();
@@ -609,12 +963,23 @@ export class TableViewController extends BaseController {
         // rather than a transition, because there is no "before" position to
         // transition from; the class comes off when the keyframe has run, so a
         // later reorder of the same row cannot start it again.
-        if (animate) {
+        // Not during autoplay. A reorder takes every row out of the document
+        // for the length of one statement, which *cancels* a running CSS
+        // animation -- so at four years a second the 260ms fade restarted
+        // before it ever finished, `animationend` never fired, the class never
+        // came off, and the row sat at opacity 0 for the whole animation. The
+        // pre-unification German and Italian states, which join the table when
+        // the year crosses back past 1871, were invisible the entire time.
+        //
+        // A row arriving in a year that is on screen for 125ms has no entrance
+        // to make anyway. Where there is time for one, a timer takes the class
+        // off rather than an event that a reorder can swallow.
+        if (animate && !this.state.isAutoPlaying) {
           tr.classList.add("is-entering");
-          tr.addEventListener("animationend", () => tr.classList.remove("is-entering"), { once: true });
+          window.setTimeout(() => tr.classList.remove("is-entering"), ROW_ENTER_MS + 60);
         }
       }
-      this.fillRow(tr, row, index + 1, legendColors);
+      this.fillRow(tr, row, index + 1, legendColors, previous);
       trs.push(tr);
     });
 
@@ -622,106 +987,226 @@ export class TableViewController extends BaseController {
       if (seen.has(rowKey)) continue;
       tr.remove();
       this.rowEls.delete(rowKey);
+      this.movingRows.delete(tr);
     }
 
     const orderKeys = order.map((row) => row.rowKey);
+    this.syncRowTabStop(orderKeys);
+
+    const previousIndex = this.renderedIndex;
     // `!tr.isConnected` is the insurance rather than the usual case: a row built
     // in the pass above is only skipped here if the key order came out identical
     // to the last one, which cannot happen while a new row is in it. Getting it
     // wrong would leave a country built but never inserted, so it is checked
-    // rather than reasoned about.
+    // rather than reasoned about -- and it is a property read, so it costs no
+    // layout.
     const orderChanged =
       orderKeys.length !== this.renderedOrder.length ||
       orderKeys.some((rowKey, index) => rowKey !== this.renderedOrder[index]) ||
       trs.some((tr) => !tr.isConnected);
 
-    if (!orderChanged) {
-      this.renderedKey = key;
-      return;
-    }
-
-    // 2. Read: where every row is now. `offsetTop` rather than a bounding rect
-    //    because the table scrolls -- a rect is viewport-relative and would
-    //    record the scroll position as part of the row's place.
-    //
-    //    A row still travelling from the year before is visually somewhere
-    //    other than where the layout says it is: `offsetTop` ignores
-    //    transforms, so without the second reading a reorder arriving mid-glide
-    //    would snap the row to its layout position and then animate from there.
-    //    The duration is capped below the frame interval so this is rare, but
-    //    rare is not never -- a slow request bunches two frames together.
-    const firstTops = animate
-      ? trs.map((tr) => {
-          if (!tr.isConnected) return null;
-          const top = tr.offsetTop;
-          if (!tr.classList.contains("is-moving")) return top;
-          return top + new DOMMatrixReadOnly(window.getComputedStyle(tr).transform).m42;
-        })
-      : null;
+    // 2. Read, and only where a row may still be somewhere other than where the
+    //    layout says it is. `glideEndsAt` is one timestamp for the whole last
+    //    batch -- every row in a batch shares a duration -- so the common case
+    //    is a comparison and no DOM access at all. A reorder landing mid-glide
+    //    happens when frames bunch up behind a slow request, not in the ordinary
+    //    run of the animation: `flipDuration` keeps the glide inside the frame.
+    const midGlide =
+      animate && orderChanged && this.movingRows.size > 0 && performance.now() < this.glideEndsAt;
+    const carried = midGlide ? this.readCarriedOffsets() : null;
 
     // 3. Write: the new order. `appendChild` on an element already in the tree
     //    moves it, so this is a reorder and not a rebuild, which is what lets a
-    //    row keep its identity -- and its focus, and its selection -- across it.
-    const fragment = document.createDocumentFragment();
-    for (const tr of trs) fragment.appendChild(tr);
-    this.bodyEl.appendChild(fragment);
+    //    row keep its identity -- and its follow mark -- across it.
+    //
+    //    Focus is the exception, and it became one when the rows were made
+    //    focusable: collecting them into a fragment takes every row out of the
+    //    document for the length of this statement, and an element that leaves
+    //    the document is blurred. So the row somebody is standing on is noted
+    //    first and given its focus back straight after -- `preventScroll`,
+    //    because refocusing must not scroll the table out from under a reader
+    //    who was only watching the year change.
+    if (orderChanged) {
+      const focusedRow =
+        document.activeElement instanceof Element && this.bodyEl.contains(document.activeElement)
+          ? document.activeElement.closest("tr[data-row-key]")?.dataset.rowKey || null
+          : null;
+
+      const fragment = document.createDocumentFragment();
+      for (const tr of trs) fragment.appendChild(tr);
+      this.bodyEl.appendChild(fragment);
+
+      if (focusedRow) this.rowEls.get(focusedRow)?.focus({ preventScroll: true });
+    }
 
     this.renderedKey = key;
     this.renderedOrder = orderKeys;
+    this.renderedIndex = new Map(orderKeys.map((rowKey, index) => [rowKey, index]));
 
-    if (!animate) return;
+    if (!orderChanged || !animate) {
+      this.settleGlides();
+      return;
+    }
 
-    // 4. Read: where every row has landed.
+    // 4. The glide, for the rows somebody can see it on. Everything below is a
+    //    write; nothing above this line has to be read back.
+    const pitch = this.rowPitch();
+    const band = pitch > 0 ? this.visibleRowBand(pitch, orderKeys.length) : null;
+    if (!band) {
+      this.settleGlides();
+      return;
+    }
+
     const duration = this.flipDuration();
-    const deltas = trs.map((tr, index) => {
-      const from = firstTops[index];
-      return from === null ? 0 : from - tr.offsetTop;
-    });
-
-    // 5. Write the inversion: each row is transformed visually back to where it
-    //    was. `is-moving` carries the transition and is off here, so nothing
-    //    animates into the inverted position -- it is simply where the row is.
     const moved = [];
-    trs.forEach((tr, index) => {
+    const keep = new Set();
+
+    orderKeys.forEach((rowKey, index) => {
+      const before = previousIndex.get(rowKey);
+      if (before === undefined) return;
+      const carriedOffset = carried?.get(rowKey) || 0;
+      // A row is worth animating if either end of its journey is on screen.
+      if (index < band.first && before < band.first) return;
+      if (index > band.last && before > band.last) return;
+      const delta = (before - index) * pitch + carriedOffset;
+      if (Math.abs(delta) < 0.5) return;
+
+      const tr = trs[index];
       tr.classList.remove("is-moving");
-      const delta = deltas[index];
-      if (delta === 0) {
-        tr.style.transform = "";
-        return;
-      }
       tr.style.setProperty("--flip-ms", `${duration}ms`);
       tr.style.transform = `translateY(${delta}px)`;
       moved.push(tr);
+      keep.add(tr);
     });
 
-    if (moved.length === 0) return;
+    // Anything that was gliding and is not gliding now gives its transform back,
+    // or a row that scrolled out of the band mid-flight would keep it for good.
+    for (const tr of this.movingRows) {
+      if (keep.has(tr)) continue;
+      tr.classList.remove("is-moving");
+      tr.style.transform = "";
+    }
+    this.movingRows = keep;
 
-    // 6. Flush the style, once for the whole table, so the inverted positions
+    if (moved.length === 0) {
+      this.glideEndsAt = 0;
+      return;
+    }
+
+    // 5. Flush the style, once for the whole table, so the inverted positions
     //    are what the browser holds as the "before" of the transition about to
     //    start. A requestAnimationFrame cannot stand in for this: rAF callbacks
     //    run *before* the style recalculation, so the invert and the play would
     //    both land in one recalculation and the rows would simply appear in
-    //    their new places. This is the one deliberate forced layout in the pass.
+    //    their new places. This is now the only forced layout in the pass.
     void this.bodyEl.offsetHeight;
 
-    // 7. Play. Adding the transition and removing the transform together is
+    // 6. Play. Adding the transition and removing the transform together is
     //    enough: a transition reads its duration from the after-change style.
     for (const tr of moved) {
       tr.classList.add("is-moving");
       tr.style.transform = "";
     }
+    this.glideEndsAt = performance.now() + duration;
+  }
+
+  // Where each still-moving row visually is, as an offset from where the layout
+  // puts it. Only reached when a reorder lands inside a glide, and only for the
+  // rows that were gliding -- a few dozen at worst rather than every row.
+  readCarriedOffsets() {
+    const carried = new Map();
+    for (const tr of this.movingRows) {
+      if (!tr.isConnected) continue;
+      const matrix = new DOMMatrixReadOnly(window.getComputedStyle(tr).transform);
+      if (matrix.m42) carried.set(tr.dataset.rowKey, matrix.m42);
+    }
+    return carried;
+  }
+
+  // Every row is one line tall, so one number describes the whole table. Read
+  // from the two ends rather than from one row's height: `offsetHeight` misses
+  // the border spacing between rows, and it is the pitch that a position is a
+  // multiple of.
+  //
+  // Cached, and thrown away when the number of rows changes or the window
+  // resizes -- the two things that can move it. Nothing reads it on a steady
+  // frame, which is the point.
+  rowPitch() {
+    const rows = this.bodyEl.children;
+    if (rows.length < 2) return 0;
+    if (this.rowPitchValue > 0 && this.rowPitchRows === rows.length) return this.rowPitchValue;
+    const pitch = (rows[rows.length - 1].offsetTop - rows[0].offsetTop) / (rows.length - 1);
+    if (!(pitch > 0)) return 0;
+    this.rowPitchValue = pitch;
+    this.rowPitchRows = rows.length;
+    return pitch;
+  }
+
+  // The rows near enough to the window to be worth moving. `scrollTop` is read
+  // before any of this render's writes, so it costs nothing: nothing has
+  // dirtied the layout yet.
+  visibleRowBand(pitch, rowCount) {
+    const height = this.scrollHeight;
+    if (!(height > 0)) return null;
+    const first = Math.floor(this.scrollTop / pitch) - FLIP_BAND_BUFFER_ROWS;
+    const last = Math.ceil((this.scrollTop + height) / pitch) + FLIP_BAND_BUFFER_ROWS;
+    return { first: Math.max(0, first), last: Math.min(rowCount - 1, last) };
+  }
+
+  // Every row back to rest. Used where a render is not going to animate at all,
+  // so a glide interrupted by a sort or a change of variable does not leave a
+  // row parked off its own line.
+  settleGlides() {
+    for (const tr of this.movingRows) {
+      tr.classList.remove("is-moving");
+      tr.style.transform = "";
+    }
+    this.movingRows.clear();
+    this.glideEndsAt = 0;
   }
 
   buildRow(row) {
     const tr = document.createElement("tr");
     tr.className = "table-view-row";
     tr.dataset.rowKey = row.rowKey;
+    // Focusable, but only one row at a time is in the tab order -- see
+    // syncRowTabStop. Without this the follow mark would be a mouse-only
+    // feature, and it is the one interaction this view has.
+    tr.tabIndex = -1;
 
     for (const column of COLUMNS) {
       const cell = document.createElement(column.rowHeader ? "th" : "td");
       if (column.rowHeader) cell.scope = "row";
       if (column.numeric) cell.className = "is-numeric";
       cell.dataset.column = column.key;
+      if (column.rowHeader) {
+        // Two children rather than a text node: the follow mark has to be in
+        // the row's *name* for a reader who cannot see the highlight, and
+        // fillRow writes the country name by replacing text -- which would
+        // take the mark with it if the two shared a node.
+        cell.appendChild(document.createElement("span"));
+        const marker = document.createElement("span");
+        marker.className = "visually-hidden";
+        marker.dataset.followMarker = "";
+        cell.appendChild(marker);
+        tr.appendChild(cell);
+        continue;
+      }
+      if (column.key === "change") {
+        // The glyph is `aria-hidden` and the sentence beside it is what is
+        // read. An arrow is a picture of a fact, and "black up-pointing
+        // triangle" is not that fact -- nor is it the number of places, which
+        // is only in the words and the tooltip now.
+        const arrow = document.createElement("span");
+        arrow.className = "table-view-change-arrow";
+        arrow.setAttribute("aria-hidden", "true");
+        cell.appendChild(arrow);
+        const spoken = document.createElement("span");
+        spoken.className = "visually-hidden";
+        cell.appendChild(spoken);
+        tr.appendChild(cell);
+        continue;
+      }
       if (column.key === "classIndex") {
         // The class swatch is the one place the two views touch: it is painted
         // from the same ramp the legend bar is, through the same
@@ -740,18 +1225,38 @@ export class TableViewController extends BaseController {
     return tr;
   }
 
-  fillRow(tr, row, rank, legendColors) {
+  fillRow(tr, row, rank, legendColors, previous) {
     const cells = tr.children;
     COLUMNS.forEach((column, index) => {
       const cell = cells[index];
       if (!cell) return;
+      if (column.rowHeader) {
+        const text = cell.firstChild;
+        const next = this.cellText(row, column.key, rank);
+        if (text.textContent !== next) {
+          text.textContent = next;
+          cell.title = next;
+        }
+        return;
+      }
+      if (column.key === "change") {
+        this.fillChangeCell(cell, row, rank, previous);
+        return;
+      }
       if (column.key === "classIndex") {
         const swatch = cell.firstChild;
         const text = cell.lastChild;
         const classIndex = Number.isInteger(row.classIndex) ? row.classIndex : null;
         const color = classIndex === null ? "" : legendColors[classIndex - 1] || "";
-        swatch.style.background = color;
-        swatch.classList.toggle("is-empty", classIndex === null);
+        // Guarded like the text beside it. A class rarely moves from one year to
+        // the next, so almost every one of these 245 writes a frame was setting
+        // a colour to the colour it already had -- and a style write dirties the
+        // node whether or not the value changed.
+        if (swatch.style.background !== color) swatch.style.background = color;
+        const empty = classIndex === null;
+        if (swatch.classList.contains("is-empty") !== empty) {
+          swatch.classList.toggle("is-empty", empty);
+        }
         const next = classIndex === null ? "—" : String(classIndex);
         if (text.textContent !== next) text.textContent = next;
         return;
@@ -766,12 +1271,77 @@ export class TableViewController extends BaseController {
       if (column.clips) cell.title = next;
     });
 
-    tr.classList.toggle("is-no-data", row.value === null);
+    const noData = row.value === null;
+    if (tr.classList.contains("is-no-data") !== noData) tr.classList.toggle("is-no-data", noData);
+    this.applyFollowState(tr, row.rowKey);
+  }
+
+  // Did this row move up or down the table since the previous year the series
+  // has? Only that -- the number of places is in the words and the tooltip, not
+  // on the row. A column of arrows *and* figures reads as a stock ticker, and
+  // the question a reader is asking while the animation plays is the simpler
+  // one: is my country climbing or falling?
+  //
+  // Colour carries it as well as the glyph, never instead of it: green and
+  // terracotta are the hard pair for the commonest colour blindness, so the
+  // direction has to survive them being the same colour, and a triangle does.
+  fillChangeCell(cell, row, rank, previous) {
+    const [arrow, spoken] = cell.children;
+    const change = this.changeFor(row.rowKey, rank, previous);
+
+    if (change === undefined) {
+      // The year is on its way; the cell fills in when it lands rather than
+      // claiming there is nothing to compare against.
+      this.setChangeCell(cell, arrow, spoken, "", "", "", null);
+      return;
+    }
+    if (change === null) {
+      const why = previous.year === null
+        ? "No earlier year in this series"
+        : `Not in the ${previous.year} table`;
+      this.setChangeCell(cell, arrow, spoken, "", why, why, null);
+      return;
+    }
+    if (change.places === 0) {
+      const said = `Same position as ${change.from}`;
+      // A dot rather than an "=": most rows do not move in most years, and a
+      // column of equals signs is noise standing where the news should be.
+      this.setChangeCell(cell, arrow, spoken, "·", said, said, null);
+      return;
+    }
+    const up = change.places > 0;
+    const places = Math.abs(change.places);
+    const said = `${up ? "Up" : "Down"} ${places} ${places === 1 ? "place" : "places"} from ${change.from}`;
+    this.setChangeCell(cell, arrow, spoken, up ? "\u25B2" : "\u25BC", said, said, up ? "is-up" : "is-down");
+  }
+
+  // One write per changed node. This runs 177 times a frame, and a cell whose
+  // text has not moved must not be touched: assigning the same string still
+  // dirties the node and costs the layout.
+  setChangeCell(cell, arrow, spoken, arrowText, spokenText, title, direction) {
+    if (arrow.textContent !== arrowText) arrow.textContent = arrowText;
+    if (spoken.textContent !== spokenText) spoken.textContent = spokenText;
+    if (cell.title !== title) cell.title = title;
+    const up = direction === "is-up";
+    const down = direction === "is-down";
+    if (cell.classList.contains("is-up") !== up) cell.classList.toggle("is-up", up);
+    if (cell.classList.contains("is-down") !== down) cell.classList.toggle("is-down", down);
   }
 
   cellText(row, column, rank) {
     if (column === "rank") return String(rank);
-    if (column === "value") return row.value === null ? "—" : formatLegendValue(row.value);
+    // Memoised on the row the first time it is drawn, not computed when the
+    // payload arrives. `formatLegendValue` goes through `toLocaleString`, and
+    // formatting it per row per frame was 245 locale lookups a frame for an
+    // answer that cannot change -- but formatting it on arrival was worse
+    // again, because the read-ahead fetches dozens of years and most of them
+    // are never drawn. Measured both ways: this is the one that is free.
+    if (column === "value") {
+      if (row.valueText === undefined) {
+        row.valueText = row.value === null ? "\u2014" : formatLegendValue(row.value);
+      }
+      return row.valueText;
+    }
     return row[column] || "—";
   }
 

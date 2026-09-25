@@ -126,11 +126,11 @@
       </aside>
 
       <!-- Before the map in the source, though it is painted over it: the
-           timeline is fixed to the *top* of the map pane and the legend dock is
-           at its foot, so a tab order following the source used to run sidebar
-           -> zoom -> legend (bottom) -> timeline (top). It is `position: fixed`
-           and takes no grid cell either way, so where it sits among its
-           siblings is a question of reading order and nothing else. -->
+           timeline is fixed to the *top* of the map pane, so a tab order
+           following the source would otherwise run sidebar -> map controls ->
+           timeline (top). It is `position: fixed` and takes no grid cell
+           either way, so where it sits among its siblings is a question of
+           reading order and nothing else. -->
       <div id="timeline-overlay">
         <div class="timeline-main">
           <div class="timeline-controls">
@@ -175,11 +175,21 @@
             </div>
           </div>
         </div>
-        <!-- What the map is showing, under the year it is showing it for. The
-             legend dock says the same thing at the foot of the map, which is a
-             long way from the timeline on a tall window. -->
+        <!-- What the map is showing, under the year it is showing it for, and
+             now the only place it is said: the legend dock that used to repeat
+             it at the foot of the map is gone. -->
         <p id="timelineVariableTitle" class="timeline-variable-title">
           <span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        </p>
+        <!-- How the colours are to be read, directly under the variable they
+             are reading. This was the left half of the legend dock at the foot
+             of the map, which put the words a whole map away from the title
+             they qualify; the dock is gone and the bar itself now sits in the
+             map dashboard, so the sentence comes up here instead. Filled by
+             MapController.initializeLegend(). -->
+        <p id="mapLegendCopy" class="timeline-legend-copy">
+          <span class="legend-title"></span>
+          <span class="legend-note"></span>
         </p>
         <!-- Not a live region any more. The slider announces its own value (and
              `aria-valuetext` makes that value say how many countries the year
@@ -216,47 +226,6 @@
         </div>
         <p id="mapAnnouncer" class="visually-hidden" role="status" aria-live="polite"></p>
 
-        <!-- Which of the two readings of the year is on screen. A radiogroup
-             rather than a tablist: the two are not tabs into panels beside
-             them, they are one choice with two answers, and the variable list
-             already says that shape in this app. Roving tabindex and arrow
-             keys come with the role; DemscoreApp binds both.
-
-             It floats over the map pane rather than sitting in the sidebar
-             because it switches what is under it, and because the sidebar
-             collapses to a band at the phone breakpoint where there is no
-             room for it. -->
-        <div
-          id="viewSwitch"
-          class="view-switch"
-          role="radiogroup"
-          aria-label="How to show this year"
-        >
-          <button
-            id="viewSwitchMap"
-            type="button"
-            role="radio"
-            class="view-switch-option"
-            data-view="map"
-            aria-checked="true"
-          >
-            <i data-lucide="hexagon" aria-hidden="true"></i>
-            <span>Map</span>
-          </button>
-          <button
-            id="viewSwitchTable"
-            type="button"
-            role="radio"
-            class="view-switch-option"
-            data-view="table"
-            aria-checked="false"
-            tabindex="-1"
-          >
-            <i data-lucide="table" aria-hidden="true"></i>
-            <span>Table</span>
-          </button>
-        </div>
-
         <div id="mapCanvas" class="map-canvas">
           <div id="loading-indicator" aria-hidden="true"></div>
         </div>
@@ -269,10 +238,11 @@
              is re-measured every time it comes back is a map that has lost its
              place.
 
-             Not the same thing as #mapDataDialog. That is the map's non-visual
-             equivalent, opened over the map and closed again; this one is *on*
-             while the year moves, which is what lets a ranking reorder under
-             the reader as the animation plays. -->
+             It replaced a modal of the same rows (#mapDataDialog), which was
+             opened over the map and closed again. This one is *on* while the
+             year moves, which is what lets a ranking reorder under the reader
+             as the animation plays, and it is reached from the same View
+             switch that picks a projection. -->
         <section
           id="tableView"
           class="table-view"
@@ -291,14 +261,29 @@
 
                  Each line is `nowrap` with an ellipsis and carries its full
                  text in `title`; what gets cut is the tail of a sentence the
-                 legend dock below and the caption above both repeat. -->
+                 caption over the timeline repeats. -->
             <p id="tableViewSummary" class="table-view-summary">
               <span id="tableViewSelection" class="table-view-summary-line"></span>
               <span id="tableViewCoverage" class="table-view-summary-line is-muted"></span>
             </p>
-            <button id="tableViewDownloadBtn" type="button" class="table-view-download" disabled>
-              Download CSV
-            </button>
+            <!-- The two things that act on the table as a whole, at the end
+                 of the head row. "Deselect all" is `hidden` until there is
+                 something to deselect: a control that spends most of its life
+                 greyed out is a control nobody reads, and its count is the
+                 only place the number of marks is written down. -->
+            <div class="table-view-head-actions">
+              <button
+                id="tableViewClearFollowBtn"
+                type="button"
+                class="table-view-clear-follow"
+                hidden
+              >
+                Deselect all
+              </button>
+              <button id="tableViewDownloadBtn" type="button" class="table-view-download" disabled>
+                Download CSV
+              </button>
+            </div>
           </div>
           <!-- Focusable on purpose, and one of the few things that should be:
                it scrolls, and a scrollable box with no tab stop cannot be
@@ -335,7 +320,6 @@
         <!-- Spoken counterpart to the spinner, and only for loads slow enough
              to be worth interrupting a reader over. -->
         <p id="mapLoadingStatus" class="visually-hidden" role="status" aria-live="polite"></p>
-        <div id="mapLegendDock" class="map-legend-dock" role="group" aria-label="Map legend"></div>
       </main>
 
     </div>
@@ -409,43 +393,6 @@
       </div>
       <div id="variableTooltipBody" class="variable-tooltip-body"></div>
     </div>
-
-    <!-- The map as rows, for anyone who cannot be shown a picture of it, and
-         for anyone who wants the number rather than the shade. Modal, so the
-         browser handles the focus trap and Escape; see MapDataController. -->
-    <dialog id="mapDataDialog" class="map-data-dialog" aria-labelledby="mapDataDialogTitle">
-      <div class="mobile-dialog-header">
-        <h2 id="mapDataDialogTitle">Data table</h2>
-        <button id="mapDataCloseBtn" type="button" class="mobile-dialog-close-btn" aria-label="Close data table">
-          <i data-lucide="x" aria-hidden="true"></i>
-        </button>
-      </div>
-      <p id="mapDataSummary" class="map-data-summary"></p>
-      <!-- Focusable on purpose, and one of the few things that should be: it
-           scrolls, and a scrollable box with no tab stop cannot be scrolled
-           from the keyboard at all. It has a role and a name to go with it. -->
-      <div
-        id="mapDataTableWrap"
-        class="map-data-table-wrap"
-        role="region"
-        aria-labelledby="mapDataDialogTitle"
-        tabindex="0"
-      >
-        <table class="map-data-table">
-          <caption id="mapDataTableCaption" class="visually-hidden"></caption>
-          <thead id="mapDataTableHead"></thead>
-          <tbody id="mapDataTableBody"></tbody>
-        </table>
-      </div>
-      <!-- Which boundary sources the rows above rest on, and the way from a row
-           to the licence that covers it. A hexagon drawn on an 1815 snapshot and
-           one drawn on a present-day border are the same picture; this and the
-           Boundary column are the only places that difference is legible. -->
-      <p id="mapDataBoundaryNote" class="map-data-boundary-note"></p>
-      <p class="map-data-footer">
-        <button id="mapDataDownloadBtn" type="button" class="map-data-download">Download this table as CSV</button>
-      </p>
-    </dialog>
 
     <dialog
       id="mobileVariablePickerDialog"

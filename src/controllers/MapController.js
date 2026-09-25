@@ -50,6 +50,21 @@ const LEGEND_TIP_ARROW_INSET_PX = 14;
 // the cache keeps the hovered ones, not the whole timeline.
 const CLASS_BREAKS_CACHE_LIMIT = 120;
 
+// The third choice in the View switch, beside the two projections. It is not a
+// projection and never reaches `setProjection`; it is here because the three are
+// one question -- how to show this year -- and a reader who wants the numbers
+// rather than the picture is making the same choice as one who wants equal area
+// rather than equal angle. DemscoreApp owns what it does; this file owns the
+// control that asks for it.
+const TABLE_VIEW_KEY = "table";
+const VIEW_CHOICE_KEYS = [...PROJECTION_KEYS, TABLE_VIEW_KEY];
+const VIEW_CHOICE_ICONS = {
+  equalEarth: "globe-2",
+  webMercator: "map",
+  [TABLE_VIEW_KEY]: "table",
+};
+const TABLE_VIEW_TITLE = "This year as a sortable table of countries, instead of the map";
+
 const MIN_ZOOM_FLOOR = 0;
 const MAX_ZOOM = 6;
 const INITIAL_CENTER_LON_LAT = [10, 20];
@@ -198,6 +213,7 @@ export class MapController extends BaseController {
     onLayerParamsChange,
     onStateChange,
     onOpenAttribution,
+    onViewChange,
   }) {
     super();
     this.state = state;
@@ -215,6 +231,11 @@ export class MapController extends BaseController {
     // map is showing passes through. MapDataController hangs the spoken summary
     // off it.
     this.onStateChange = typeof onStateChange === "function" ? onStateChange : () => {};
+    // The View switch picks a projection or the table; the table half is not
+    // this controller's to act on, so it is handed back to DemscoreApp, which
+    // owns `state.view`. The switch still reads `state.view` directly for its
+    // own selected state -- one radiogroup cannot have its answer in two places.
+    this.onViewChange = typeof onViewChange === "function" ? onViewChange : () => {};
     this.areaOutlinesEnabled = readAreaOutlinesEnabled(AREA_OUTLINES_DEFAULT);
     // Whether the map is the view on screen. The table view covers it rather
     // than unmounting it -- see the note over #tableView in index.html -- so the
@@ -227,7 +248,6 @@ export class MapController extends BaseController {
 
     this.loadingIndicator = this.getEl("loading-indicator");
     this.loadingStatusEl = this.getEl("mapLoadingStatus");
-    this.legendDock = this.getEl("mapLegendDock");
     this.legendTip = this.getEl("legendTooltip");
     this.legendTipClassEl = this.getEl("legendTooltipClass");
     this.legendTipRangeEl = this.getEl("legendTooltipRange");
@@ -247,7 +267,7 @@ export class MapController extends BaseController {
     this.layerSwapWaiters = [];
     this.viewListeners = [];
     this.zoomReadoutEl = null;
-    this.projectionButtons = [];
+    this.viewButtons = [];
     this.paletteButtons = [];
     this.paletteSwatchEls = new Map();
     this.layerToggleInputs = [];
@@ -256,8 +276,8 @@ export class MapController extends BaseController {
     this.mapChoiceDashboardEl = null;
 
     this.legend = null;
+    this.legendCopyEl = this.getEl("mapLegendCopy");
     this.legendTitleEl = null;
-    this.legendSubtitleEl = null;
     this.legendBarEl = null;
     this.legendLowEl = null;
     this.legendHighEl = null;
@@ -333,8 +353,10 @@ export class MapController extends BaseController {
       this.onOpenAttribution(button);
     });
 
-    this.initializeLegend();
+    // The dashboard first: the legend bar is built into its Colours panel now,
+    // so the panel has to exist before there is anywhere to put it.
     this.installDisplayOptions();
+    this.initializeLegend();
     this.installZoomIndicator();
     this.applyWorldFit();
     this.bindViewEvents();
@@ -353,7 +375,6 @@ export class MapController extends BaseController {
     // pan and a zoom both come to rest, and the mesh only needs re-picking once
     // the view has settled.
     this.map.on("moveend", () => this.updateHexLayerForZoom());
-    window.addEventListener("resize", () => this.rebalanceLegendPosition());
   }
 
   // A view belongs to one projection and cannot be moved to another, so this is
@@ -511,6 +532,13 @@ export class MapController extends BaseController {
 
   getMap() {
     return this.map;
+  }
+
+  // The dashboard is a child of the pane rather than of the canvas, so the
+  // table view -- which covers the canvas -- has to leave room for it at its
+  // foot. DemscoreApp measures it; this is the only way to reach it.
+  getMapChoiceDashboard() {
+    return this.mapChoiceDashboardEl;
   }
 
   getContainer() {
@@ -814,17 +842,22 @@ export class MapController extends BaseController {
     const container = document.createElement("div");
     container.className = "ol-unselectable map-choice-dashboard";
     container.innerHTML = `
-      <div class="map-choice-section map-projection-panel">
-        <p id="mapProjectionLabel" class="map-choice-label">Projection</p>
-        <div class="map-projection-switch" role="radiogroup" aria-labelledby="mapProjectionLabel">
-          <span class="map-projection-selection" aria-hidden="true"></span>
-          ${PROJECTION_KEYS.map((key) => {
-            const projection = getMapProjection(key);
-            const icon = key === "webMercator" ? "map" : "globe-2";
-            return `
-              <button class="map-projection-choice" type="button" role="radio" value="${key}" title="${projection.title}">
-                <i class="map-projection-icon" data-lucide="${icon}" aria-hidden="true"></i>
-                <span>${projection.label}</span>
+      <div class="map-choice-section map-view-panel">
+        <p id="mapViewLabel" class="map-choice-label">View</p>
+        <div class="map-view-switch" role="radiogroup" aria-labelledby="mapViewLabel">
+          <span class="map-view-selection" aria-hidden="true"></span>
+          ${VIEW_CHOICE_KEYS.map((key) => {
+            const isTable = key === TABLE_VIEW_KEY;
+            const label = isTable ? "Table" : getMapProjection(key).label;
+            const title = isTable ? TABLE_VIEW_TITLE : getMapProjection(key).title;
+            // The rule before the last option, not between all three: the two
+            // projections are two ways of drawing the same picture and the
+            // third is not a picture at all.
+            const rule = isTable ? '<span class="map-view-divider" aria-hidden="true"></span>' : "";
+            return `${rule}
+              <button class="map-view-choice" type="button" role="radio" value="${key}" title="${title}">
+                <i class="map-view-icon" data-lucide="${VIEW_CHOICE_ICONS[key]}" aria-hidden="true"></i>
+                <span>${label}</span>
               </button>`;
           }).join("")}
         </div>
@@ -832,6 +865,11 @@ export class MapController extends BaseController {
       <span class="map-choice-divider" aria-hidden="true"></span>
       <div class="map-choice-section map-palette-panel">
         <p id="mapPaletteLabel" class="map-choice-label">Colours</p>
+        <!-- initializeLegend() fills this, and it is above the picker rather
+             than below it: the bar is what the reader is reading the map
+             against, and the four schemes under it are the choice that made it.
+             Key first, control second. -->
+        <div class="map-legend-slot"></div>
         <div class="map-palette-list" role="radiogroup" aria-labelledby="mapPaletteLabel">
           <span class="map-palette-selection" aria-hidden="true"></span>
           ${PALETTE_KEYS.map((key) => {
@@ -840,7 +878,12 @@ export class MapController extends BaseController {
               <span class="map-palette-swatches" data-palette-swatches="${key}" aria-hidden="true">${palette.signed.colors
                 .map((color) => `<i style="--palette-swatch: ${color}"></i>`)
                 .join("")}</span>
-              <span class="map-palette-name">${palette.label}</span>
+              <!-- Visually hidden, not removed: the swatch strip is the whole
+                   button and the strip is aria-hidden, so without this the
+                   button would have no accessible name but its tooltip. The
+                   name is on the pointer through the title attribute and in
+                   the accessible tree through this. -->
+              <span class="map-palette-name visually-hidden">${palette.label}</span>
             </button>`;
           }).join("")}
         </div>
@@ -870,12 +913,12 @@ export class MapController extends BaseController {
         </label>
       </div>`;
 
-    this.projectionButtons = Array.from(container.querySelectorAll(".map-projection-choice"));
-    for (const button of this.projectionButtons) {
-      button.addEventListener("click", () => this.setProjection(button.value));
+    this.viewButtons = Array.from(container.querySelectorAll(".map-view-choice"));
+    for (const button of this.viewButtons) {
+      button.addEventListener("click", () => this.chooseView(button.value));
     }
-    const projectionSwitch = container.querySelector(".map-projection-switch");
-    projectionSwitch.addEventListener("keydown", (event) => this.onProjectionKeydown(event));
+    const viewSwitch = container.querySelector(".map-view-switch");
+    viewSwitch.addEventListener("keydown", (event) => this.onViewKeydown(event));
     this.paletteButtons = Array.from(container.querySelectorAll("[data-palette-swatches]")).map((swatches) =>
       swatches.closest("button"),
     );
@@ -900,14 +943,35 @@ export class MapController extends BaseController {
     this.currentPaletteSwatchEls = Array.from(container.querySelectorAll("[data-current-palette-swatches] i"));
 
     this.mapChoiceDashboardEl = container;
-    this.syncProjectionSelector();
+    this.syncViewSelector();
     this.syncPaletteSelector();
     this.syncOutlineToggle();
     this.syncPaletteSwatches();
     if (window.lucide && typeof window.lucide.createIcons === "function") {
       window.lucide.createIcons();
     }
-    this.map.addControl(new ol.control.Control({ element: container }));
+    // A child of the pane, not an OpenLayers control. A control lives inside
+    // `#mapCanvas`, and the table view covers that element and makes it
+    // `inert` -- so a View switch parked in there would be hidden and
+    // unfocusable in exactly the view a reader needs it to get back out of.
+    // Outside the map element it is not in the map's event path at all, which
+    // is what the stop-event container was buying.
+    this.getEl("map").append(container);
+  }
+
+  // The three-way answer to "how do I want to see this year". Two of the three
+  // are projections and go to setProjection; the third is the table, and it is
+  // DemscoreApp that owns that. Picking a projection while the table is on
+  // screen means both: the projection is set on the map underneath and the map
+  // is what comes back, which is the only reading of that click that does not
+  // leave the reader looking at a table they just asked to change the shape of.
+  chooseView(key) {
+    if (key === TABLE_VIEW_KEY) {
+      this.onViewChange(TABLE_VIEW_KEY);
+      return;
+    }
+    this.setProjection(key);
+    this.onViewChange("map");
   }
 
   onPaletteKeydown(event) {
@@ -931,13 +995,13 @@ export class MapController extends BaseController {
     this.paletteButtons[nextIndex]?.focus();
   }
 
-  onProjectionKeydown(event) {
+  onViewKeydown(event) {
     const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
     if (!keys.includes(event.key)) return;
 
     event.preventDefault();
-    const currentIndex = Math.max(0, PROJECTION_KEYS.indexOf(this.projectionKey));
-    const lastIndex = PROJECTION_KEYS.length - 1;
+    const currentIndex = this.currentViewChoiceIndex();
+    const lastIndex = VIEW_CHOICE_KEYS.length - 1;
     let nextIndex = currentIndex;
     if (event.key === "Home") {
       nextIndex = 0;
@@ -945,11 +1009,19 @@ export class MapController extends BaseController {
       nextIndex = lastIndex;
     } else {
       const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
-      nextIndex = (currentIndex + direction + PROJECTION_KEYS.length) % PROJECTION_KEYS.length;
+      nextIndex = (currentIndex + direction + VIEW_CHOICE_KEYS.length) % VIEW_CHOICE_KEYS.length;
     }
 
-    this.setProjection(PROJECTION_KEYS[nextIndex]);
-    this.projectionButtons[nextIndex]?.focus();
+    this.chooseView(VIEW_CHOICE_KEYS[nextIndex]);
+    this.viewButtons[nextIndex]?.focus();
+  }
+
+  // Which of the three is answered. The table wins when it is on screen: the
+  // projection it will come back to is remembered but is not the answer to this
+  // question while nothing is being projected.
+  currentViewChoiceIndex() {
+    if (this.state.view === TABLE_VIEW_KEY) return VIEW_CHOICE_KEYS.length - 1;
+    return Math.max(0, PROJECTION_KEYS.indexOf(this.projectionKey));
   }
 
   // The zoom reading and layer switches are there for whoever is working on the
@@ -971,7 +1043,7 @@ export class MapController extends BaseController {
   syncDisplayOptions() {
     if (!this.displayOptionsEl) return;
 
-    this.syncProjectionSelector();
+    this.syncViewSelector();
     this.syncPaletteSelector();
     this.syncPaletteSwatches();
     this.syncOutlineToggle();
@@ -1005,7 +1077,10 @@ export class MapController extends BaseController {
       const label = paletteLabelFor(button.value, polarity);
       const name = button.querySelector(".map-palette-name");
       if (name) name.textContent = label;
-      button.title = paletteDescriptionFor(button.value, polarity);
+      // The scheme's name is not painted on the button any more -- four names
+      // cost a line of the dashboard's height and the swatches say which is
+      // which -- so the tooltip has to carry it as well as the description.
+      button.title = `${label} — ${paletteDescriptionFor(button.value, polarity)}`;
       const option = this.paletteSelectOptions?.get(button.value);
       if (option) option.textContent = label;
     });
@@ -1015,18 +1090,26 @@ export class MapController extends BaseController {
     if (this.outlineToggle) this.outlineToggle.checked = this.areaOutlinesEnabled;
   }
 
-  syncProjectionSelector() {
+  syncViewSelector() {
     if (!this.mapChoiceDashboardEl) return;
 
-    const selected = Math.max(0, PROJECTION_KEYS.indexOf(this.projectionKey));
-    const projectionSwitch = this.mapChoiceDashboardEl.querySelector(".map-projection-switch");
-    projectionSwitch?.style.setProperty("--selected", selected);
-    this.projectionButtons.forEach((button, index) => {
+    const selected = this.currentViewChoiceIndex();
+    const viewSwitch = this.mapChoiceDashboardEl.querySelector(".map-view-switch");
+    viewSwitch?.style.setProperty("--selected", selected);
+    // The rule before the last option is a 1px grid track, so the slab has one
+    // more gap to cross on its way to the table than it does between the two
+    // projections. Two numbers rather than a `calc` that branches on a count.
+    viewSwitch?.style.setProperty("--past-divider", selected === VIEW_CHOICE_KEYS.length - 1 ? 1 : 0);
+    this.viewButtons.forEach((button, index) => {
       const active = index === selected;
       button.classList.toggle("is-selected", active);
       button.setAttribute("aria-checked", active ? "true" : "false");
       button.tabIndex = active ? 0 : -1;
     });
+    // An outline is a thing the picture has and the table has not, so the
+    // control for it is turned off rather than left to do nothing when pressed.
+    const outlinePanel = this.mapChoiceDashboardEl.querySelector(".map-outline-panel");
+    if (outlinePanel) outlinePanel.inert = this.state.view === TABLE_VIEW_KEY;
   }
 
   syncPaletteSelector() {
@@ -1281,36 +1364,39 @@ export class MapController extends BaseController {
     return matchingRule ? { ...merged, ...matchingRule } : merged;
   }
 
+  // The legend is in two places now, because it says two kinds of thing. The
+  // *scale* -- the ramp, the two ends of it, and the colour that means "no
+  // value" -- is a key to the picture and sits in the map dashboard's Colours
+  // panel, immediately under the picker that chose those colours. The *words*
+  // go up under the variable caption over the timeline, because what they
+  // qualify is the variable, not the bar.
+  //
+  // Both used to be one dock across the foot of the pane, 154px of the window
+  // spent on a block that was mostly air, and a whole map away from either of
+  // the things it belonged to.
   initializeLegend() {
     const div = document.createElement("div");
-    div.className = "map-legend";
+    div.className = "legend-scale";
+    // A group with a name: seven swatches and a no-data patch are one key, and
+    // a reader landing on the first swatch should hear what it is part of. The
+    // dock used to carry this.
+    div.setAttribute("role", "group");
+    div.setAttribute("aria-label", "Map legend");
     div.innerHTML = `
-      <div class="legend-copy">
-        <div class="legend-title"></div>
-        <div class="legend-subtitle"></div>
-        <!-- The way into the map's contents that does not go through the
-             picture. MapDataController binds it; the button lives here because
-             the legend is where "what am I looking at" already is. -->
-        <button id="mapDataTableBtn" type="button" class="legend-data-button" aria-haspopup="dialog">
-          Data table
-        </button>
-      </div>
-      <div class="legend-scale">
-        <div class="legend-bar"></div>
-        <div class="legend-labels"><span></span><span></span></div>
-        <p class="legend-nodata">
-          <span class="legend-nodata-swatch" aria-hidden="true"></span>
-          <span class="legend-nodata-label">No data</span>
-        </p>
-        <div class="legend-note"></div>
-      </div>`;
+      <div class="legend-bar"></div>
+      <div class="legend-labels"><span></span><span></span></div>
+      <p class="legend-nodata">
+        <span class="legend-nodata-swatch" aria-hidden="true"></span>
+        <span class="legend-nodata-label">No data</span>
+      </p>`;
 
-    this.legendTitleEl = div.querySelector(".legend-title");
-    this.legendSubtitleEl = div.querySelector(".legend-subtitle");
+    // Written into the timeline overlay rather than built here: the markup is
+    // in index.html because that is where its position on the page is decided.
+    this.legendTitleEl = this.legendCopyEl?.querySelector(".legend-title") || null;
+    this.legendNoteEl = this.legendCopyEl?.querySelector(".legend-note") || null;
     this.legendBarEl = div.querySelector(".legend-bar");
     this.legendLowEl = div.querySelector(".legend-labels span:first-child");
     this.legendHighEl = div.querySelector(".legend-labels span:last-child");
-    this.legendNoteEl = div.querySelector(".legend-note");
     this.legendNoDataEl = div.querySelector(".legend-nodata");
     // A country with no value for this variable and year is simply not drawn,
     // and neither is its outline, so what shows through is the land basemap.
@@ -1330,7 +1416,7 @@ export class MapController extends BaseController {
     this.legendNoDataEl.appendChild(noDataText);
     this.legend = div;
     this.legend.style.setProperty("--land-basemap", LAND_BASEMAP_COLOR);
-    this.legendDock.append(div);
+    this.mapChoiceDashboardEl.querySelector(".map-legend-slot").append(div);
 
     // The swatches are built once and only recoloured afterwards: rebuilding the
     // bar per refresh would drop the focus and the hover the tooltip hangs off.
@@ -1539,18 +1625,16 @@ export class MapController extends BaseController {
   }
 
   refreshLegend() {
+    // The variable, its key, its dataset and the year used to be repeated here
+    // as a legend subtitle. They are the caption over the timeline, word for
+    // word, and the legend's words now sit directly under that caption -- so
+    // the line said the same thing twice in a row and one of them has gone.
     const text = this.resolveLegendMeaning(this.state.dataset, this.state.variable);
-    const variableTitle = this.metadataController.getVariableTitle(this.state.dataset, this.state.variable);
-    const datasetMeta = this.meta.datasets[this.state.dataset];
-    const datasetTitle = datasetMeta?.title || datasetMeta?.label || this.state.dataset;
     const polarity = this.metadataController.getActivePolarity();
     const legendColors = this.legendColorsForPolarity(polarity);
     this.syncPaletteSwatches();
 
     if (this.legendTitleEl) this.legendTitleEl.textContent = text.title;
-    if (this.legendSubtitleEl) {
-      this.legendSubtitleEl.textContent = `${variableTitle} (${this.state.variable}) - ${datasetTitle}, ${this.state.year}`;
-    }
     // Swatch i always stands for quantile class i + 1, low to high: the mapfile
     // reorders the classes per polarity, and reversing the colours here is what
     // keeps the bar reading left-to-right low-to-high whichever way it does.
@@ -1560,11 +1644,26 @@ export class MapController extends BaseController {
     // Whatever is already known for this variable-year; the request started
     // below (or an earlier hover's) rewrites them when it lands.
     this.applyLegendSwatchLabels(this.getCachedClassBreaks());
-    if (this.legendLowEl) this.legendLowEl.textContent = text.low;
-    if (this.legendHighEl) this.legendHighEl.textContent = text.high;
+    // `title` because the two are clipped to one line where the pane is narrow;
+    // see the note on `.legend-labels` in the narrow-dashboard block.
+    if (this.legendLowEl) {
+      this.legendLowEl.textContent = text.low;
+      this.legendLowEl.title = text.low;
+    }
+    if (this.legendHighEl) {
+      this.legendHighEl.textContent = text.high;
+      this.legendHighEl.title = text.high;
+    }
     if (this.legendNoteEl) {
       const directionHint = this.legendDirectionHint(polarity);
-      this.legendNoteEl.textContent = `${text.note} ${directionHint}`;
+      const note = `${text.note} ${directionHint}`;
+      this.legendNoteEl.textContent = note;
+      // One line over the map, clipped where the pane is narrow: the note runs
+      // to a sentence and a half for some indicators and a line that wrapped
+      // would move the map's top inset under the reader. The full text is a
+      // hover away here, and is in `#mapSummary` in words for anyone not
+      // hovering.
+      this.legendNoteEl.title = note;
     }
 
     // The card on screen belongs to the variable-year that just left.
@@ -1575,7 +1674,6 @@ export class MapController extends BaseController {
       void this.ensureClassBreaks(this.classBreaksKey());
     }
 
-    window.requestAnimationFrame(() => this.rebalanceLegendPosition());
     // Everything that reads the map without looking at it hangs off this one
     // call, because refreshLegend is the single place every change of dataset,
     // variable, year or polarity passes through — including an autoplay frame.
@@ -1656,10 +1754,6 @@ export class MapController extends BaseController {
     this.loadNextLayer();
     this.refreshLegend();
     this.onLayerParamsChange();
-  }
-
-  rebalanceLegendPosition() {
-    this.map?.updateSize();
   }
 
   installZoomIndicator() {
