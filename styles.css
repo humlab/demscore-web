@@ -1328,6 +1328,40 @@ textarea {
   line-height: 1.45;
 }
 
+/* The three organisations behind the map, in one row that wraps on a phone.
+   Sized by eye rather than to one height: the Demscore mark fills its whole box
+   edge to edge, while InfraVis and Umeå carry a small wordmark under or beside a
+   larger emblem, so at a shared height Demscore looked twice the size of either. */
+.about-logos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 28px;
+  margin: 4px 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.about-logos a {
+  display: block;
+  border-radius: 4px;
+}
+
+.about-logos a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.about-logos img {
+  display: block;
+  width: auto;
+  height: 52px;
+}
+
+.about-logos .about-logo-demscore {
+  height: 34px;
+}
+
 /* Hands the reader over to the sections. Quiet, because it is a signpost and
    not a claim. */
 .about-body .about-bridge {
