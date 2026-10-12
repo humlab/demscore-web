@@ -7,6 +7,7 @@ import { MetadataController } from "./controllers/MetadataController.js";
 import { LayerPreloadController } from "./controllers/LayerPreloadController.js";
 import { MapController } from "./controllers/MapController.js";
 import { MapDataController } from "./controllers/MapDataController.js";
+import { PanelCollapseController } from "./controllers/PanelCollapseController.js";
 import { TableViewController } from "./controllers/TableViewController.js";
 
 // The two readings of a year the app can be on. Map is the default: it is
@@ -37,10 +38,11 @@ export class DemscoreApp extends BaseController {
     this.timelineScale = null;
     this.timelinePreloadTrack = null;
     this.timelineWrap = null;
-    this.mapVariableTitle = null;
     this.yearPlayBtn = null;
-    this.speedDownBtn = null;
-    this.speedUpBtn = null;
+    this.speedButton = null;
+    this.speedPopup = null;
+    this.speedOptions = [];
+    this.speedActiveIndex = 0;
     this.speedDisplay = null;
 
     this.markerDragPointerId = null;
@@ -60,6 +62,11 @@ export class DemscoreApp extends BaseController {
     // leaving it stale -- and rewrite it where it already is.
     this.hoveredSegment = null;
     this.markTooltipPointer = null;
+    // How many countries each year of the variable on screen carries, from
+    // /api/year-counts. `key` is dataset|variable; `counts` stays null until
+    // the request lands, and the bars fall back to the strip's buckets until
+    // then.
+    this.yearCounts = null;
 
     this.AUTO_PLAY_MIN_SPEED = 1;
     this.AUTO_PLAY_MAX_SPEED = 8;
@@ -70,9 +77,12 @@ export class DemscoreApp extends BaseController {
     // has one of its own, below this; reaching this one means the answer was
     // lost rather than late -- a swap cancelled out from under the frame.
     this.AUTO_PLAY_FRAME_CEILING_MS = 12000;
-    this.PRELOAD_SEGMENT_MIN_PX = 14;
     this.PRELOAD_SEGMENT_MAX_PX = 18;
     this.PRELOAD_SEGMENT_GAP_PX = 2;
+    // The gap is at most this share of a year's slot, so on a long series --
+    // V-Dem's 236 years in a few hundred pixels -- a year is still a visible
+    // bar rather than a 1px sliver between two 2px gaps.
+    this.PRELOAD_SEGMENT_GAP_SHARE = 0.3;
     this.TIMELINE_DENSE_TICK_SPAN = 24;
     // How tall a read-ahead mark is drawn, in the px the CSS reserves for the
     // band (`--coverage-band-height`). A mark for years that carry any data at
@@ -191,6 +201,18 @@ export class DemscoreApp extends BaseController {
     });
     this.mapController.initialize();
 
+    // After the map, because the dashboard it folds and the map-only button it
+    // adds are both the map's. A panel going away changes how much of the pane
+    // the table view has to keep clear of, so the insets are measured again.
+    this.panelCollapseController = new PanelCollapseController({
+      mapController: this.mapController,
+      onLayoutChange: () => {
+        this.syncTimelineInset();
+        this.syncDashboardInset();
+      },
+    });
+    this.panelCollapseController.initialize();
+
     this.mapDataController = new MapDataController({
       state: this.state,
       meta,
@@ -242,7 +264,8 @@ export class DemscoreApp extends BaseController {
     this.refreshTimelineForActiveVariable();
     this.rememberMapSelection();
 
-    this.speedDisplay.textContent = `${this.state.autoPlaySpeed}x`;
+    this.renderSpeedOptions();
+    this.renderAutoPlaySpeed();
     this.updatePlayButton();
     // Before the first refresh, so a remembered table view never opens a layer
     // swap it would cancel in the next statement. The layer the map was built
@@ -263,10 +286,15 @@ export class DemscoreApp extends BaseController {
   // How much of the top of the map pane the timeline is standing on.
   //
   // `.table-view` reads it for the padding that keeps its first rows out from
-  // under the overlay, and `.map-variable-title` to sit just below it.
+  // under the overlay.
   // Measured rather than written down: the overlay's height changes with the
   // window width and with the variable's year span.
   syncTimelineInset() {
+    // Put away, the timeline stands on nothing but its reveal strip.
+    if (this.panelCollapseController?.isCollapsed("timeline")) {
+      this.mapContainer.style.setProperty("--timeline-inset", "24px");
+      return;
+    }
     const height = this.timelineOverlayEl?.getBoundingClientRect().height;
     if (!Number.isFinite(height) || height <= 0) return;
     // The overlay's own top offset is 12px; the rest is the gutter between it
@@ -374,10 +402,9 @@ export class DemscoreApp extends BaseController {
     this.timelinePreloadTrack = this.getEl("timelinePreloadTrack");
     this.timelineMarkTooltip = this.getEl("timelineMarkTooltip");
     this.timelineWrap = this.getEl("timelineWrap");
-    this.mapVariableTitle = this.getEl("mapVariableTitle");
     this.yearPlayBtn = this.getEl("yearPlayBtn");
-    this.speedDownBtn = this.getEl("speedDownBtn");
-    this.speedUpBtn = this.getEl("speedUpBtn");
+    this.speedButton = this.getEl("speedButton");
+    this.speedPopup = this.getEl("speedListbox");
     this.speedDisplay = this.getEl("speedDisplay");
     this.timelineOverlayEl = this.getEl("timeline-overlay");
     this.mapContainer = this.getEl("map");
@@ -456,13 +483,7 @@ export class DemscoreApp extends BaseController {
     this.timelineSelectedMarker.addEventListener("pointerup", (event) => this.endMarkerDrag(event));
     this.timelineSelectedMarker.addEventListener("pointercancel", (event) => this.endMarkerDrag(event));
 
-    this.speedDownBtn.addEventListener("click", () => {
-      this.setAutoPlaySpeed(this.state.autoPlaySpeed - 1);
-    });
-
-    this.speedUpBtn.addEventListener("click", () => {
-      this.setAutoPlaySpeed(this.state.autoPlaySpeed + 1);
-    });
+    this.bindSpeedDropdown();
   }
 
   getActiveTimelineCoverage() {
@@ -503,7 +524,42 @@ export class DemscoreApp extends BaseController {
   refreshTimelineForActiveVariable() {
     const coverage = this.getActiveTimelineCoverage();
     this.setTimelineBounds(coverage);
-    this.renderMapVariableTitle();
+    void this.loadYearCounts();
+  }
+
+  // Per-year country counts for the variable on screen, for the hover card and
+  // the bar heights. Asked once per variable; a response for a variable the
+  // reader has already left is dropped. A failure leaves the counts null, which
+  // is the bucketed strip and a card without a number -- what was there before.
+  async loadYearCounts() {
+    const { dataset, variable } = this.state;
+    const key = `${dataset}|${variable}`;
+    if (this.yearCounts?.key === key) return;
+    this.yearCounts = { key, counts: null };
+
+    let payload;
+    try {
+      const query = new URLSearchParams({ dataset, variable });
+      payload = await this.backendClient.fetchJson(`/api/year-counts?${query}`, "Could not load year counts");
+    } catch (error) {
+      console.warn(error);
+      return;
+    }
+    if (this.yearCounts?.key !== key || !payload?.counts) return;
+    this.yearCounts.counts = payload.counts;
+
+    this.applyCoverageHeights();
+    if (this.hoveredSegment && !this.timelineMarkTooltip.hidden) {
+      this.showMarkTooltip(this.hoveredSegment);
+    }
+  }
+
+  // The count for one year of the variable on screen: a number, 0 for a year
+  // with nothing, or undefined while the counts are not in yet.
+  getYearCount(year) {
+    const { dataset, variable } = this.state;
+    if (this.yearCounts?.key !== `${dataset}|${variable}` || !this.yearCounts.counts) return undefined;
+    return this.yearCounts.counts[year] ?? 0;
   }
 
   rememberMapSelection() {
@@ -512,21 +568,6 @@ export class DemscoreApp extends BaseController {
       variable: this.state.variable,
       year: this.state.year,
     });
-  }
-
-  // The variable's name in the map's top-left corner, under the timeline, so
-  // the colours are never without the thing they stand for. Only the name:
-  // the dataset and key are a hover away, and the variable list and the
-  // legend carry the rest. Hidden from assistive technology because
-  // `#mapSummary` already says it.
-  renderMapVariableTitle() {
-    if (!this.mapVariableTitle) return;
-
-    const { dataset, variable } = this.state;
-    const title = this.metadataController.getVariableTitle(dataset, variable);
-    const datasetMeta = this.meta.datasets?.[dataset];
-    this.mapVariableTitle.textContent = title;
-    this.mapVariableTitle.title = `${title} (${variable}) — ${this.metadataController.getDatasetTitle(datasetMeta, dataset)}`;
   }
 
   setTimelineBounds(coverage) {
@@ -634,64 +675,39 @@ export class DemscoreApp extends BaseController {
     return clientY >= band.top - 6 && clientY <= band.bottom + this.TIMELINE_AXIS_HOVER_SLACK_PX;
   }
 
-  // Segments partition the whole axis, so the year under the pointer is in
-  // exactly one of them.
+  // One segment per year, so the year under the pointer is exactly one of them.
   segmentAtClientX(clientX) {
     if (this.preloadSegments.length === 0) return null;
     const year = this.yearFromClientX(clientX);
     return this.preloadSegments.find((segment) => segment.years.includes(year)) || null;
   }
 
-  describeSegmentYears(segment) {
-    const { years } = segment;
-    return years[0] === years[years.length - 1] ? `${years[0]}` : `${years[0]}\u2013${years[years.length - 1]}`;
-  }
-
+  // The card says one thing about one year: how many countries the variable
+  // has a value for in it. That is the same figure the legend's coverage and
+  // the spoken summary give for the year on the map, counted the same way.
   describeSegmentData(segment) {
-    const total = segment.years.length;
-    const withData = segment.dataYears.length;
-    if (withData === 0) return total === 1 ? "No data for this year" : "No data for these years";
-    if (total === 1) return "Has data";
-    if (withData === total) return `Data in all ${total} years`;
-    return `Data in ${withData} of ${total} years`;
+    const [year] = segment.years;
+    if (segment.dataYears.length === 0) return "No data for this year";
+    const count = this.getYearCount(year);
+    if (count === undefined) return "Has data";
+    return `${count} ${count === 1 ? "country" : "countries"} with data`;
   }
 
-  // The fill on a mark is the read-ahead, and the read-ahead is not the same
-  // thing in the two views: the map reads tiles ahead, the table reads rows
-  // ahead. Same mark, same meaning -- "this year is ready" -- and it has to name
-  // the right thing or it is describing work nobody is doing.
-  describeSegmentTiles(segment) {
-    if (segment.dataYears.length === 0) return "";
-    const what = this.state.view === "table" ? "Table rows" : "Map tiles";
-    const status = segment.preloadStatus || "pending";
-    if (status === "loaded") return `${what} ready`;
-    if (status === "failed") return `${what} could not be loaded ahead`;
-    if (status === "loading") return `Loading ${what.toLowerCase()}, ${segment.preloadProgress || 0}%`;
-    return `${what} not loaded yet`;
-  }
-
+  // The year and its country count, and nothing else. It used to add the
+  // read-ahead's state ("Map tiles ready", a leftover from debugging it) and a
+  // note on what the bar heights mean; both went at the client's request.
   showMarkTooltip(segment) {
-    const lines = [this.describeSegmentData(segment), this.describeSegmentTiles(segment)].filter(Boolean);
     this.timelineMarkTooltip.innerHTML = "";
 
     const heading = document.createElement("p");
     heading.className = "timeline-mark-tooltip-years";
-    heading.textContent = this.describeSegmentYears(segment);
+    heading.textContent = String(segment.years[0]);
     this.timelineMarkTooltip.appendChild(heading);
 
-    for (const line of lines) {
-      const item = document.createElement("p");
-      item.className = "timeline-mark-tooltip-line";
-      item.textContent = line;
-      this.timelineMarkTooltip.appendChild(item);
-    }
-
-    const note = document.createElement("p");
-    note.className = "timeline-mark-tooltip-note";
-    // Only what the height means. The fill is read-ahead progress, and a bar
-    // filling up says "loading" well enough without naming caches.
-    note.textContent = "Bar height is how much data this variable has for those years.";
-    this.timelineMarkTooltip.appendChild(note);
+    const item = document.createElement("p");
+    item.className = "timeline-mark-tooltip-line";
+    item.textContent = this.describeSegmentData(segment);
+    this.timelineMarkTooltip.appendChild(item);
 
     this.timelineMarkTooltip.hidden = false;
     this.hoveredSegment = segment;
@@ -773,9 +789,137 @@ export class DemscoreApp extends BaseController {
     if (clamped === this.state.autoPlaySpeed) return;
 
     this.state.autoPlaySpeed = clamped;
-    this.speedDisplay.textContent = `${this.state.autoPlaySpeed}x`;
+    this.renderAutoPlaySpeed();
     if (this.state.isAutoPlaying) {
       this.scheduleAutoPlayTick();
+    }
+  }
+
+  // ---- the speed dropdown ----
+  //
+  // The speed square is a button that opens a listbox of speeds under it -- the
+  // select-only pattern, as in the Colours dropdown in MapController: the
+  // listbox takes focus and points at its options with aria-activedescendant.
+
+  describeSpeed(speed) {
+    return `${speed} ${speed === 1 ? "year" : "years"} per second`;
+  }
+
+  renderSpeedOptions() {
+    this.speedPopup.innerHTML = "";
+    this.speedOptions = [];
+    for (let speed = this.AUTO_PLAY_MIN_SPEED; speed <= this.AUTO_PLAY_MAX_SPEED; speed += 1) {
+      const option = document.createElement("div");
+      option.id = `speedOption-${speed}`;
+      option.className = "speed-option";
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", "false");
+      option.setAttribute("aria-label", this.describeSpeed(speed));
+      option.dataset.speed = String(speed);
+      option.textContent = `${speed}\u00d7`;
+      this.speedPopup.appendChild(option);
+      this.speedOptions.push(option);
+    }
+  }
+
+  bindSpeedDropdown() {
+    this.speedButton.addEventListener("click", () => {
+      if (this.speedPopup.hidden) this.openSpeedPopup();
+      else this.closeSpeedPopup(true);
+    });
+    this.speedButton.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      event.preventDefault();
+      this.openSpeedPopup();
+    });
+    this.speedPopup.addEventListener("keydown", (event) => this.onSpeedPopupKeydown(event));
+    this.speedPopup.addEventListener("focusout", (event) => {
+      if (!this.speedButton.parentElement.contains(event.relatedTarget)) this.closeSpeedPopup(false);
+    });
+    // Delegated: the options are written after this runs (renderSpeedOptions).
+    this.speedPopup.addEventListener("pointermove", (event) => {
+      const index = this.speedOptions.indexOf(event.target.closest(".speed-option"));
+      if (index >= 0 && index !== this.speedActiveIndex) this.setSpeedActive(index);
+    });
+    this.speedPopup.addEventListener("click", (event) => {
+      const option = event.target.closest(".speed-option");
+      if (!option) return;
+      this.setAutoPlaySpeed(option.dataset.speed);
+      this.closeSpeedPopup(true);
+    });
+    document.addEventListener("pointerdown", (event) => {
+      if (!this.speedPopup.hidden && !this.speedButton.parentElement.contains(event.target)) this.closeSpeedPopup(false);
+    });
+  }
+
+  openSpeedPopup() {
+    this.speedPopup.hidden = false;
+    this.speedButton.setAttribute("aria-expanded", "true");
+    const current = this.speedOptions.findIndex((option) => Number(option.dataset.speed) === this.state.autoPlaySpeed);
+    this.setSpeedActive(Math.max(0, current));
+    this.speedPopup.focus();
+  }
+
+  // `returnFocus` when it was closed from inside (a choice, Escape); not when
+  // focus or a click has already gone somewhere else.
+  closeSpeedPopup(returnFocus) {
+    if (this.speedPopup.hidden) return;
+    this.speedPopup.hidden = true;
+    this.speedButton.setAttribute("aria-expanded", "false");
+    this.speedPopup.removeAttribute("aria-activedescendant");
+    if (returnFocus) this.speedButton.focus();
+  }
+
+  setSpeedActive(index) {
+    this.speedActiveIndex = index;
+    this.speedOptions.forEach((option, optionIndex) => option.classList.toggle("is-active", optionIndex === index));
+    const active = this.speedOptions[index];
+    if (active) this.speedPopup.setAttribute("aria-activedescendant", active.id);
+  }
+
+  onSpeedPopupKeydown(event) {
+    const last = this.speedOptions.length - 1;
+    switch (event.key) {
+      case "ArrowDown":
+        this.setSpeedActive(Math.min(last, this.speedActiveIndex + 1));
+        break;
+      case "ArrowUp":
+        this.setSpeedActive(Math.max(0, this.speedActiveIndex - 1));
+        break;
+      case "Home":
+        this.setSpeedActive(0);
+        break;
+      case "End":
+        this.setSpeedActive(last);
+        break;
+      case "Enter":
+      case " ":
+        this.setAutoPlaySpeed(this.speedOptions[this.speedActiveIndex]?.dataset.speed);
+        this.closeSpeedPopup(true);
+        break;
+      case "Escape":
+        // Held here: Escape is also what leaves map-only.
+        event.stopPropagation();
+        this.closeSpeedPopup(true);
+        break;
+      case "Tab":
+        this.closeSpeedPopup(false);
+        return;
+      default:
+        return;
+    }
+    event.preventDefault();
+  }
+
+  // The button's reading, its name and the selected option, from the one
+  // number. The speed is years per second (getAutoPlayStepMs), so that is what
+  // it is called.
+  renderAutoPlaySpeed() {
+    const speed = this.state.autoPlaySpeed;
+    this.speedDisplay.textContent = `${speed}\u00d7`;
+    this.speedButton.setAttribute("aria-label", `Animation speed: ${this.describeSpeed(speed)}`);
+    for (const option of this.speedOptions) {
+      option.setAttribute("aria-selected", Number(option.dataset.speed) === speed ? "true" : "false");
     }
   }
 
@@ -788,12 +932,14 @@ export class DemscoreApp extends BaseController {
 
   updatePlayButton() {
     const iconName = this.state.isAutoPlaying ? "pause" : "play";
-    const label = this.state.isAutoPlaying ? "Pause" : "Animate";
 
-    this.yearPlayBtn.innerHTML = `<span>${label}</span><i data-lucide="${iconName}" aria-hidden="true"></i>`;
+    // Icon only, at the client's request: the word "Animate" is gone, so the
+    // name lives in `aria-label` and, for the pointer, `title`.
+    this.yearPlayBtn.innerHTML = `<i data-lucide="${iconName}" aria-hidden="true"></i>`;
     refreshIcons();
 
     this.yearPlayBtn.setAttribute("aria-label", this.state.isAutoPlaying ? "Pause timeline" : "Play timeline");
+    this.yearPlayBtn.title = this.state.isAutoPlaying ? "Pause" : "Play";
   }
 
   // What the preloader asks before every request it has to go to MapServer for.
@@ -1045,13 +1191,15 @@ export class DemscoreApp extends BaseController {
     // year -> pixel scale the ticks use. Sizing them off trackWidth / (segments - 1)
     // overstated that distance and quietly ate into the gap between boxes.
     const pxPerYear = trackWidth / span;
-    const fittingSegments = trackWidth > 0
-      ? Math.floor((yearCount * pxPerYear) / this.PRELOAD_SEGMENT_MIN_PX)
-      : yearCount;
-    const segmentCount = Math.max(1, Math.min(yearCount, fittingSegments));
-    const spacing = trackWidth > 0 ? (yearCount / segmentCount) * pxPerYear : 0;
+    // One mark per year, always. They used to be buckets of several years once
+    // the track was too narrow for a 14px mark each, and then a mark -- and the
+    // card over it -- spoke for a span, so "how many countries in this year"
+    // had no single answer. A long series now gets thin marks instead.
+    const segmentCount = yearCount;
+    const spacing = trackWidth > 0 ? pxPerYear : 0;
+    const gap = Math.min(this.PRELOAD_SEGMENT_GAP_PX, spacing * this.PRELOAD_SEGMENT_GAP_SHARE);
     const boxWidth = spacing > 0
-      ? Math.min(this.PRELOAD_SEGMENT_MAX_PX, spacing - this.PRELOAD_SEGMENT_GAP_PX)
+      ? Math.min(this.PRELOAD_SEGMENT_MAX_PX, spacing - gap)
       : this.PRELOAD_SEGMENT_MAX_PX;
 
     const segments = [];
@@ -1107,6 +1255,21 @@ export class DemscoreApp extends BaseController {
   // Every mark then falls back to the flat `--track-height` the CSS gives it,
   // which is what the timeline looked like before any of this.
   buildCoverageHeightLookup(yearMin, yearMax) {
+    // Exact per-year counts, once /api/year-counts has answered: the same ramp
+    // the strip's digits are cut from (level = 1 + 8 * count / dataset max, see
+    // scripts/build_variable_coverage.sh), only per year and unrounded, so a bar
+    // here is its year and not the mean of the bucket it fell in.
+    const datasetMax = this.metadataController.getCoverageDatasetMax(this.state.dataset);
+    if (datasetMax && this.getYearCount(yearMin) !== undefined) {
+      return (years) => {
+        const counts = years.map((year) => this.getYearCount(year) || 0);
+        const mean = counts.reduce((sum, value) => sum + value, 0) / counts.length;
+        if (mean <= 0) return null;
+        const ratio = Math.min(1, mean / datasetMax);
+        return this.COVERAGE_BAR_MIN_PX + ratio * (this.COVERAGE_BAND_PX - this.COVERAGE_BAR_MIN_PX);
+      };
+    }
+
     const entry = this.metadataController.getCoverageStripData(this.state.dataset, this.state.variable);
     const buckets = entry?.levels?.length ?? 0;
     if (buckets === 0 || entry.yearMin !== yearMin || entry.yearMax !== yearMax) return null;
@@ -1139,6 +1302,21 @@ export class DemscoreApp extends BaseController {
         ((Math.min(9, level) - 1) / 8) * (this.COVERAGE_BAND_PX - this.COVERAGE_BAR_MIN_PX);
       return Math.max(this.COVERAGE_BAR_MIN_PX, height);
     };
+  }
+
+  // Redraws the bar heights in place when the per-year counts land after the
+  // scale was drawn. In place rather than through renderTimelineScale(), which
+  // would throw away the read-ahead fill every bar is carrying.
+  applyCoverageHeights() {
+    if (this.preloadSegments.length === 0) return;
+    const years = this.preloadSegments.flatMap((segment) => segment.years);
+    const coverageHeight = this.buildCoverageHeightLookup(Math.min(...years), Math.max(...years));
+    if (!coverageHeight) return;
+    for (const segment of this.preloadSegments) {
+      if (!segment.el || segment.dataYears.length === 0) continue;
+      const height = coverageHeight(segment.years);
+      if (height !== null) segment.el.style.height = `${height.toFixed(1)}px`;
+    }
   }
 
   // The end-year labels are the point of the exercise, so a ladder label that

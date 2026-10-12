@@ -1,24 +1,34 @@
 import createElement from "lucide/dist/esm/createElement.mjs";
+import Check from "lucide/dist/esm/icons/check.mjs";
 import ChevronDown from "lucide/dist/esm/icons/chevron-down.mjs";
 import ChevronLeft from "lucide/dist/esm/icons/chevron-left.mjs";
 import ChevronRight from "lucide/dist/esm/icons/chevron-right.mjs";
+import ChevronUp from "lucide/dist/esm/icons/chevron-up.mjs";
+import ChevronsLeft from "lucide/dist/esm/icons/chevrons-left.mjs";
 import Globe from "lucide/dist/esm/icons/globe.mjs";
 import Hexagon from "lucide/dist/esm/icons/hexagon.mjs";
 import Info from "lucide/dist/esm/icons/info.mjs";
 import Map from "lucide/dist/esm/icons/map.mjs";
+import Maximize from "lucide/dist/esm/icons/maximize.mjs";
+import Minimize from "lucide/dist/esm/icons/minimize.mjs";
 import Pause from "lucide/dist/esm/icons/pause.mjs";
 import Play from "lucide/dist/esm/icons/play.mjs";
 import Table from "lucide/dist/esm/icons/table.mjs";
 import X from "lucide/dist/esm/icons/x.mjs";
 
 const ICONS = {
+  check: Check,
   "chevron-down": ChevronDown,
   "chevron-left": ChevronLeft,
   "chevron-right": ChevronRight,
+  "chevron-up": ChevronUp,
+  "chevrons-left": ChevronsLeft,
   "globe-2": Globe,
   hexagon: Hexagon,
   info: Info,
   map: Map,
+  maximize: Maximize,
+  minimize: Minimize,
   pause: Pause,
   play: Play,
   table: Table,

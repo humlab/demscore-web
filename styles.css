@@ -145,12 +145,70 @@ textarea {
   outline-offset: 2px;
 }
 
+/* ---- the chrome's scale -------------------------------------------------
+   The sidebar, the timeline card and the map dashboard were sized for a large
+   window, and on a laptop panel -- 1366x768, or a 1080p screen at 125-150%
+   scaling, which is 1536x864 or 1280x720 in CSS pixels -- they took close to
+   half the map's height between them. `--ui-scale` shrinks those three as
+   wholes, through `zoom`, so nothing inside them has to be re-tuned and their
+   proportions stay what they were designed as.
+
+   The steps are written so a later, smaller one overrides an earlier one, which
+   makes the scale the smaller of what the height and the width each allow.
+   Height leads: it is the map's height the panels were eating. The phone
+   layout at 900px and below is its own design and keeps 1. */
+:root {
+  --ui-scale: 1;
+  --sidebar-full-width: 340px;
+}
+
+@media (max-height: 1000px), (max-width: 1600px) {
+  :root {
+    --ui-scale: 0.92;
+  }
+}
+
+@media (max-height: 900px), (max-width: 1440px) {
+  :root {
+    --ui-scale: 0.86;
+  }
+}
+
+@media (max-height: 820px), (max-width: 1300px) {
+  :root {
+    --ui-scale: 0.8;
+  }
+}
+
+@media (max-height: 740px) {
+  :root {
+    --ui-scale: 0.74;
+  }
+}
+
+@media (max-width: 900px) {
+  :root {
+    --ui-scale: 1;
+  }
+}
+
 #app {
+  /* What the sidebar takes of the window, on screen. The column itself is laid
+     out at its full 340px and zoomed down into this; everything that needs to
+     know where the map pane starts (the timeline overlay's centring) reads it
+     from here rather than repeating 340px. */
+  --sidebar-width: calc(var(--sidebar-full-width) * var(--ui-scale));
   position: relative;
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: var(--sidebar-width) 1fr;
   width: 100%;
   height: 100%;
+}
+
+#controls,
+.timeline-main,
+.map-choice-dashboard {
+  zoom: var(--ui-scale);
 }
 
 /* The sidebar is the handbook cover's navy block, turned on its end: one
@@ -556,6 +614,19 @@ textarea {
   color: var(--ds-ink, #fff);
 }
 
+/* A chip the other group rules out: a topic no selected dataset covers, or a
+   dataset with nothing under the selected topics. Faded rather than disabled --
+   pressing it still works, and clears the other group (MetadataController.
+   toggleFilter) -- so the cursor stays a pointer and hover still answers. */
+#controls .dataset-panel .chip.is-unavailable {
+  opacity: 0.42;
+}
+
+#controls .dataset-panel .chip.is-unavailable:hover,
+#controls .dataset-panel .chip.is-unavailable:focus-visible {
+  opacity: 0.72;
+}
+
 .filter-summary {
   margin: 0;
   font-family: var(--font-numeric);
@@ -739,18 +810,34 @@ textarea {
 
 /* One selection colour for every row, whichever dataset it came from: the same
    thing looking the same everywhere is what makes the selected row findable.
-   A light steel blue wash rather than a dark fill — the rows around it are white,
-   so what marks this one out is hue, not weight, and the row keeps reading as
-   paper. The left edge stays navy, matching the rest of the variable list. */
+   It is the one way to tell which variable the map is showing since the title
+   over the map was removed, so it has to be found at a glance.
+
+   A mid steel blue, halfway in lightness between the white rows and the navy
+   column: the old pale wash (#d7e3ee) was a 1.3:1 step from a white row and
+   read as a hover, while navy itself would sink into the column behind it. This
+   is 1.9:1 from a white row and 6.2:1 from the column, and navy text on it is
+   6.0:1. The left edge doubles to 6px and takes the terracotta of the band
+   between the sidebar and the map (`--sidebar-rule`, the same token): navy, as
+   the other rows' edges are, it would vanish into a blue row on a navy column.
+   That is a second use of the handbook's terracotta, made on purpose -- see
+   "Visual System" in AGENTS.md. */
 #controls .variable-option.is-selected,
 #controls .variable-option.is-selected:hover {
-  border-left-color: var(--accent);
-  background: #d7e3ee;
+  border-left-width: 6px;
+  border-left-color: var(--sidebar-rule);
+  background: #9dbfda;
   color: var(--accent);
 }
 
 #controls .variable-option.is-selected .variable-option-name {
   font-weight: 700;
+}
+
+/* The 3px the wider edge adds, taken back off the padding so the text does not
+   step sideways when a row is picked. */
+#controls .variable-option.is-selected .variable-option-pick {
+  padding-left: 10px;
 }
 
 #controls .variable-option.is-selected .variable-option-info {
@@ -1762,7 +1849,7 @@ textarea {
   align-items: flex-start;
   gap: 0;
   min-height: 72px;
-  padding: 0 22px 0 0;
+  padding: 0 10px 0 0;
 }
 
 /* Tall enough for the marks, the axis they stand on and the tick labels under
@@ -1781,9 +1868,15 @@ textarea {
   pointer-events: none;
 }
 
-.timeline-controls,
 .timeline-slider-wrap {
   z-index: 1;
+}
+
+/* Above the slider wrap, which comes after it in the source: the speed list
+   hangs out of the controls and has to paint over the axis and the year label
+   rather than under them -- on the phone the axis is directly below. */
+.timeline-controls {
+  z-index: 2;
 }
 
 .timeline-slider-wrap {
@@ -2014,11 +2107,13 @@ textarea {
   top: 19px;
   left: 0;
   transform: translateX(-50%);
-  font-size: 0.68rem;
+  /* Larger and darker than they were (0.68rem at 70% ink) at the client's
+     request: they are the timeline's only scale. Full ink rather than a mix, so
+     the halo below stays opaque and still masks the marker line behind it. */
+  font-size: 0.76rem;
+  font-weight: 600;
   line-height: 1;
-  /* muted through the colour rather than `opacity`, so the halo below stays
-     opaque and actually masks the marker line behind it */
-  color: color-mix(in srgb, var(--timeline-ink) 70%, transparent);
+  color: var(--timeline-ink);
   white-space: nowrap;
   /* the timeline floats over the map, so the labels carry their own backdrop */
   text-shadow:
@@ -2058,10 +2153,13 @@ textarea {
   background: var(--timeline-ink);
   color: var(--timeline-paper);
   font-family: var(--font-numeric);
-  font-size: clamp(2rem, 4vw, 2.75rem);
+  /* A notch smaller than it was (clamp(2rem, 4vw, 2.75rem), 8px 20px), at
+     the client's request: it is still the largest thing on the timeline, but
+     it no longer reaches down over the map's northern edge. */
+  font-size: clamp(1.7rem, 3.2vw, 2.3rem);
   line-height: 1;
   font-weight: 700;
-  padding: 8px 20px;
+  padding: 7px 17px;
   border-radius: var(--radius-control);
   letter-spacing: 0.01em;
   transform: translateX(var(--selected-label-offset, 0px));
@@ -2080,12 +2178,15 @@ textarea {
   min-height: 72px;
 }
 
+/* Two squares the height of the card, after the client's mockup: play, on the
+   navy, and the speed. It was a 166px "Animate" button and a speed group beside
+   it, then a column with a slider; this is narrower than the first and easier to
+   hit than the second. Not `overflow: hidden` -- the speed list hangs out of
+   the bottom of it -- so the play button rounds its own corners. */
 .playback-control {
-  display: inline-flex;
-  min-height: 72px;
+  display: flex;
+  height: 72px;
   border: 0;
-  border-radius: 0;
-  overflow: visible;
   background: transparent;
 }
 
@@ -2099,78 +2200,115 @@ textarea {
 }
 
 .playback-control .play-button {
-  border-right: 0;
-  border-radius: 16px 0 0 16px;
-  padding: 0 20px 0 24px;
-  min-width: 166px;
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  border-radius: 16px 0 0 16px;
   background: var(--timeline-ink);
   color: var(--timeline-paper);
-  font-size: 1.32rem;
-  font-weight: 700;
 }
 
+/* Filled, as the mockup draws it: an outlined triangle reads as an empty
+   state at this size. */
 .playback-control .play-button svg {
   width: 22px;
   height: 22px;
-  stroke-width: 2.1;
+  fill: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
 }
 
-.speed-button {
+/* The whole square is the button: the multiplier, and "Speed" under it so
+   nobody reads "4×" as a zoom level. The rule on its right parts the controls
+   from the scale. */
+.speed-control {
   position: relative;
-  display: inline-flex;
-  align-items: center;
-  min-height: 72px;
-  padding: 0 16px;
-  border-left: 2px solid color-mix(in srgb, var(--timeline-ink) 18%, transparent);
-  border-right: 2px solid color-mix(in srgb, var(--timeline-ink) 18%, transparent);
-  gap: 12px;
-}
-
-/* Fine print hovering over the multiplier, not a label beside it: "4x" stays
-   the prominent, centred reading and this only keeps it from being taken for a
-   zoom level. Out of flow on purpose — it must not shift the multiplier off the
-   line the Animate button's own text sits on. */
-.speed-button-label {
-  position: absolute;
-  top: 11px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  color: color-mix(in srgb, var(--timeline-ink) 62%, transparent);
-  font-size: 0.62rem;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  pointer-events: none;
-}
-
-.speed-button button {
-  padding: 0;
   display: flex;
+  border-right: 2px solid color-mix(in srgb, var(--timeline-ink) 12%, transparent);
+}
+
+.playback-control .speed-button {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 38px;
+  gap: 5px;
+  width: 72px;
+  height: 72px;
+  padding: 0;
 }
 
-.speed-button svg {
-  width: 22px;
-  height: 22px;
-  stroke-width: 2.25;
-}
-
-#speedDisplay {
-  min-width: 1.25em;
-  text-align: center;
+.speed-button-value {
   font-family: var(--font-numeric);
-  font-size: 1.28rem;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
+  line-height: 1;
   color: var(--timeline-ink);
+}
+
+.speed-button-label {
+  color: color-mix(in srgb, var(--timeline-ink) 62%, transparent);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+/* The list of speeds, hanging under the square. The timeline is at the top of
+   the screen, so it opens downwards. */
+.speed-popup {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  z-index: 20;
+  box-sizing: border-box;
+  min-width: 76px;
+  padding: 5px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.22), 0 2px 6px rgba(15, 23, 42, 0.1);
+  transform: translateX(-50%);
+}
+
+.speed-popup[hidden] {
+  display: none;
+}
+
+.speed-popup:focus {
+  outline: none;
+}
+
+.speed-option {
+  padding: 6px 12px;
+  border-radius: 6px;
+  color: var(--timeline-ink);
+  font-family: var(--font-numeric);
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+.speed-option.is-active {
+  background: #f1f5f9;
+}
+
+.speed-option[aria-selected="true"] {
+  background: var(--timeline-ink);
+  color: var(--timeline-paper);
+}
+
+.speed-popup:focus-visible .speed-option.is-active {
+  outline: 2px solid #7ca8dd;
+  outline-offset: -2px;
 }
 
 .playback-control button:hover {
@@ -2199,11 +2337,13 @@ textarea {
 #timeline-overlay {
   position: fixed;
   top: calc(12px + env(safe-area-inset-top, 0px));
-  left: calc(340px + ((100vw - 340px) / 2));
+  left: calc(var(--sidebar-width) + ((100vw - var(--sidebar-width)) / 2));
   transform: translateX(-50%);
   z-index: 1200;
-  /* Centred over the map pane, leaving a small gutter to both map edges. */
-  width: min(1180px, calc(100vw - 340px - 48px));
+  /* Centred over the map pane, with a 48px gutter to both map edges (it was
+     24px, and the card read as running edge to edge on a laptop). The 1180px
+     cap takes over on wide windows, where the gutter is larger anyway. */
+  width: min(1180px, calc(100vw - var(--sidebar-width) - 96px));
   margin: 0;
   background: transparent;
   border: none;
@@ -2253,17 +2393,6 @@ textarea {
   font-size: 0.78rem;
   line-height: 1.35;
   color: var(--text);
-}
-
-/* The part that is about the row rather than about these years, so it is set
-   apart from the reading above it. */
-.timeline-mark-tooltip-note {
-  margin: 7px 0 0;
-  padding-top: 6px;
-  border-top: 1px solid var(--panel-border);
-  font-size: 0.72rem;
-  line-height: 1.4;
-  color: var(--muted);
 }
 
 .timeline-year-readout {
@@ -2769,23 +2898,23 @@ textarea {
    colour inversion -- everything below is dark on the dashboard's pale slate
    rather than white on navy.
 
-   The bar and its two end labels take the left column; "no data" takes a
-   narrow one of its own at the right, because it is off the end of the ramp
-   rather than part of it. */
+   The bar and its two end labels take the left column; "no data" sits beside
+   the bar at the right, because it is off the end of the ramp rather than
+   part of it. */
 .legend-scale {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(52px, 18%, 78px);
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   column-gap: 10px;
+  row-gap: 4px;
   min-width: 0;
-  margin-bottom: 7px;
 }
 
 .legend-bar {
   display: flex;
   grid-column: 1;
   grid-row: 1;
-  height: 16px;
+  height: 14px;
   border: 1px solid rgba(71, 85, 105, 0.38);
   border-radius: 2px;
   overflow: hidden;
@@ -2898,10 +3027,17 @@ textarea {
   grid-row: 2;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  margin-top: 5px;
   color: #475569;
-  font-size: 0.7rem;
+  font-size: 0.66rem;
   line-height: 1.15;
+}
+
+/* One line each in the one-row dashboard, clipped, with the full text in
+   `title`: wrapped, a long end label would make the whole row taller. */
+.legend-labels span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .legend-labels span:last-child {
@@ -2909,63 +3045,36 @@ textarea {
 }
 
 /* Off the end of the ramp, not part of it: a country with no value for this
-   variable and year is not drawn at all, so what shows is the land basemap.
-   `--land-basemap` is written onto the legend by MapController from the same
-   constant the basemap style uses, so the swatch cannot drift from the map. */
+   variable and year is drawn in the no-data grey. `--no-data-color` is written
+   onto the legend by MapController from NO_DATA_COLOR in core/palettes.js,
+   the constant the mapfile class is generated from, so the two cannot drift. */
 .legend-nodata {
-  display: grid;
+  display: flex;
   grid-column: 2;
-  grid-row: 1 / span 2;
-  grid-template-rows: 16px auto;
-  align-items: start;
-  gap: 5px;
+  grid-row: 1;
+  align-items: center;
+  gap: 6px;
   margin: 0;
   color: #475569;
-  font-size: 0.7rem;
-  line-height: 1.15;
+  font-size: 0.66rem;
+  line-height: 1;
+  white-space: nowrap;
   cursor: help;
 }
 
 .legend-nodata-swatch {
   display: block;
-  width: 100%;
-  min-width: 0;
-  height: 16px;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 12px;
   border: 1px solid rgba(71, 85, 105, 0.45);
   border-radius: 2px;
-  background: var(--land-basemap, #fffaf0);
+  background: var(--no-data-color, #808080);
 }
 
 .legend-nodata-label {
   min-width: 0;
   overflow-wrap: break-word;
-}
-
-/* The variable on the map, top left, just under the timeline overlay. Quiet
-   on purpose: it names what the colours stand for and gets out of the way.
-   Painted before #tableView in the source, which covers it in the table view. */
-.map-variable-title {
-  position: absolute;
-  top: var(--timeline-inset, 150px);
-  left: 12px;
-  z-index: 1;
-  max-width: min(60%, 560px);
-  margin: 0;
-  padding: 4px 10px;
-  overflow: hidden;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.85);
-  color: var(--text);
-  font-size: 0.95rem;
-  font-weight: 600;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  pointer-events: auto;
-}
-
-.map-variable-title:empty {
-  display: none;
 }
 
 /* The bottom-left stack: the zoom readout over the display options. Leaflet
@@ -3114,18 +3223,22 @@ textarea {
   align-self: end;
   justify-self: center;
   z-index: 500;
+  position: relative;
   box-sizing: border-box;
-  display: grid;
-  grid-template-columns: minmax(218px, 1.2fr) 1px minmax(320px, 2fr) 1px minmax(132px, 0.72fr);
-  align-items: stretch;
+  /* One row, after the client's mockup: View, the legend, the scheme dropdown,
+     the outline switch, and the fold button at the end. It was two -- a label
+     over each section's control -- and the tallest thing on the map after the
+     timeline. */
+  display: flex;
+  align-items: center;
   gap: 12px;
-  width: min(950px, calc(100% - 24px));
-  margin-bottom: 30px;
-  padding: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.55);
-  border-radius: 8px;
-  background: rgba(241, 245, 249, 0.94);
-  box-shadow: 0 5px 18px rgba(15, 23, 42, 0.22), 0 1px 3px rgba(15, 23, 42, 0.12);
+  max-width: calc(100% - 24px);
+  margin-bottom: 26px;
+  padding: 7px 8px 7px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 5px 18px rgba(15, 23, 42, 0.18), 0 1px 3px rgba(15, 23, 42, 0.1);
   backdrop-filter: blur(10px);
   color: #334155;
 }
@@ -3137,115 +3250,230 @@ textarea {
   opacity: 0.4;
 }
 
-/* A column, so the control under each label fills whatever height the tallest
-   panel sets. That used to be a non-question -- three controls of much the same
-   height sat side by side -- and became one when the legend bar moved in under
-   the colour picker and made the middle panel the tall one. */
 .map-choice-section {
   position: relative;
   display: flex;
-  flex-direction: column;
+  flex: 0 0 auto;
+  align-items: center;
   min-width: 0;
 }
 
-.map-view-switch,
-.map-palette-list,
-.map-outline-toggle {
-  flex: 1 1 auto;
+/* The legend is the one part that gives when the row is short of room: the
+   bar narrows and its end labels clip, everything else keeps its size. */
+.map-legend-panel {
+  flex: 1 1 300px;
+  min-width: 180px;
 }
 
-/* The legend bar and its labels, under the picker that chose the colours. */
 .map-legend-slot {
+  width: 100%;
   min-width: 0;
 }
 
 .map-choice-divider {
+  flex: 0 0 auto;
+  align-self: stretch;
   width: 1px;
-  margin: 2px 0;
-  background: rgba(148, 163, 184, 0.62);
+  margin: 3px 0;
+  background: rgba(148, 163, 184, 0.5);
 }
 
-.map-choice-label {
-  display: block;
-  margin: 0 0 5px 2px;
-  color: var(--accent);
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-.map-view-switch,
-.map-palette-list {
-  position: relative;
-  display: grid;
-  gap: 2px;
-  padding: 5px;
-  border-radius: 8px;
-  background: rgba(221, 228, 230, 0.9);
-}
-
-/* Two projections and the table: one question -- how to show this year -- with
-   three answers, so one radiogroup. The rule before the last is a 1px track,
-   and `--track` is what is left over for each of the three once the padding,
-   the three gaps and that rule are taken out. The sliding slab is sized and
-   moved from it, which is why it is a variable rather than three `calc`s. */
+/* ---- View: map or table ---- */
 .map-view-switch {
-  --track: calc((100% - 17px) / 3);
-  grid-template-columns: repeat(2, minmax(0, 1fr)) 1px minmax(0, 1fr);
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: #eef2f5;
 }
 
 .map-view-divider {
   align-self: stretch;
-  margin: 12px 0;
+  width: 1px;
+  margin: 5px 2px;
   background: rgba(148, 163, 184, 0.75);
 }
 
-.map-palette-list {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.map-palette-mobile {
-  position: relative;
-  display: none;
-  min-width: 0;
-}
-
-.map-palette-select {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
+.map-view-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
   border: 0;
+  border-radius: 6px;
   background: transparent;
-  color: #334155;
+  color: #475569;
   font: inherit;
-  font-weight: 800;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
 
-.map-palette-mobile-swatches {
+.map-view-choice:hover {
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--accent-strong);
+}
+
+.map-view-choice.is-selected {
+  background: var(--accent);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(23, 56, 75, 0.24);
+}
+
+.map-view-icon,
+.map-view-choice svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.2;
+}
+
+/* ---- Colours: a button and the listbox it opens ---- */
+.map-palette-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px 0 12px;
+  border: 1px solid rgba(148, 163, 184, 0.65);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1e293b;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.map-palette-button:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.map-palette-button-label {
+  color: #64748b;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.map-palette-button svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.4;
+  transition: transform 0.2s ease;
+}
+
+/* Up while closed, because the list opens upwards off the foot of the map;
+   down while open, towards where it will close to. */
+.map-palette-button[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.map-palette-popup {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 0;
+  z-index: 10;
+  box-sizing: border-box;
+  min-width: 230px;
+  padding: 10px 8px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.22), 0 2px 6px rgba(15, 23, 42, 0.1);
+}
+
+.map-palette-popup[hidden] {
+  display: none;
+}
+
+/* Focus is on the listbox and the active option says where in it; the ring
+   goes on that option rather than round the whole card. */
+.map-palette-popup:focus {
+  outline: none;
+}
+
+.map-palette-popup-label {
+  margin: 0 6px 7px;
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.map-palette-option {
+  display: grid;
+  gap: 7px;
+  padding: 8px 8px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.map-palette-option + .map-palette-option {
+  margin-top: 2px;
+}
+
+.map-palette-option.is-active {
+  background: #f1f5f9;
+}
+
+.map-palette-popup:focus-visible .map-palette-option.is-active {
+  outline: 2px solid #7ca8dd;
+  outline-offset: -2px;
+}
+
+.map-palette-option-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #1e293b;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.map-palette-check {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.4;
+  visibility: hidden;
+}
+
+.map-palette-option.is-selected .map-palette-check {
+  visibility: visible;
+}
+
+.map-palette-swatches {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
+  height: 14px;
   overflow: hidden;
   border-radius: 2px;
   box-shadow: 0 0 0 1px rgba(35, 51, 68, 0.14);
 }
 
-.map-palette-mobile-swatches i {
+.map-palette-swatches i {
   display: block;
 }
 
+/* ---- Outlines: a switch with its words beside it ---- */
 .map-outline-toggle {
-  box-sizing: border-box;
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  gap: 7px;
-  min-height: 56px;
-  padding: 7px 8px 6px;
-  border-radius: 8px;
-  background: rgba(221, 228, 230, 0.9);
-  color: #586a72;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 2px 2px 0;
+  color: #334155;
   cursor: pointer;
   user-select: none;
 }
@@ -3263,179 +3491,43 @@ textarea {
 .map-outline-track {
   position: relative;
   display: block;
-  width: 52px;
-  height: 28px;
+  width: 36px;
+  height: 20px;
   border-radius: 999px;
   background: #aab8bf;
   box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.18);
-  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  transition: background-color 0.2s ease;
 }
 
 .map-outline-thumb {
   position: absolute;
-  top: 4px;
-  left: 4px;
-  width: 20px;
-  height: 20px;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
   border-radius: 999px;
   background: #ffffff;
-  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.28);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.3);
   transform: translateX(0);
   transition: transform 0.24s cubic-bezier(0.2, 0.85, 0.25, 1);
 }
 
-.map-outline-toggle:has(input:checked) {
-  color: var(--accent-strong);
-}
-
 .map-outline-toggle input:checked + .map-outline-switch .map-outline-track {
   background: var(--accent);
-  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.18), 0 4px 10px rgba(23, 56, 75, 0.2);
 }
 
 .map-outline-toggle input:checked + .map-outline-switch .map-outline-thumb {
-  transform: translateX(24px);
+  transform: translateX(16px);
 }
 
 .map-outline-copy {
-  max-width: 8.5rem;
-  font-size: 0.76rem;
-  font-weight: 700;
-  line-height: 1.15;
-  text-align: center;
-}
-
-/* The `100%` in the transform is the slab's *own* width -- one track -- which
-   is why the width is set from `--track` and the travel is not: a percentage
-   inside `translateX` resolves against the element, and the same `--track`
-   expression used there would have measured 17px out of 84 instead of out of
-   the switch. `--past-divider` is 0 or 1, written by
-   MapController.syncViewSelector(): the slab crosses one extra gap and the 1px
-   rule on its way to the third option, and that is the 3px. */
-.map-view-selection {
-  position: absolute;
-  z-index: 0;
-  top: 5px;
-  left: 5px;
-  width: var(--track);
-  height: calc(100% - 10px);
-  border-radius: 6px;
-  background: var(--accent);
-  box-shadow: 0 4px 10px rgba(23, 56, 75, 0.24);
-  transform: translateX(calc(var(--selected, 0) * (100% + 2px) + var(--past-divider, 0) * 3px));
-  transition: transform 0.28s cubic-bezier(0.2, 0.85, 0.25, 1);
-  will-change: transform;
-}
-
-.map-palette-selection {
-  position: absolute;
-  z-index: 0;
-  top: 5px;
-  left: 5px;
-  /* Border-box, or the 1px border makes the slab 2px wider than a track and --
-     since `translateX(100%)` is measured on the slab itself -- every step 2px
-     longer than one, so it drifts further off-centre with each scheme. */
-  box-sizing: border-box;
-  width: calc((100% - 16px) / 4);
-  height: calc(100% - 10px);
-  border: 1px solid rgba(203, 213, 225, 0.95);
-  border-radius: 7px;
-  background: #ffffff;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.17), 0 1px 2px rgba(15, 23, 42, 0.12);
-  transform: translateX(calc(var(--selected, 0) * (100% + 2px)));
-  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
-  will-change: transform;
-}
-
-.map-view-choice,
-.map-palette-option {
-  position: relative;
-  z-index: 1;
-  min-width: 0;
-  border-radius: 6px;
-  background: transparent;
-  font: inherit;
-  cursor: pointer;
-  user-select: none;
-}
-
-/* Near enough square: the height comes from the Colours panel beside it, which
-   is why compacting that panel is what shapes these. `min-height` is only a
-   floor for the case where the legend has not loaded yet. */
-.map-view-choice {
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  gap: 4px;
-  min-height: 56px;
-  padding: 6px 6px 5px;
-  border: 0;
-  color: #586a72;
-  font-size: 0.76rem;
+  font-size: 0.8rem;
   font-weight: 700;
   line-height: 1.1;
-  text-align: center;
-  transition: color 0.15s ease;
+  white-space: nowrap;
 }
 
-/* The scheme's name used to be printed under its swatches. Four names is a line
-   of the dashboard's height for something the swatches already say, and that
-   height is taken out of the map -- so the name is a tooltip and an accessible
-   name now, and the button is the strip. */
-.map-palette-option {
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  min-height: 34px;
-  padding: 6px 7px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  color: #5b6775;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.map-view-choice:hover {
-  color: var(--accent-strong);
-}
-
-.map-palette-option:hover {
-  color: #253649;
-}
-
-.map-view-choice.is-selected {
-  color: #ffffff;
-}
-
-.map-palette-option.is-selected {
-  color: #253649;
-}
-
-.map-view-icon,
-.map-view-choice svg {
-  display: block;
-  width: 26px;
-  height: 22px;
-  stroke-width: 2.2;
-}
-
-/* Taller than it was, because it is now the whole of the button rather than the
-   picture over its name -- a 13px strip with nothing under it reads as a rule
-   rather than as something to press. */
-.map-palette-swatches {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  width: 100%;
-  max-width: 116px;
-  height: 20px;
-  overflow: hidden;
-  border-radius: 2px;
-  box-shadow: 0 0 0 1px rgba(35, 51, 68, 0.14);
-}
-
-.map-palette-swatches i {
-  display: block;
-  background: var(--palette-swatch);
-}
+/* ---- focus ---- */
 
 /* The ring goes round the whole label, not round the radio dot: the dot is
    12px of native widget and the words beside it are what is being chosen. The
@@ -3447,11 +3539,11 @@ textarea {
 }
 
 .map-outline-toggle:has(input:focus-visible),
-.map-palette-mobile:has(.map-palette-select:focus-visible),
 .map-view-choice:focus-visible,
-.map-palette-option:focus-visible {
+.map-palette-button:focus-visible {
   outline: 3px solid #7ca8dd;
   outline-offset: 2px;
+  border-radius: 8px;
 }
 
 @supports not selector(:has(*)) {
@@ -3464,11 +3556,6 @@ textarea {
     outline: 3px solid #7ca8dd;
     outline-offset: 3px;
     border-radius: 999px;
-  }
-
-  .map-palette-select:focus-visible {
-    outline: 3px solid #7ca8dd;
-    outline-offset: 2px;
   }
 }
 
@@ -3492,7 +3579,8 @@ textarea {
    sitting up there. The offset clears the attribution strip below it. */
 #loading-indicator {
   position: absolute;
-  bottom: 28px;
+  /* Above the map-only button, which has the corner over the credit line. */
+  bottom: 72px;
   right: 12px;
   z-index: 1150;
   width: 28px;
@@ -3519,8 +3607,8 @@ textarea {
    it keeps its ring and drops the rotation; the preload boxes still have to
    fill, so they fill in one step rather than sliding. */
 @media (prefers-reduced-motion: reduce) {
-  .map-view-selection,
-  .map-palette-selection,
+  .map-view-choice,
+  .map-palette-button svg,
   .map-outline-track,
   .map-outline-thumb {
     transition: none;
@@ -3603,50 +3691,18 @@ textarea {
    what does not fit is not clipped politely: it disappears, and the legend with
    it. Everything gives a little rather than one thing giving way. */
 @media (min-width: 901px) and (max-width: 1200px) {
+  /* The one-row dashboard needs about 760px; in this band the pane is
+     560-840px, so its padding gives first and then the legend narrows
+     (`.map-legend-panel`'s minimum). The outline switch keeps its words: a
+     switch with no label is hidden rather than shown bare (see the phone
+     block), and measured, the label fits at every width in this band. */
   .map-choice-dashboard {
-    grid-template-columns: minmax(166px, 1.15fr) 1px minmax(210px, 1.9fr) 1px minmax(100px, 0.68fr);
     gap: 8px;
-    padding: 8px;
+    padding: 6px;
   }
 
   .map-view-choice {
-    min-height: 44px;
-    padding: 5px 4px 4px;
-    font-size: 0.68rem;
-  }
-
-  .map-view-icon,
-  .map-view-choice svg {
-    width: 20px;
-    height: 18px;
-  }
-
-  .map-palette-option {
-    min-height: 28px;
-    padding: 4px 5px;
-  }
-
-  .map-outline-toggle {
-    min-height: 46px;
-  }
-
-  .map-outline-copy {
-    max-width: 6.4rem;
-    font-size: 0.7rem;
-  }
-
-  /* One line each, clipped, with the full text in `title`. Wrapped they take
-     three lines apiece at this width, and the whole dashboard is as tall as
-     this panel -- three lines here is what turns the View buttons into tall
-     rectangles. */
-  .legend-labels {
-    font-size: 0.62rem;
-  }
-
-  .legend-labels span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    padding: 0 8px;
   }
 
   /* Same collision as on the phone: the dashboard is nearly the width of the
@@ -3901,145 +3957,86 @@ textarea {
     padding: 6px 8px;
   }
 
+  /* Two rows here: the legend across the top, where it has the width to be
+     read, and the three controls under it. The fold button is held back on
+     the phone (see "panels put away"). */
   .map-choice-dashboard {
-    bottom: 6px;
+    display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "legend legend legend"
+      "view palette outline";
     align-items: center;
-    gap: 5px;
+    gap: 6px 8px;
     width: min(620px, calc(100% - 20px));
-    min-width: 0;
-    padding: 4px;
+    max-width: none;
+    margin-bottom: 6px;
+    padding: 6px;
   }
 
   .map-choice-divider {
     display: none;
   }
 
-  .map-choice-label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
+  .map-legend-panel {
+    grid-area: legend;
+    min-width: 0;
+  }
+
+  .map-view-panel {
+    grid-area: view;
+  }
+
+  .map-palette-panel {
+    grid-area: palette;
+  }
+
+  .map-palette-button {
+    width: 100%;
+    min-width: 0;
+    height: 32px;
+  }
+
+  .map-palette-button-value {
+    flex: 1 1 auto;
     overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
-  .map-view-switch,
-  .map-palette-mobile,
-  .map-outline-toggle {
-    min-height: 34px;
-    padding: 3px;
-    border-radius: 7px;
-  }
-
-  .map-view-switch {
-    --track: calc((100% - 13px) / 3);
-  }
-
-  .map-view-divider {
-    margin: 5px 0;
-  }
-
-  .map-view-selection {
-    top: 3px;
-    left: 3px;
-    height: calc(100% - 6px);
+  .map-outline-panel {
+    grid-area: outline;
   }
 
   .map-view-choice {
-    place-items: center;
-    align-content: center;
-    gap: 2px;
-    min-height: 28px;
-    padding: 3px 5px;
-    font-size: 0.64rem;
-  }
-
-  .map-view-icon,
-  .map-view-choice svg {
-    width: 16px;
-    height: 16px;
-  }
-
-  .map-palette-list {
-    display: none;
-  }
-
-  .map-palette-mobile {
-    display: grid;
-    grid-template-columns: minmax(42px, 0.32fr) minmax(0, 1fr);
-    align-items: center;
-    gap: 6px;
-    background: rgba(221, 228, 230, 0.9);
-  }
-
-  .map-palette-mobile::after {
-    content: "";
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    width: 7px;
-    height: 7px;
-    border-right: 2px solid #64748b;
-    border-bottom: 2px solid #64748b;
-    transform: translateY(-68%) rotate(45deg);
-    pointer-events: none;
-  }
-
-  .map-palette-select {
-    min-height: 28px;
-    padding: 0 22px 0 0;
-    border-radius: 5px;
-    appearance: none;
-    font-size: 0.78rem;
-    line-height: 1;
-  }
-
-  .map-palette-mobile-swatches {
-    height: 10px;
-  }
-
-  .map-outline-toggle {
-    grid-template-columns: auto auto;
-    align-content: center;
-    justify-items: start;
-    gap: 5px;
-    min-width: 70px;
-  }
-
-  .map-outline-track {
-    width: 34px;
-    height: 20px;
-  }
-
-  .map-outline-thumb {
-    top: 3px;
-    left: 3px;
-    width: 14px;
-    height: 14px;
-  }
-
-  .map-outline-toggle input:checked + .map-outline-switch .map-outline-thumb {
-    transform: translateX(14px);
+    height: 26px;
+    padding: 0 8px;
+    font-size: 0.72rem;
   }
 
   .map-outline-copy {
-    max-width: 3.6rem;
+    max-width: 4.2rem;
     font-size: 0.66rem;
-    line-height: 1;
-    text-align: left;
+    white-space: normal;
   }
 
+  /* Too narrow for the outline switch's words, and a bare switch says
+     nothing about what it switches -- so it goes, rather than staying as a
+     mystery toggle. It is an extra, not part of reading the map; outlines stay
+     as they were set (on by default). The Colours button takes its column. */
   @media (max-width: 520px) {
     .map-choice-dashboard {
-      width: min(430px, calc(100% - 12px));
-      gap: 4px;
-      padding: 4px;
+      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-areas:
+        "legend legend"
+        "view palette";
+    }
+
+    .map-outline-panel {
+      display: none;
     }
 
     .map-view-choice {
-      width: 32px;
-      padding: 2px;
+      padding: 0 7px;
     }
 
     .map-view-choice span {
@@ -4050,21 +4047,12 @@ textarea {
       clip: rect(0 0 0 0);
       white-space: nowrap;
     }
+  }
 
-    .map-palette-mobile {
-      grid-template-columns: 38px minmax(0, 1fr);
-      gap: 6px;
-    }
-
-    .map-palette-select {
-      font-size: 0.74rem;
-    }
-
-    .map-outline-toggle {
-      min-width: 48px;
-    }
-
-    .map-outline-copy {
+  /* Only on the narrowest phones does the "Colours" caption give way, and
+     then the scheme's name is still on the button. */
+  @media (max-width: 360px) {
+    .map-palette-button-label {
       position: absolute;
       width: 1px;
       height: 1px;
@@ -4072,59 +4060,6 @@ textarea {
       clip: rect(0 0 0 0);
       white-space: nowrap;
     }
-  }
-
-  @media (max-width: 370px) {
-    .map-palette-mobile {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .map-palette-mobile-swatches {
-      display: none;
-    }
-  }
-
-  /* The whole scale on one line at this width: the bar with its two end labels
-     in the left column and the no-data patch beside them, all of it inside the
-     dashboard's Colours panel rather than in a dock of its own. */
-  .legend-scale {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    column-gap: 8px;
-    row-gap: 3px;
-    margin-top: 5px;
-  }
-
-  .legend-bar {
-    grid-column: 1;
-    grid-row: 1;
-    height: 12px;
-  }
-
-  .legend-labels {
-    grid-column: 1;
-    grid-row: 2;
-    gap: 6px;
-    margin-top: 3px;
-    font-size: 0.6rem;
-    line-height: 1.1;
-  }
-
-  /* Nothing else on a phone says what the cream on the map means. */
-  .legend-nodata {
-    display: flex;
-    grid-column: 2;
-    grid-row: 1;
-    align-items: center;
-    gap: 4px;
-    margin: 0;
-    font-size: 0.66rem;
-    white-space: nowrap;
-  }
-
-  .legend-nodata-swatch {
-    width: 12px;
-    height: 10px;
   }
 
   .ol-zoom {
@@ -4209,17 +4144,16 @@ textarea {
     min-height: 44px;
   }
 
+  /* The controls have a full-width bar of their own above the axis here, 44px
+     tall: play at the left, and the speed square beside it. */
   .playback-control {
     width: 100%;
-    min-height: 44px;
+    height: 44px;
   }
 
   .playback-control .play-button {
-    flex: 1 1 auto;
-    min-width: 0;
-    padding: 0 12px;
-    gap: 7px;
-    font-size: 1rem;
+    width: 64px;
+    height: 44px;
   }
 
   .playback-control .play-button svg {
@@ -4227,44 +4161,21 @@ textarea {
     height: 18px;
   }
 
-  .speed-button {
-    min-height: 44px;
-    padding: 0 10px;
-    border-left: 0;
+  .speed-control {
     border-right: 0;
+  }
+
+  .playback-control .speed-button {
+    flex-direction: row;
     gap: 6px;
-  }
-
-  .speed-button button {
-    width: 22px;
-    height: 32px;
-  }
-
-  .speed-button svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  #speedDisplay {
-    min-width: 1.2em;
-    font-size: 0.92rem;
-  }
-
-  /* The group is 44px here rather than 72px, so the caption comes down with it. */
-  .speed-button-label {
-    top: 4px;
-    font-size: 0.52rem;
-  }
-
-  /* The phone header is the variable picker, and it already names the
-     variable a finger's width above the timeline. */
-  .map-variable-title {
-    display: none;
+    width: auto;
+    height: 44px;
+    padding: 0 14px;
   }
 
   .timeline-year-label {
-    font-size: clamp(1.6rem, 6vw, 2.2rem);
-    padding: 7px 16px;
+    font-size: clamp(1.4rem, 5vw, 1.9rem);
+    padding: 6px 14px;
   }
 
   .timeline-marker-line {
@@ -4322,5 +4233,402 @@ textarea {
     display: block;
     margin-left: 0;
     text-align: left;
+  }
+}
+
+/* ---- panels put away ------------------------------------------------------
+   The sidebar, the timeline and the map dashboard can each be put away, and the
+   map shown on its own; PanelCollapseController keeps the state as classes on
+   #app (`is-collapsed-*`, `is-peek-*`, `is-map-only`). A collapsed panel leaves
+   a thin `.panel-reveal-*` strip on its edge that brings it back while the
+   pointer is on it; its own button, turned round, pins it back. The dashboard
+   folds to its legend instead of leaving, since the legend is the key to the
+   map. */
+:root {
+  --reveal-size: 10px;
+}
+
+/* Quiet on purpose: most readers will never want these. */
+.panel-collapse-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+.panel-collapse-button:hover,
+.panel-collapse-button:focus-visible {
+  opacity: 1;
+}
+
+.panel-collapse-button svg {
+  transition: transform 0.25s ease;
+}
+
+/* Scoped to #controls for the same reason the About button is: the sidebar's
+   bare `#controls button` rule would otherwise make it a full-width slab. */
+#controls .panel-collapse-sidebar {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  margin: 0 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+}
+
+#controls .panel-collapse-sidebar:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+#controls .panel-collapse-sidebar:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+#controls .panel-collapse-sidebar svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* The timeline's, at the right end of the card behind a rule: a pale square
+   with the word under the chevron. Its column is the card's height, so it sits
+   centred in the 72px band whatever the slider wrap below it is doing. */
+.timeline-collapse {
+  position: relative;
+  z-index: 6;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  height: 72px;
+  margin-left: 14px;
+  padding-left: 12px;
+}
+
+/* The rule stops short of the card's top and bottom, so it parts the button
+   from the scale without cutting the card in two. */
+.timeline-collapse::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--timeline-ink) 12%, transparent);
+}
+
+.panel-collapse-timeline {
+  flex-direction: column;
+  gap: 1px;
+  width: 44px;
+  height: 46px;
+  border-radius: 8px;
+  background: #e9eef1;
+  color: var(--timeline-ink);
+  opacity: 0.85;
+}
+
+.panel-collapse-timeline:hover,
+.panel-collapse-timeline:focus-visible {
+  background: #dde5ea;
+  opacity: 1;
+}
+
+.panel-collapse-timeline svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 2.2;
+}
+
+.panel-collapse-text {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+/* The dashboard's, at the end of its row behind a rule -- the same pale
+   square as the timeline's, without the word: the row is too short for it. */
+.panel-collapse-dashboard {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #eef2f5;
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+.panel-collapse-dashboard:hover,
+.panel-collapse-dashboard:focus-visible {
+  background: #e2e8ee;
+  opacity: 1;
+}
+
+.panel-collapse-dashboard svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 2.2;
+}
+
+/* Turned round while the panel is away: pressing it now brings it back. */
+#app.is-collapsed-sidebar .panel-collapse-sidebar svg,
+#app.is-collapsed-timeline .panel-collapse-timeline svg,
+#app.is-collapsed-dashboard .panel-collapse-dashboard svg {
+  transform: rotate(180deg);
+}
+
+/* The strips. Tinted just enough to be found along an edge that otherwise
+   holds nothing; the grip is the mark that says it can be pulled. */
+.panel-reveal {
+  position: absolute;
+  z-index: 1450;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--navy) 12%, transparent);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.panel-reveal:hover {
+  background: color-mix(in srgb, var(--navy) 24%, transparent);
+}
+
+.panel-reveal-grip {
+  display: block;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--navy) 55%, transparent);
+}
+
+.panel-reveal-sidebar {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--reveal-size);
+}
+
+.panel-reveal-sidebar .panel-reveal-grip {
+  width: 4px;
+  height: 44px;
+}
+
+.panel-reveal-timeline {
+  top: 0;
+  right: 0;
+  left: var(--sidebar-width);
+  height: var(--reveal-size);
+}
+
+.panel-reveal-timeline .panel-reveal-grip {
+  width: 44px;
+  height: 4px;
+}
+
+/* The dashboard's legend is its strip. */
+.panel-reveal-dashboard {
+  display: none !important;
+}
+
+#app.is-collapsed-sidebar:not(.is-map-only) .panel-reveal-sidebar,
+#app.is-collapsed-timeline:not(.is-map-only) .panel-reveal-timeline {
+  display: flex;
+}
+
+@media (min-width: 901px) {
+  /* Placed rather than auto-placed: a collapsed sidebar leaves the grid, and
+     the map would otherwise step into the column it left. */
+  #map {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  #controls {
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  /* The column goes to nothing and the map takes the width; the sidebar is laid
+     over the map's left edge instead, off screen until it is peeked. Its width
+     is the full 340px because `zoom` is applied to it -- the same 340px the
+     column is laid out at when it is in the grid. */
+  #app.is-collapsed-sidebar {
+    --sidebar-width: 0px;
+  }
+
+  #app.is-collapsed-sidebar #controls {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1500;
+    width: var(--sidebar-full-width);
+    transform: translateX(-100%);
+  }
+
+  #app.is-collapsed-sidebar.is-peek-sidebar #controls {
+    transform: none;
+    box-shadow: 8px 0 28px rgba(15, 23, 42, 0.28);
+  }
+
+  #timeline-overlay {
+    transition: transform 0.25s ease;
+  }
+
+  /* Up and off: the box is taller than the card (the year label hangs below
+     it), so -100% takes the whole of it out of sight. */
+  #app.is-collapsed-timeline:not(.is-peek-timeline) #timeline-overlay {
+    transform: translate(-50%, calc(-100% - 16px));
+  }
+}
+
+/* The phone layout has the sidebar as a band across the top and the timeline in
+   the flow under it rather than over the map, so neither covers the map and
+   neither is offered as something to put away there. */
+/* The dashboard's fold button is held back on the phone too, for now: the
+   compact dashboard has no free corner for it -- the Colours label it sits
+   beside on the desktop is not drawn there, so it lands on "No data", and the
+   attribution line sits directly above the dashboard, where a pull tab would
+   cover licence text. Map-only still works there. */
+@media (max-width: 900px) {
+  .panel-collapse-dashboard,
+  #controls .panel-collapse-sidebar,
+  .timeline-collapse,
+  .panel-reveal-sidebar,
+  .panel-reveal-timeline {
+    display: none !important;
+  }
+}
+
+/* ---- the dashboard, folded to its legend ----
+   Only the legend and the button that unfolds it are left, on a card of their
+   own in the map's bottom-left corner -- the foot of the map, out of the way,
+   and clear of the credit line, which runs along the foot from the right and
+   reaches the middle on most window widths. */
+#app.is-collapsed-dashboard .map-choice-dashboard > :not(.map-legend-panel):not(.panel-collapse-dashboard):not(.map-collapse-divider) {
+  display: none;
+}
+
+#app.is-collapsed-dashboard .map-choice-dashboard {
+  justify-self: start;
+  width: min(470px, calc(100% - 24px));
+  margin: 0 0 8px 10px;
+  padding: 6px 6px 6px 10px;
+}
+
+/* ---- the map on its own ----
+   Every panel is away (the classes above), and so is what is left of them: the
+   folded legend, the strips, the zoom buttons and the land switch. The credit
+   line stays -- the licence is discharged by it being always visible -- and so
+   does the button that brings everything back. */
+#app.is-map-only .map-choice-dashboard,
+#app.is-map-only .panel-reveal,
+#app.is-map-only .ol-zoom,
+#app.is-map-only .map-display-stack {
+  display: none !important;
+}
+
+#app.is-map-only #timeline-overlay {
+  visibility: hidden;
+}
+
+/* Bottom right, above the credit line, dressed as the zoom buttons are. Where
+   the credit line is lifted over the dashboard (the phone, and the band of
+   window widths where the dashboard spans the pane) it is lifted with it. */
+.map-only-control {
+  top: auto;
+  right: 10px;
+  bottom: 30px;
+  left: auto;
+  padding: 0;
+  background: none;
+  border-radius: var(--radius-control);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+/* Scoped through `.ol-control`, because OpenLayers' own `.ol-control button`
+   rule outranks a bare class: left to it, the button was its 22px default with
+   a 1px margin and rounded corners inside this 30px control, and after a click
+   its `:focus` outline drew a second square round it -- the "deformed" button
+   in map-only, which is the state a click leaves it focused in. */
+.ol-control.map-only-control .map-only-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: #ffffff;
+  color: #333;
+  cursor: pointer;
+}
+
+.ol-control.map-only-control .map-only-button:hover {
+  background: #f4f4f4;
+  color: #000;
+}
+
+/* A ring for the keyboard only, inset like the zoom buttons'. */
+.ol-control.map-only-control .map-only-button:focus {
+  outline: none;
+}
+
+.ol-control.map-only-control .map-only-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* `block`, both of them: one inline and one block sat at different heights. */
+.ol-control.map-only-control .map-only-button svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.ol-control.map-only-control .map-only-button .map-only-icon-exit,
+.ol-control.map-only-control .map-only-button[aria-pressed="true"] .map-only-icon-enter {
+  display: none;
+}
+
+.ol-control.map-only-control .map-only-button[aria-pressed="true"] .map-only-icon-exit {
+  display: block;
+}
+
+/* With nothing else on the map, it sits quietly until it is wanted. */
+#app.is-map-only .map-only-control {
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
+#app.is-map-only .map-only-control:hover,
+#app.is-map-only .map-only-control:focus-within {
+  opacity: 1;
+}
+
+@media (min-width: 901px) and (max-width: 1200px), (max-width: 900px) {
+  .map-only-control {
+    bottom: calc(var(--dashboard-inset, 60px) + 40px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #controls,
+  #timeline-overlay,
+  .panel-collapse-button svg {
+    transition: none;
   }
 }

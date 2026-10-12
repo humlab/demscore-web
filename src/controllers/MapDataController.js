@@ -79,8 +79,8 @@ export class MapDataController extends BaseController {
   }
 
   // What the summary says about coverage, which is a reading of the data rather
-  // than a gap in it: a country with no value for this year is not drawn, and
-  // the bare land it leaves is a fact about the variable.
+  // than a gap in it: a country with no value for this year is drawn in the
+  // no-data grey, and how many of them there are is a fact about the variable.
   describeCoverage(breaks) {
     const withData = breaks?.countriesWithData;
     const total = breaks?.countriesTotal;
@@ -89,7 +89,7 @@ export class MapDataController extends BaseController {
     if (without <= 0) return `All ${total} countries on the map have a value.`;
     return (
       `${withData} of ${total} countries have a value; ` +
-      `${without} ${without === 1 ? "is" : "are"} drawn as plain land with no value for this year.`
+      `${without} ${without === 1 ? "is" : "are"} drawn in grey, with no value for this year.`
     );
   }
 

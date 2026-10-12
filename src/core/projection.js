@@ -242,6 +242,10 @@ const PROJECTION_DEFINITIONS = {
     code: WEB_MERCATOR_CODE,
     label: "Mercator",
     title: "Web Mercator (EPSG:3857) — hexagons swell towards the poles",
+    // Withdrawn from the View switch at the client's request. Everything behind
+    // it -- the mesh, the mapfile layers, this definition -- is left in place, so
+    // offering it again is this one flag.
+    offered: false,
     // A second set of layers over a second mesh, not the first mesh reprojected.
     // See the note above hex_variable_mercator in mapserver/mapserver.map.
     wmsLayers: {
@@ -265,7 +269,12 @@ const PROJECTION_DEFINITIONS = {
 };
 
 export const DEFAULT_PROJECTION_KEY = "equalEarth";
-export const PROJECTION_KEYS = Object.keys(PROJECTION_DEFINITIONS);
+// Only the projections the reader may pick. A saved cookie naming one that is
+// no longer offered fails `readMapProjection`'s check and falls back to the
+// default, so nobody is left stranded in a projection the switch cannot leave.
+export const PROJECTION_KEYS = Object.keys(PROJECTION_DEFINITIONS).filter(
+  (key) => PROJECTION_DEFINITIONS[key].offered !== false,
+);
 
 const resolved = new Map();
 

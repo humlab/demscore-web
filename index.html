@@ -39,6 +39,21 @@
           >
             <i data-lucide="info" aria-hidden="true"></i>
           </button>
+          <!-- Hides the sidebar off the left edge, leaving a thin strip that
+               brings it back while the pointer is on it. Deliberately quiet:
+               most readers will never want it. Labels and state are kept by
+               PanelCollapseController. -->
+          <button
+            id="sidebarCollapseBtn"
+            type="button"
+            class="panel-collapse-button panel-collapse-sidebar"
+            aria-controls="controls"
+            aria-expanded="true"
+            aria-label="Hide the side panel"
+            title="Hide the side panel"
+          >
+            <i data-lucide="chevrons-left" aria-hidden="true"></i>
+          </button>
         </div>
 
         <section id="mobileControls" class="mobile-controls" aria-label="Mobile map controls">
@@ -120,20 +135,34 @@
            reading order and nothing else. -->
       <div id="timeline-overlay">
         <div class="timeline-main">
+
           <div class="timeline-controls">
+            <!-- Two squares the height of the card: play, and the speed. The
+                 play button is an icon, so its name is carried by `aria-label`
+                 (and `title` for the pointer), both rewritten with the state in
+                 DemscoreApp.updatePlayButton(). The speed square is itself the
+                 button: it opens a listbox of speeds below it, the same
+                 select-only pattern as the Colours dropdown, and it is named
+                 with the speed in words ("4 years per second") because "4×"
+                 alone says nothing about what is being multiplied. -->
             <div class="playback-control">
-              <button id="yearPlayBtn" type="button" class="play-button" aria-label="Play timeline"><span>Animate</span><i data-lucide="play" aria-hidden="true"></i></button>
-              <!-- The "Speed" caption floats above the reading rather than
-                   sitting beside it: the multiplier stays the prominent,
-                   centred thing and the word is only there so nobody reads
-                   "4x" as a zoom level. Absolutely positioned, so it takes no
-                   room from the row and does not move the multiplier off the
-                   baseline the Animate button sits on. -->
-              <div class="speed-button" role="group" aria-label="Timeline speed">
-                <span class="speed-button-label" aria-hidden="true">Speed</span>
-                <button id="speedDownBtn" type="button" aria-label="Decrease speed"><i data-lucide="chevron-left"></i></button>
-                <span id="speedDisplay" aria-live="polite">1x</span>
-                <button id="speedUpBtn" type="button" aria-label="Increase speed"><i data-lucide="chevron-right"></i></button>
+              <button id="yearPlayBtn" type="button" class="play-button" aria-label="Play timeline" title="Play"><i data-lucide="play" aria-hidden="true"></i></button>
+              <div class="speed-control">
+                <button
+                  id="speedButton"
+                  type="button"
+                  class="speed-button"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                  aria-controls="speedListbox"
+                  title="Animation speed"
+                >
+                  <span id="speedDisplay" class="speed-button-value" aria-hidden="true">4×</span>
+                  <span class="speed-button-label" aria-hidden="true">Speed</span>
+                </button>
+                <!-- Options are written by DemscoreApp.renderSpeedOptions(),
+                     from AUTO_PLAY_MIN_SPEED to AUTO_PLAY_MAX_SPEED. -->
+                <div id="speedListbox" class="speed-popup" role="listbox" aria-label="Animation speed" tabindex="-1" hidden></div>
               </div>
             </div>
           </div>
@@ -160,6 +189,24 @@
               <div class="timeline-marker-line"></div>
               <div id="yearDisplayHero" class="timeline-year-label"></div>
             </div>
+          </div>
+          <!-- Slides the timeline up out of the way; see sidebarCollapseBtn. At
+               the card's right end behind a rule, with the word under the
+               chevron so nobody has to guess what an arrow on a timeline does.
+               PanelCollapseController rewrites the word with the state. -->
+          <div class="timeline-collapse">
+            <button
+              id="timelineCollapseBtn"
+              type="button"
+              class="panel-collapse-button panel-collapse-timeline"
+              aria-controls="timeline-overlay"
+              aria-expanded="true"
+              aria-label="Hide the timeline"
+              title="Hide the timeline"
+            >
+              <i data-lucide="chevron-up" aria-hidden="true"></i>
+              <span class="panel-collapse-text" aria-hidden="true">Hide</span>
+            </button>
           </div>
         </div>
         <!-- Not a live region any more. The slider announces its own value (and
@@ -200,11 +247,6 @@
         <div id="mapCanvas" class="map-canvas">
           <div id="loading-indicator" aria-hidden="true"></div>
         </div>
-
-        <!-- Which variable the colours stand for, in the map's top-left corner
-             just under the timeline (`--timeline-inset`). Filled by
-             DemscoreApp.renderMapVariableTitle(). -->
-        <p id="mapVariableTitle" class="map-variable-title" aria-hidden="true"></p>
 
         <!-- The other reading of the same year, over the map rather than
              beside it: both want the whole pane, and a half-height map at a
@@ -335,9 +377,8 @@
          back. `MetadataController.openVariableInfoPopover()` /
          `hideVariableTooltip()` switch the role and the close button together;
          neither may be changed without the other. -->
-    <!-- What the mark under the pointer is saying. The marks are one row doing
-         two jobs, which is worth the height but is not self-evident, so the card
-         reads the hovered one out and then says what the shape means.
+    <!-- What the mark under the pointer is saying: its year, and how many
+         countries the variable has a value for in it. One mark is one year.
 
          At body level, and for the same reason the variable card is: it is
          positioned in viewport coordinates, and `#timeline-overlay` carries a

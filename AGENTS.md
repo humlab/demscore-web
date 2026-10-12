@@ -10,11 +10,15 @@ Primary user flows:
 - choose variable from the always-visible variable list, which spans *every* dataset at once;
   each row carries its dataset's colour on its left edge, and picking a row is also what
   switches the dataset
-- pick how to see a year from the **View** switch in the map dashboard: Equal Earth,
-  Mercator, or the **table**. One radiogroup over three answers, because the two
-  projections and the table are one question — how to show this year — asked once. The
-  table replaces the map rather than sitting beside it, and picking a projection from the
-  table view sets it and brings the map back
+- pick how to see a year from the **View** switch in the map dashboard: the **map**
+  (Equal Earth) or the **table**. One radiogroup, because both are the one question — how
+  to show this year — asked once. The table replaces the map rather than sitting beside
+  it. Mercator was a third answer and was withdrawn from the switch at the client's
+  request; it is `offered: false` in `core/projection.js`, and everything behind it (mesh,
+  mapfile layers) is still in place, so offering it again is that one flag. The switch
+  and its CSS count the offered projections, so nothing else needs touching
+- put the sidebar, the timeline or the map dashboard away, or show the map on its own —
+  see `PanelCollapseController` below
 - sort the table on any column, and watch the order rearrange itself as the years
   play: a ranking sorted by value is the one reading the map cannot give
 - scrub or animate year timeline
@@ -47,13 +51,28 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - variable hierarchy building (which variables are base ones, so derived versions stay out)
   - polarity resolution (`default` -> `dataset_default` -> `rules` -> `override` precedence as implemented)
 - `src/core/palettes.js`
-  - the four colour schemes the reader can pick between, and the only place any quantile
-    colour is written. `mapserver/hex_classes.inc` is generated from it by
-    `scripts/build_hex_classes.mjs` in the deployment repo
+  - the colour schemes, and the only place any quantile colour is written -- and the
+    no-data grey (`NO_DATA_COLOR`, mapfile class 99). `mapserver/hex_classes.inc` is
+    generated from it by `scripts/build_hex_classes.mjs` in the deployment repo
+  - **two schemes are offered**: Brown – Blue (`indigo_amber`), the reader's default, and
+    Red – Blue (`default`) -- the names from the client's mockup. Viridis and Cividis are
+    `offered: false` -- withdrawn at the client's request, still generated and still
+    served, so their bases stay claimed. `PALETTE_KEYS` is the offered list, default first
+  - they are picked from a **dropdown** in the dashboard (`#mapPaletteButton` and the
+    `#mapPaletteListbox` it opens upwards), each option its name over its ramp. A native
+    `<select>` cannot draw a ramp, so it is the select-only listbox pattern written out:
+    the listbox takes focus and points at its options with `aria-activedescendant`
+  - **the reader's default is not the server's.** `SERVER_DEFAULT_PALETTE_KEY` (`default`,
+    Blue-Red) is what MapServer paints when a request names no `palette`, and requests for
+    it still omit the parameter so the long-lived cache stays warm. `DEFAULT_PALETTE_KEY`
+    (`indigo_amber`) is what a reader who never chose sees, and is always named. The
+    palette cookie was renamed `demscore_map_palette_v2` when the default moved, so
+    everyone landed on it once
 - `src/core/projection.js`
   - the two planes the map can be drawn in — Equal Earth (EPSG:8857), the default, and
-    Web Mercator (EPSG:3857) — the resolution ladder they share, and the conversion
-    between the app's zoom and a resolution
+    Web Mercator (EPSG:3857, `offered: false`, so not in the View switch) — the
+    resolution ladder they share, and the conversion between the app's zoom and a
+    resolution. `PROJECTION_KEYS` lists only the offered ones
 - `src/controllers/MapController.js`
   - OpenLayers map setup, baselayers, projection toggle, zoom display
   - WMS layer lifecycle (active layer + pending layer for smooth swaps)
@@ -150,7 +169,30 @@ The app was refactored into a small class hierarchy with one top-level coordinat
 - `src/DemscoreApp.js`
   - orchestrates app startup and shared state
   - timeline rendering/scrubbing, and the variable caption under it
-  - autoplay state machine and speed controls
+  - autoplay state machine and the speed dropdown
+  - per-year country counts for the variable on screen (`loadYearCounts()`, from
+    `/api/year-counts`), for the timeline's hover card and its bar heights
+- `src/controllers/PanelCollapseController.js`
+  - putting the three panels that stand over the map away, and the map-only mode. State
+    is classes on `#app`: `is-collapsed-sidebar|timeline|dashboard`, `is-peek-*` while
+    a collapsed one is pointed at or has focus inside it, and `is-map-only`
+  - a collapsed sidebar or timeline slides off its edge and leaves a `.panel-reveal-*`
+    strip; hovering the strip *peeks* the panel, its own button (turned round) pins it
+    back, and on touch a tap or a drag off the edge pins it back. Focus moving into a
+    collapsed panel peeks it, so Tab never lands on something invisible
+  - the dashboard **folds to its legend** rather than leaving: the legend is the key to
+    the map. Folded, the legend and the unfold button are a card of their own in the
+    map's bottom-left corner -- clear of the credit line, which runs in from the right.
+    It does not peek on hover: the folded legend is not where it sits in the full row,
+    so a peek would lift it out from under the pointer
+  - map-only (the button bottom right, over the credit line) hides all three, the folded
+    legend, the strips and the zoom buttons, and asks for full screen. **The attribution
+    line stays** -- the licence is discharged by it being always visible. Escape, or
+    leaving full screen, ends it
+  - the sidebar and timeline collapse are desktop-only (on the phone the sidebar is a band
+    over the map and the timeline sits in the flow); the dashboard's fold button is held
+    back on the phone for want of a corner to put it in. Nothing is remembered between
+    visits
   - cross-controller event coordination
 
 ## Runtime Data Flow
@@ -230,10 +272,12 @@ the structural colour, terracotta only as a thin accent, and soft neutral surfac
 - corners are `--radius-card` / `--radius-control` / `--radius-inline`, deliberately small:
   the brief calls out heavy rounded cards as the thing to avoid. Pills (`999px`) are for
   chips, which read as toggles by being pill-shaped
-- the brief asks for terracotta *sparingly*. It has exactly one use: `--sidebar-rule`, the
-  band down the sidebar's outer edge (below). That is the whole of its budget — do not spend
-  it on buttons or active states as well. Its previous use, the rule above the legend dock,
-  went with that dock
+- the brief asks for terracotta *sparingly*. It has two uses, both through the one token
+  `--sidebar-rule`: the band down the sidebar's outer edge (below), and the left edge of the
+  selected variable row -- asked for by the client, because the row is a mid blue on a navy
+  column and a navy edge disappeared into it. That is the whole of its budget — do not spend
+  it on buttons or other active states as well. Its earlier use, the rule above the legend
+  dock, went with that dock
 - the per-dataset palettes (`--ds-1`..`--ds-5`, from backend config) and the map's own
   colours — legend ramps, `LAND_BASEMAP_COLOR` — are data graphics, not interface chrome,
   and stand outside this system
@@ -582,21 +626,21 @@ Common tasks and where to work:
   - `config/legend_semantics.json`
   - rendering in `MapController.refreshLegend()`
   - the bar is followed by a **No data** swatch (`.legend-nodata`), which is not part of
-    the ramp: a country with no value for this variable and year is not drawn at all, and
-    neither is its outline, so what shows through is the land basemap. It was a colour on
-    the map that the legend did not speak for, which left the cream over Greenland or
-    Antarctica reading as a shade the ramp had run out of. The swatch is painted from
-    `--land-basemap`, which `initializeLegend()` writes onto the legend from the same
-    `LAND_BASEMAP_COLOR` the basemap style uses, so the two cannot drift
+    the ramp. A present-day country with no value for this variable and year is drawn as
+    grey hexagons (mapfile class 99); it used to be left undrawn with the land basemap
+    showing through, which put a cream fringe round every coast where the hexagons' edge
+    and the coastline disagree. The swatch is painted from `--no-data-color`, which
+    `initializeLegend()` writes from the same `NO_DATA_COLOR` in `core/palettes.js` the
+    mapfile class is generated from, so the two cannot drift
+  - the land basemap is **off**: the grey hexagons answer what it was there for. It is
+    kept as a developer switch ("Landmasses", behind Shift+D) rather than deleted
   - it is the one thing in the scale that survives the phone breakpoint, where
     `.timeline-legend-copy` is hidden: the note restates what the ramp already shows, and
-    nothing else on a phone says what the cream means
+    nothing else on a phone says what the grey means
   - **the legend is in two places, because it says two kinds of thing.** The *scale* —
-    `.legend-scale`, the ramp with its two end labels and the no-data patch — is a key to
-    the picture and is built into `.map-legend-slot` in the dashboard's Colours panel,
-    *above* the picker that chose those colours: the bar is what the reader is reading the
-    map against and the four schemes under it are the choice that made it, so key first,
-    control second. The *words* — `.legend-title` and
+    `.legend-scale`, the ramp with its two end labels and the no-data patch beside it — is
+    a key to the picture and is built into `.map-legend-slot`, the dashboard's middle
+    section, with the Colours dropdown that chose those colours after it. The *words* — `.legend-title` and
     `.legend-note` — are written into `#mapLegendCopy`, the second line of the variable
     caption in the timeline overlay, because what they qualify is the variable and not the bar. Both were
     one 154px navy dock across the foot of the pane; the dock is gone, `#map` is one grid
@@ -611,25 +655,37 @@ Common tasks and where to work:
     sentence and a half for some indicators, and the overlay it sits in is standing on the
     map — a line that wrapped would move `--timeline-inset` and with it the top of the
     table view. It is in `#mapSummary` in full for anyone not hovering
-  - **the dashboard's height is the Colours panel's height**, because the panel is the
-    tallest of the three and `.map-choice-section` is a flex column whose control fills it.
-    Everything that makes this panel taller comes out of the map, which is why the scheme
-    names are a `visually-hidden` span plus a tooltip rather than a line of text under each
-    swatch strip: four names cost a line of the whole dashboard. Keep the View buttons near
-    square by keeping this panel short, not by capping them
-  - the dashboard is a single grid row, so it cannot spend more width than `#map` has.
-    A window between 900 and 1200px still has the sidebar, which leaves the pane
-    560–840px, and at full size the three panels do not fit it — hence the
-    `(min-width: 901px) and (max-width: 1200px)` block, where every panel gives a little.
-    `#map { overflow: hidden }` does not clip politely: what does not fit disappears, and
-    the legend with it
+  - **the dashboard is one row**: View, the legend, the Colours dropdown, the outline
+    switch and the fold button, as the client's mockup has it. It used to be two (a label
+    over each section's control, and a strip of swatch buttons for the schemes), and every
+    pixel of its height comes out of the map, so nothing goes into it that would make it
+    two rows again. The legend is the part that gives when the row is short
+    (`.map-legend-panel` shrinks to 180px and its end labels clip, with the full text in
+    `title`)
+  - it cannot spend more width than `#map` has. A window between 900 and 1200px still has
+    the sidebar, which leaves the pane 560–840px — hence the
+    `(min-width: 901px) and (max-width: 1200px)` block, where the padding tightens and
+    the legend narrows. `#map { overflow: hidden }` does not clip politely: what does not
+    fit disappears, and the legend with it. On the phone it is two rows, the legend across
+    the top
+  - **a switch without its label is hidden, not shown bare.** The outline switch keeps
+    "Outline equal values" at every width where it fits (measured: all of the desktop
+    band), and below 520px, where it does not, the switch goes and the Colours button
+    takes its column. The "Colours" caption on that button stays down to 360px
 
 - Change autoplay/timeline behaviour:
   - `DemscoreApp` methods: `scheduleAutoPlayTick`, `setYear`, `renderTimelineScale`
-  - the speed stepper carries a `Speed` caption (`.speed-button-label`). It is absolutely
-    positioned over the group on purpose: the multiplier has to stay the prominent, centred
-    reading, and anything in the flow would push it off the line the Animate button's own
-    text sits on. It is `aria-hidden` — the group already carries `aria-label="Timeline speed"`
+  - play and speed are two squares the height of the card, after the client's mockup: the
+    play button an icon (no "Animate" word), and the speed square itself a button
+    (`#speedButton`, "4×" over "Speed") that opens a listbox of speeds under it
+    (`#speedListbox`, 1-8 years per second, written by `renderSpeedOptions()`). It is the
+    same select-only pattern as the Colours dropdown in `MapController`;
+    `renderAutoPlaySpeed()` keeps the reading, the button's name (the speed in words) and
+    the selected option in step. `.timeline-controls` sits above the slider wrap so the
+    list paints over the axis. On the phone the two share the controls' full-width row
+  - the timeline's hover card says the year and how many countries have data in it --
+    nothing else. The read-ahead state ("Map tiles ready", left in from debugging) and
+    the note on what bar height means were taken out at the client's request
 
 - Change the variable caption under the timeline:
   - `#timelineVariableTitle` in `index.html`, `DemscoreApp.renderTimelineVariableTitle()`,
@@ -683,9 +739,12 @@ Common tasks and where to work:
     cannot be confused -- one is how tall, the other is how full. They were two
     stacked rows for a while, a coverage band over the marks, which spent twice the
     height saying two things about the same column
-  - `DemscoreApp.buildPreloadSegments()` buckets years into boxes so each stays at
-    least `PRELOAD_SEGMENT_MIN_PX` wide, so the segment count depends on the rendered
-    track width and is rebuilt (debounced) on window resize
+  - `DemscoreApp.buildPreloadSegments()` makes **one mark per year**, always. It used to
+    bucket years so each mark stayed at least 14px wide, and then a mark -- and the hover
+    card over it -- spoke for a span, which left "how many countries in this year" with
+    no answer. A long series gets thin marks instead (V-Dem's 236 years are ~3px apart on
+    a laptop); the gap is capped at `PRELOAD_SEGMENT_GAP_SHARE` of a year's slot so a
+    mark never thins to nothing
   - boxes are absolutely positioned and centred on the years they cover, using the
     same `(year - yearMin) / span` mapping as the ticks and the selected marker, so
     they line up; the end boxes overhang the track by half a box, which nothing clips
@@ -704,17 +763,16 @@ Common tasks and where to work:
     window). The mark stays; only the number goes, and the endpoint always wins. It
     measures the rendered labels rather than estimating from the year span, because
     how wide "1789" is depends on the font the browser actually used
-  - mark height comes from `DemscoreApp.buildCoverageHeightLookup()`, which reads the
-    *precomputed* strip (`MetadataController.getCoverageStripData()` ->
-    `config/variable_coverage.json`) -- the same digits the variable list draws under
-    every row, so one variable is one shape wherever it appears. The strip's buckets
-    are coarser than the segments, so a segment takes the mean of the buckets its
-    years fall in: a resample, not new detail. Per-year counts would be finer, but
-    `countryCountsByYear` is a field the client reads and the backend has never sent,
-    and filling it for 165 variables would about triple a 163 KB config fetch made on
-    every load. With no usable strip the lookup returns null and every mark falls back
-    to the flat `--track-height` the stylesheet gives it, which is what this looked
-    like before the two merged
+  - mark height comes from `DemscoreApp.buildCoverageHeightLookup()`. Once
+    `/api/year-counts` has answered for the variable on screen it is the year's own
+    country count against the dataset's busiest year -- the same ramp the strip digits
+    are cut from (`1 + 8 * count / max`), per year and unrounded. Until then, or if the
+    request fails, it reads the *precomputed* strip (`getCoverageStripData()` ->
+    `config/variable_coverage.json`) and a mark takes its bucket's level. The counts are
+    fetched per variable rather than added to that file because every variable's
+    per-year counts would about triple a config fetch made on every load, to serve the
+    one variable on screen. `applyCoverageHeights()` redraws the heights in place when
+    they land, so the read-ahead fill is not thrown away
   - `--axis-y` is the floor the marks stand on and the line the whole axis is placed
     from: marks grow up from it by `--coverage-band-height` (which must equal
     `COVERAGE_BAND_PX` in `DemscoreApp`), the tick marks and labels hang below it, and
@@ -1112,14 +1170,14 @@ Then do a manual smoke test in browser:
   opens the new one's card
 - southern crop: at the widest zoom no more than a sliver of Antarctica is in frame, and
   dragging south stops with 60S at the middle of the window rather than running on into empty
-  ocean. Both projections; Mercator is where it shows most
+  ocean
 - variable hover card: description appears beside the hovered row, follows arrow-key focus,
   and disappears on scroll, Escape and dataset switch; its COVERAGE strip matches the one
   in the row it points at, and its end years are the shared axis, not the variable's own
 - metadata dialog open/close
 - legend update and map tile refresh
 - dashboard containment: drag the window across the whole range — every width must show
-  all three View options, all four colour schemes (or the phone's select), the outline
+  both View options, the Colours dropdown, the outline
   toggle, the bar and both end labels, with the whole dashboard inside `#map`. The
   in-between widths (a window wide enough to keep the sidebar but not wide enough for the
   panels at full size, roughly 900–1200px) are the ones that fail first, and `#map`'s
@@ -1130,12 +1188,24 @@ Then do a manual smoke test in browser:
   sidebar -> timeline -> map -> map dashboard, which is the visible layout and the reason
   `#timeline-overlay` sits before `<main id="map">` in the source despite being painted over
   it
-- colour schemes: each of the four repaints the hexagons *and* the legend bar together, the
+- colour schemes: each offered one repaints the hexagons *and* the legend bar together, the
   legend note describes the scheme actually on screen, the choice survives a reload, and the
   bar still reads low-to-high left to right in every one of them — compare a positive-polarity
   variable against a negative one in a diverging scheme, where the band is reversed
-- projection toggle: Equal Earth and Mercator both draw land and hexagons, the view keeps
-  looking at the same place and the same fraction of the world, the zoom readout means the
-  same thing in both, and switching back leaves no stale tiles. **Every cell is a regular
-  hexagon in both** — slivers, columns or bands mean the wrong mesh is being served for the
-  SRS. Zooming in must reach exactly 6 in either projection, at every window size
+- projection: **every cell is a regular hexagon** — slivers, columns or bands mean the wrong
+  mesh is being served for the SRS. Zooming in must reach exactly 6 at every window size.
+  (Mercator is withdrawn from the switch; if it is offered again, check that switching keeps
+  looking at the same place and leaves no stale tiles)
+- no data: a present-day country with no value is grey hexagons, outlined like any other;
+  in a pre-1871 V-Dem year the German and Italian states draw over Germany and Italy with
+  no grey under them and no honeycomb of outlines inside them
+- panels: the side panel's and the timeline's hide buttons put them away and their strips
+  peek them back on hover; Tab into either shows it. The dashboard's folds it to the legend
+  in the bottom-left corner, clear of the credit line at every width. Map-only (bottom
+  right) leaves the map, its own button and the credit line, and Escape ends it
+- the dashboard is one row at every desktop width and stays inside `#map`; at 900-1200px
+  the credit line and the map-only button lift above the dashboard. The outline switch
+  always has its label where it is shown, and is not shown below 520px. The Colours list opens upwards and closes on Escape, a pick, a click
+  outside or Tab
+- scale: at 1366x768 and 1280x720 the sidebar, timeline and dashboard are drawn smaller
+  (`--ui-scale`) and nothing inside them is clipped

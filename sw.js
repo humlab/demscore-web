@@ -1,3 +1,23 @@
+// v17: both neutral ramps reversed to run pale (low) to dark (high) --
+// class_idx 41-47 and 51-57 repainted under unchanged URLs.
+//
+// v16: the Brown – Blue scheme's neutral ramp is purple to magenta now, not
+// teal -- class_idx 51-57 repainted under unchanged URLs again.
+//
+// v15: the Red – Blue scheme's neutral ramp is green now, not magma --
+// class_idx 41-47 repainted under unchanged URLs.
+//
+// v14: the Brown – Blue scheme's neutral ramp is teal now, not indigo to
+// yellow -- class_idx 51-57 repainted under unchanged URLs.
+//
+// v13: Antarctica is no longer drawn as no-data hexagons -- a grey band along the
+// foot of the map -- which repaints tiles under unchanged URLs again.
+//
+// v12: two repaints under unchanged URLs. Present-day countries with no value
+// are drawn as grey hexagons rather than left to the land basemap, and the area
+// outline is 1.0px instead of 1.6px. Every cached tile is a picture of the old
+// map, so they all have to go.
+//
 // v11: the inset layers are gone. Countries no cell of the grid could seat used
 // to get a hexagon from the grid one notch finer, drawn on top of the cell it
 // landed on; every hexagon is one size now, and a country the cells cannot seat
@@ -52,7 +72,7 @@
 // meshes. Nothing below needs to tell them apart: the layer names, the SRS and
 // the BBOX all ride along in the URL that is the cache key, so the two caches
 // are the same cache and can never collide.
-const WMS_TILE_CACHE = "demscore-wms-tile-cache-v11";
+const WMS_TILE_CACHE = "demscore-wms-tile-cache-v17";
 
 // The fills may be asked for alone or together with the outline layer that rides
 // along in the same GetMap (see MapController.wmsLayerNames), and the two spell

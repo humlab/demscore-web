@@ -115,7 +115,12 @@ export function writeMapProjection(key) {
 // more than the others that it survives a visit. Same shape as the projection:
 // an unreadable or unknown cookie falls back to the argument rather than to a
 // hardcoded choice, so the caller's default is the only default.
-const MAP_PALETTE_COOKIE = "demscore_map_palette";
+//
+// Renamed (`_v2`) when the reader's default moved from Blue-Red to Indigo-amber.
+// A stored "default" could not be told apart from a reader who had only ever
+// clicked back to where they started, and the point of the change -- nobody
+// lands on the red end unless they ask for it -- needed everyone reset once.
+const MAP_PALETTE_COOKIE = "demscore_map_palette_v2";
 
 export function readMapPalette(allowedKeys, fallback) {
   const stored = readCookie(MAP_PALETTE_COOKIE);

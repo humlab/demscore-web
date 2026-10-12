@@ -356,6 +356,9 @@ export class MetadataController extends BaseController {
       chip.dataset.topic = id;
       chip.setAttribute("aria-pressed", "false");
       if (topic.description) chip.title = topic.description;
+      // Kept to put back when the chip stops being greyed out, since
+      // syncFilterChipState() writes the reason it is into the title.
+      chip.dataset.description = topic.description || "";
       chip.textContent = topic.label;
       this.topicChips.appendChild(chip);
       this.topicChipButtons.set(id, chip);
@@ -404,16 +407,45 @@ export class MetadataController extends BaseController {
     }
   }
 
+  // Pressed state, and greyed-out state. A greyed-out chip says why in its
+  // title (the pointer) and in `aria-description` (a screen reader), since the
+  // dimming alone is only a look.
   syncFilterChipState() {
     for (const [key, chip] of this.datasetTabButtons) {
       const on = this.activeDatasets.has(key);
       chip.classList.toggle("is-active", on);
       chip.setAttribute("aria-pressed", on ? "true" : "false");
+      const available = this.isFilterAvailable(this.activeDatasets, key);
+      this.markFilterChipAvailability(
+        chip,
+        available,
+        "",
+        "No variables under the selected topics. Selecting it clears the topic filter.",
+      );
     }
     for (const [id, chip] of this.topicChipButtons) {
       const on = this.activeTopics.has(id);
       chip.classList.toggle("is-active", on);
       chip.setAttribute("aria-pressed", on ? "true" : "false");
+      const available = this.isFilterAvailable(this.activeTopics, id);
+      this.markFilterChipAvailability(
+        chip,
+        available,
+        chip.dataset.description || "",
+        "Not covered by the selected datasets. Selecting it clears the dataset filter.",
+      );
+    }
+  }
+
+  markFilterChipAvailability(chip, available, restingTitle, unavailableNote) {
+    chip.classList.toggle("is-unavailable", !available);
+    if (available) {
+      chip.removeAttribute("aria-description");
+      if (restingTitle) chip.title = restingTitle;
+      else chip.removeAttribute("title");
+    } else {
+      chip.setAttribute("aria-description", unavailableNote);
+      chip.title = restingTitle ? `${restingTitle}\n\n${unavailableNote}` : unavailableNote;
     }
   }
 
@@ -429,13 +461,13 @@ export class MetadataController extends BaseController {
     this.datasetTabs.addEventListener("click", (event) => {
       const chip = event.target.closest(".chip-dataset");
       if (!chip || !this.datasetTabs.contains(chip)) return;
-      this.toggleFilter(this.activeDatasets, chip.dataset.dataset);
+      this.toggleFilter(this.activeDatasets, chip.dataset.dataset, this.activeTopics);
     });
 
     this.topicChips.addEventListener("click", (event) => {
       const chip = event.target.closest(".chip-topic");
       if (!chip || !this.topicChips.contains(chip)) return;
-      this.toggleFilter(this.activeTopics, chip.dataset.topic);
+      this.toggleFilter(this.activeTopics, chip.dataset.topic, this.activeDatasets);
     });
 
     // Rebuilt on every keystroke, undebounced: the whole list is a few dozen
@@ -691,12 +723,36 @@ export class MetadataController extends BaseController {
 
   // A chip is a toggle, and several may be on at once: topics OR together, as do
   // datasets, and the two groups AND with each other.
-  toggleFilter(set, value) {
+  //
+  // A greyed-out chip is one the other group rules out -- a topic no selected
+  // dataset covers, or a dataset with nothing under the selected topics. It is
+  // still pressable, and pressing it clears the other group first: the reader
+  // has asked for this chip, and with the other group as it was the list would
+  // have come back empty, which answers nobody.
+  toggleFilter(set, value, otherSet) {
     if (!value) return;
-    if (set.has(value)) set.delete(value);
-    else set.add(value);
-    this.syncFilterChipState();
+    if (set.has(value)) {
+      set.delete(value);
+    } else {
+      if (otherSet && !this.isFilterAvailable(set, value)) otherSet.clear();
+      set.add(value);
+    }
     this.refreshVariables();
+  }
+
+  // Whether a chip in one group has any variable under it, given what is on in
+  // the *other* group. The search box does not enter into it: a chip greyed
+  // out by a half-typed word would flicker with every keystroke.
+  isFilterAvailable(set, value) {
+    const rows = this.getAllVariableRows();
+    // Before the metadata is in there is nothing to rule a chip out with.
+    if (rows.length === 0) return true;
+    if (set === this.activeTopics) {
+      if (this.activeDatasets.size === 0) return rows.some((row) => row.topics.includes(value));
+      return rows.some((row) => this.activeDatasets.has(row.datasetKey) && row.topics.includes(value));
+    }
+    if (this.activeTopics.size === 0) return rows.some((row) => row.datasetKey === value);
+    return rows.some((row) => row.datasetKey === value && row.topics.some((id) => this.activeTopics.has(id)));
   }
 
   setVariableQuery(value) {
@@ -950,6 +1006,13 @@ export class MetadataController extends BaseController {
 
   // The variable's own entry and nothing else: since each strip is drawn on its
   // own years, the dataset's span is no longer part of reading one.
+  // The busiest year anywhere in the dataset -- what a full-height bar means,
+  // for the strips and for the timeline alike.
+  getCoverageDatasetMax(datasetKey) {
+    const max = this.coverageMeta?.[datasetKey]?.maxCountries;
+    return Number.isFinite(max) && max > 0 ? max : null;
+  }
+
   getCoverageStripData(datasetKey, variableKey) {
     const entry = this.coverageMeta?.[datasetKey]?.variables?.[variableKey];
     if (!entry || typeof entry.levels !== "string" || entry.levels.length === 0) return null;
@@ -1567,6 +1630,9 @@ export class MetadataController extends BaseController {
 
   refreshVariables() {
     this.hideVariableTooltip();
+    // Every change to what the list shows can change which chips have anything
+    // under them, and the rows themselves arrive after the chips are drawn.
+    this.syncFilterChipState();
     const rows = this.getFilteredRows();
 
     this.variableList.innerHTML = "";

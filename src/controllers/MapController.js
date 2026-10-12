@@ -13,7 +13,9 @@ import {
   CLASS_COUNT,
   DEFAULT_PALETTE_KEY,
   MAP_PALETTES,
+  NO_DATA_COLOR,
   PALETTE_KEYS,
+  SERVER_DEFAULT_PALETTE_KEY,
   legendColorsFor,
   paletteDescriptionFor,
   paletteLabelFor,
@@ -269,7 +271,12 @@ export class MapController extends BaseController {
     this.viewListeners = [];
     this.zoomReadoutEl = null;
     this.viewButtons = [];
-    this.paletteButtons = [];
+    this.palettePanel = null;
+    this.paletteButton = null;
+    this.paletteValueEl = null;
+    this.palettePopup = null;
+    this.paletteOptions = [];
+    this.paletteActiveIndex = 0;
     this.paletteSwatchEls = new Map();
     this.layerToggleInputs = [];
     this.outlineToggle = null;
@@ -311,6 +318,11 @@ export class MapController extends BaseController {
         stroke: new ol.style.Stroke({ color: LAND_BASEMAP_COLOR, width: 1 }),
       }),
       zIndex: BASEMAP_Z_INDEX,
+      // Off since present-day countries with no value became grey hexagons:
+      // with the land under them, every coast showed a cream fringe where the
+      // hexagons' edge and the coastline disagree. Kept as a developer switch
+      // behind Shift+D ("Landmasses"), which is where it lived before.
+      visible: false,
     });
 
     // The hexagons live in a group of their own because a swap is two layers at
@@ -539,6 +551,13 @@ export class MapController extends BaseController {
     return this.mapChoiceDashboardEl;
   }
 
+  // For a control that sits over the map but is not the map's own -- the
+  // map-only button. OpenLayers only holds a click back from the map when the
+  // element is in its stop-event container, which is what a Control puts it in.
+  addMapControl(element) {
+    this.map.addControl(new ol.control.Control({ element }));
+  }
+
   getContainer() {
     return this.map.getTargetElement();
   }
@@ -716,11 +735,12 @@ export class MapController extends BaseController {
 
   createWmsLayer() {
     const polarity = this.metadataController.getActivePolarity();
-    // Default requests normally leave `palette` out to keep the long-lived
-    // cache warm. Neutral Default now has its own ramp, though, so spelling it
-    // out gives that changed rendering a fresh URL instead of reusing the old
-    // neutral-Viridis tiles.
-    const explicitlyNamePalette = this.paletteKey !== DEFAULT_PALETTE_KEY || polarity === "neutral";
+    // Blue-Red requests leave `palette` out, because that is what MapServer
+    // paints unnamed and the long-lived cache is warm under those URLs. This is
+    // the *server's* default, not the reader's -- see palettes.js. Neutral
+    // Blue-Red has its own ramp, though, so spelling it out gives that changed
+    // rendering a fresh URL instead of reusing the old neutral-Viridis tiles.
+    const explicitlyNamePalette = this.paletteKey !== SERVER_DEFAULT_PALETTE_KEY || polarity === "neutral";
     const source = new ol.source.TileWMS({
       url: this.mapServerBase,
       projection: this.projection.projection,
@@ -836,22 +856,28 @@ export class MapController extends BaseController {
     this.installMapChoiceDashboard();
   }
 
+  // The map dashboard: one row along the foot of the map -- the View switch, the
+  // legend, the colour-scheme dropdown, the outline switch and the button that
+  // folds it down to its legend. It was two rows (labelled sections over their
+  // controls, and a strip of swatch buttons for the schemes), which made it the
+  // tallest thing on the map after the timeline; the client's mockup put it on
+  // one row with the schemes behind a dropdown.
   installMapChoiceDashboard() {
     const container = document.createElement("div");
     container.className = "ol-unselectable map-choice-dashboard";
     container.innerHTML = `
       <div class="map-choice-section map-view-panel">
-        <p id="mapViewLabel" class="map-choice-label">View</p>
+        <span id="mapViewLabel" class="visually-hidden">View</span>
         <div class="map-view-switch" role="radiogroup" aria-labelledby="mapViewLabel">
-          <span class="map-view-selection" aria-hidden="true"></span>
           ${VIEW_CHOICE_KEYS.map((key) => {
             const isTable = key === TABLE_VIEW_KEY;
-            const label = isTable ? "Table" : getMapProjection(key).label;
+            // With one projection on offer, its name is not a choice the
+            // switch is asking about: the question is map or table.
+            const label = isTable ? "Table" : PROJECTION_KEYS.length === 1 ? "Map" : getMapProjection(key).label;
             const title = isTable ? TABLE_VIEW_TITLE : getMapProjection(key).title;
-            // The rule before the last option, not between all three: the two
-            // projections are two ways of drawing the same picture and the
-            // third is not a picture at all.
-            const rule = isTable ? '<span class="map-view-divider" aria-hidden="true"></span>' : "";
+            // A rule before the table only when there are projections to part
+            // it from: two ways of drawing the picture, and then not a picture.
+            const rule = isTable && PROJECTION_KEYS.length > 1 ? '<span class="map-view-divider" aria-hidden="true"></span>' : "";
             return `${rule}
               <button class="map-view-choice" type="button" role="radio" value="${key}" title="${title}">
                 <i class="map-view-icon" data-lucide="${VIEW_CHOICE_ICONS[key]}" aria-hidden="true"></i>
@@ -861,55 +887,78 @@ export class MapController extends BaseController {
         </div>
       </div>
       <span class="map-choice-divider" aria-hidden="true"></span>
-      <div class="map-choice-section map-palette-panel">
-        <p id="mapPaletteLabel" class="map-choice-label">Colours</p>
-        <!-- initializeLegend() fills this, and it is above the picker rather
-             than below it: the bar is what the reader is reading the map
-             against, and the four schemes under it are the choice that made it.
-             Key first, control second. -->
+      <!-- initializeLegend() fills this. It is the key to the map, so it is what
+           is left when the dashboard is folded. -->
+      <div class="map-choice-section map-legend-panel">
         <div class="map-legend-slot"></div>
-        <div class="map-palette-list" role="radiogroup" aria-labelledby="mapPaletteLabel">
-          <span class="map-palette-selection" aria-hidden="true"></span>
+      </div>
+      <!-- A button that opens a listbox of the schemes, each shown as its name
+           over its ramp -- the "select-only" pattern, written out because a
+           native <select> cannot draw a ramp in an option. The listbox takes
+           focus when it opens and points at its options with
+           aria-activedescendant. -->
+      <div class="map-choice-section map-palette-panel">
+        <button
+          id="mapPaletteButton"
+          class="map-palette-button"
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded="false"
+          aria-controls="mapPaletteListbox"
+          aria-labelledby="mapPaletteLabel mapPaletteCurrent"
+        >
+          <span id="mapPaletteLabel" class="map-palette-button-label">Colours</span>
+          <span id="mapPaletteCurrent" class="map-palette-button-value"></span>
+          <i class="map-palette-button-chevron" data-lucide="chevron-up" aria-hidden="true"></i>
+        </button>
+        <div
+          id="mapPaletteListbox"
+          class="map-palette-popup"
+          role="listbox"
+          aria-labelledby="mapPalettePopupLabel"
+          tabindex="-1"
+          hidden
+        >
+          <p id="mapPalettePopupLabel" class="map-palette-popup-label">Colour scheme</p>
           ${PALETTE_KEYS.map((key) => {
             const palette = MAP_PALETTES[key];
-            return `<button class="map-palette-option" type="button" role="radio" value="${key}" title="${palette.description}">
+            return `<div id="mapPaletteOption-${key}" class="map-palette-option" role="option" data-value="${key}" aria-selected="false">
+              <span class="map-palette-option-head">
+                <span class="map-palette-name">${palette.label}</span>
+                <i class="map-palette-check" data-lucide="check" aria-hidden="true"></i>
+              </span>
               <span class="map-palette-swatches" data-palette-swatches="${key}" aria-hidden="true">${palette.signed.colors
-                .map((color) => `<i style="--palette-swatch: ${color}"></i>`)
+                .map((color) => `<i style="background: ${color}"></i>`)
                 .join("")}</span>
-              <!-- Visually hidden, not removed: the swatch strip is the whole
-                   button and the strip is aria-hidden, so without this the
-                   button would have no accessible name but its tooltip. The
-                   name is on the pointer through the title attribute and in
-                   the accessible tree through this. -->
-              <span class="map-palette-name visually-hidden">${palette.label}</span>
-            </button>`;
+            </div>`;
           }).join("")}
-        </div>
-        <div class="map-palette-mobile">
-          <span class="map-palette-mobile-swatches" data-current-palette-swatches aria-hidden="true">${Array.from({ length: CLASS_COUNT })
-            .map(() => "<i></i>")
-            .join("")}</span>
-          <select class="map-palette-select" aria-labelledby="mapPaletteLabel">
-            ${PALETTE_KEYS.map((key) => {
-              const palette = MAP_PALETTES[key];
-              return `<option value="${key}">${palette.label}</option>`;
-            }).join("")}
-          </select>
         </div>
       </div>
       <span class="map-choice-divider" aria-hidden="true"></span>
       <div class="map-choice-section map-outline-panel">
-        <p id="mapOutlineLabel" class="map-choice-label">Outlines</p>
         <label class="map-outline-toggle" for="areaOutlineToggle">
-          <input id="areaOutlineToggle" type="checkbox" aria-labelledby="mapOutlineLabel mapOutlineCopy" />
+          <input id="areaOutlineToggle" type="checkbox" aria-label="Outline equal values" />
           <span class="map-outline-switch" aria-hidden="true">
             <span class="map-outline-track">
               <span class="map-outline-thumb"></span>
             </span>
           </span>
-          <span id="mapOutlineCopy" class="map-outline-copy">Equal-colour areas</span>
+          <span id="mapOutlineCopy" class="map-outline-copy">Outline equal values</span>
         </label>
-      </div>`;
+      </div>
+      <span class="map-choice-divider map-collapse-divider" aria-hidden="true"></span>
+      <!-- Folds the dashboard down to its legend; see sidebarCollapseBtn in
+           index.html. PanelCollapseController owns its label and state. -->
+      <button
+        id="dashboardCollapseBtn"
+        type="button"
+        class="panel-collapse-button panel-collapse-dashboard"
+        aria-expanded="true"
+        aria-label="Hide the map controls, keeping the legend"
+        title="Hide the map controls, keeping the legend"
+      >
+        <i data-lucide="chevron-down" aria-hidden="true"></i>
+      </button>`;
 
     this.viewButtons = Array.from(container.querySelectorAll(".map-view-choice"));
     for (const button of this.viewButtons) {
@@ -917,16 +966,37 @@ export class MapController extends BaseController {
     }
     const viewSwitch = container.querySelector(".map-view-switch");
     viewSwitch.addEventListener("keydown", (event) => this.onViewKeydown(event));
-    this.paletteButtons = Array.from(container.querySelectorAll("[data-palette-swatches]")).map((swatches) =>
-      swatches.closest("button"),
-    );
-    for (const button of this.paletteButtons) {
-      button.addEventListener("click", () => this.setPalette(button.value));
+
+    this.palettePanel = container.querySelector(".map-palette-panel");
+    this.paletteButton = container.querySelector("#mapPaletteButton");
+    this.paletteValueEl = container.querySelector("#mapPaletteCurrent");
+    this.palettePopup = container.querySelector("#mapPaletteListbox");
+    this.paletteOptions = Array.from(container.querySelectorAll(".map-palette-option"));
+    this.paletteActiveIndex = 0;
+    this.paletteButton.addEventListener("click", () => {
+      if (this.palettePopup.hidden) this.openPalettePopup();
+      else this.closePalettePopup(true);
+    });
+    this.paletteButton.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      event.preventDefault();
+      this.openPalettePopup();
+    });
+    this.palettePopup.addEventListener("keydown", (event) => this.onPalettePopupKeydown(event));
+    this.palettePopup.addEventListener("focusout", (event) => {
+      if (!this.palettePanel.contains(event.relatedTarget)) this.closePalettePopup(false);
+    });
+    for (const [index, option] of this.paletteOptions.entries()) {
+      option.addEventListener("pointermove", () => this.setPaletteActive(index));
+      option.addEventListener("click", () => {
+        this.setPalette(option.dataset.value);
+        this.closePalettePopup(true);
+      });
     }
-    const list = container.querySelector(".map-palette-list");
-    list.addEventListener("keydown", (event) => this.onPaletteKeydown(event));
-    this.paletteSelect = container.querySelector(".map-palette-select");
-    this.paletteSelect.addEventListener("change", () => this.setPalette(this.paletteSelect.value));
+    document.addEventListener("pointerdown", (event) => {
+      if (!this.palettePopup.hidden && !this.palettePanel.contains(event.target)) this.closePalettePopup(false);
+    });
+
     this.outlineToggle = container.querySelector("#areaOutlineToggle");
     this.outlineToggle.addEventListener("change", () => this.setAreaOutlinesEnabled(this.outlineToggle.checked));
     this.paletteSwatchEls = new Map(
@@ -935,10 +1005,6 @@ export class MapController extends BaseController {
         Array.from(container.querySelectorAll(`[data-palette-swatches="${key}"] i`)),
       ]),
     );
-    this.paletteSelectOptions = new Map(
-      PALETTE_KEYS.map((key) => [key, this.paletteSelect.querySelector(`option[value="${key}"]`)]),
-    );
-    this.currentPaletteSwatchEls = Array.from(container.querySelectorAll("[data-current-palette-swatches] i"));
 
     this.mapChoiceDashboardEl = container;
     this.syncViewSelector();
@@ -955,6 +1021,67 @@ export class MapController extends BaseController {
     this.getEl("map").append(container);
   }
 
+  openPalettePopup() {
+    this.palettePopup.hidden = false;
+    this.paletteButton.setAttribute("aria-expanded", "true");
+    this.setPaletteActive(Math.max(0, PALETTE_KEYS.indexOf(this.paletteKey)));
+    this.palettePopup.focus();
+  }
+
+  // `returnFocus` when the reader closed it from inside (a choice, Escape);
+  // not when focus or a click has already gone somewhere else.
+  closePalettePopup(returnFocus) {
+    if (this.palettePopup.hidden) return;
+    this.palettePopup.hidden = true;
+    this.paletteButton.setAttribute("aria-expanded", "false");
+    this.palettePopup.removeAttribute("aria-activedescendant");
+    if (returnFocus) this.paletteButton.focus();
+  }
+
+  setPaletteActive(index) {
+    this.paletteActiveIndex = index;
+    this.paletteOptions.forEach((option, optionIndex) => {
+      option.classList.toggle("is-active", optionIndex === index);
+    });
+    const active = this.paletteOptions[index];
+    if (active) this.palettePopup.setAttribute("aria-activedescendant", active.id);
+  }
+
+  onPalettePopupKeydown(event) {
+    const last = this.paletteOptions.length - 1;
+    switch (event.key) {
+      case "ArrowDown":
+        this.setPaletteActive(Math.min(last, this.paletteActiveIndex + 1));
+        break;
+      case "ArrowUp":
+        this.setPaletteActive(Math.max(0, this.paletteActiveIndex - 1));
+        break;
+      case "Home":
+        this.setPaletteActive(0);
+        break;
+      case "End":
+        this.setPaletteActive(last);
+        break;
+      case "Enter":
+      case " ":
+        this.setPalette(this.paletteOptions[this.paletteActiveIndex]?.dataset.value);
+        this.closePalettePopup(true);
+        break;
+      case "Escape":
+        // Held here: Escape is also what leaves map-only, and closing a
+        // dropdown should not do that as well.
+        event.stopPropagation();
+        this.closePalettePopup(true);
+        break;
+      case "Tab":
+        this.closePalettePopup(false);
+        return;
+      default:
+        return;
+    }
+    event.preventDefault();
+  }
+
   // The three-way answer to "how do I want to see this year". Two of the three
   // are projections and go to setProjection; the third is the table, and it is
   // DemscoreApp that owns that. Picking a projection while the table is on
@@ -968,27 +1095,6 @@ export class MapController extends BaseController {
     }
     this.setProjection(key);
     this.onViewChange("map");
-  }
-
-  onPaletteKeydown(event) {
-    const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
-    if (!keys.includes(event.key)) return;
-
-    event.preventDefault();
-    const currentIndex = Math.max(0, PALETTE_KEYS.indexOf(this.paletteKey));
-    const lastIndex = PALETTE_KEYS.length - 1;
-    let nextIndex = currentIndex;
-    if (event.key === "Home") {
-      nextIndex = 0;
-    } else if (event.key === "End") {
-      nextIndex = lastIndex;
-    } else {
-      const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
-      nextIndex = (currentIndex + direction + PALETTE_KEYS.length) % PALETTE_KEYS.length;
-    }
-
-    this.setPalette(PALETTE_KEYS[nextIndex]);
-    this.paletteButtons[nextIndex]?.focus();
   }
 
   onViewKeydown(event) {
@@ -1061,25 +1167,19 @@ export class MapController extends BaseController {
         swatch.style.background = colors[index];
       });
     }
-    const currentColors = legendColorsFor(this.paletteKey, polarity);
-    this.currentPaletteSwatchEls?.forEach((swatch, index) => {
-      swatch.style.background = currentColors[index];
-    });
     this.syncPaletteLabels(polarity);
   }
 
+  // A neutral variable takes each scheme's sequential ramp, and its name with
+  // it, so the dropdown and its button say what the map is actually drawn in.
   syncPaletteLabels(polarity = this.metadataController.getActivePolarity()) {
-    this.paletteButtons.forEach((button) => {
-      const label = paletteLabelFor(button.value, polarity);
-      const name = button.querySelector(".map-palette-name");
-      if (name) name.textContent = label;
-      // The scheme's name is not painted on the button any more -- four names
-      // cost a line of the dashboard's height and the swatches say which is
-      // which -- so the tooltip has to carry it as well as the description.
-      button.title = `${label} — ${paletteDescriptionFor(button.value, polarity)}`;
-      const option = this.paletteSelectOptions?.get(button.value);
-      if (option) option.textContent = label;
-    });
+    for (const option of this.paletteOptions || []) {
+      const key = option.dataset.value;
+      const name = option.querySelector(".map-palette-name");
+      if (name) name.textContent = paletteLabelFor(key, polarity);
+      option.title = paletteDescriptionFor(key, polarity);
+    }
+    if (this.paletteValueEl) this.paletteValueEl.textContent = paletteLabelFor(this.paletteKey, polarity);
   }
 
   syncOutlineToggle() {
@@ -1090,12 +1190,6 @@ export class MapController extends BaseController {
     if (!this.mapChoiceDashboardEl) return;
 
     const selected = this.currentViewChoiceIndex();
-    const viewSwitch = this.mapChoiceDashboardEl.querySelector(".map-view-switch");
-    viewSwitch?.style.setProperty("--selected", selected);
-    // The rule before the last option is a 1px grid track, so the slab has one
-    // more gap to cross on its way to the table than it does between the two
-    // projections. Two numbers rather than a `calc` that branches on a count.
-    viewSwitch?.style.setProperty("--past-divider", selected === VIEW_CHOICE_KEYS.length - 1 ? 1 : 0);
     this.viewButtons.forEach((button, index) => {
       const active = index === selected;
       button.classList.toggle("is-selected", active);
@@ -1110,20 +1204,14 @@ export class MapController extends BaseController {
 
   syncPaletteSelector() {
     if (!this.mapChoiceDashboardEl) return;
-
-    const selected = Math.max(0, PALETTE_KEYS.indexOf(this.paletteKey));
-    const list = this.mapChoiceDashboardEl.querySelector(".map-palette-list");
-    list?.style.setProperty("--selected", selected);
-    list?.style.setProperty("--column", selected % 2);
-    list?.style.setProperty("--row", Math.floor(selected / 2));
-    if (this.paletteSelect) this.paletteSelect.value = this.paletteKey;
-    this.paletteButtons.forEach((button, index) => {
-      const active = index === selected;
-      button.classList.toggle("is-selected", active);
-      button.setAttribute("aria-checked", active ? "true" : "false");
-      button.tabIndex = active ? 0 : -1;
-    });
+    for (const option of this.paletteOptions) {
+      const selected = option.dataset.value === this.paletteKey;
+      option.classList.toggle("is-selected", selected);
+      option.setAttribute("aria-selected", selected ? "true" : "false");
+    }
+    this.syncPaletteLabels();
   }
+
 
   // The mesh MapServer is asked for at this zoom, in the metres of whichever
   // plane the map is drawn in -- so switching projection switches ladders as
@@ -1387,24 +1475,21 @@ export class MapController extends BaseController {
     this.legendLowEl = div.querySelector(".legend-labels span:first-child");
     this.legendHighEl = div.querySelector(".legend-labels span:last-child");
     this.legendNoDataEl = div.querySelector(".legend-nodata");
-    // A country with no value for this variable and year is simply not drawn,
-    // and neither is its outline, so what shows through is the land basemap.
-    // That reads as a colour on the map but was not one the legend spoke for,
-    // which left the cream over Greenland or Antarctica looking like a shade
-    // the ramp had run out of. The swatch is painted from the basemap's own
-    // colour so the two cannot drift apart.
-    const noDataNote =
-      "Areas with no value for this variable and year keep the plain land colour — no hexagons and no outline.";
+    // A present-day country with no value for this variable and year is drawn
+    // as grey hexagons (class 99 in the mapfile). The swatch is painted from
+    // the same NO_DATA_COLOR in core/palettes.js the mapfile class is generated
+    // from, so the two cannot drift apart.
+    const noDataNote = "Countries with no value for this variable and year are drawn as grey hexagons.";
     this.legendNoDataEl.title = noDataNote;
     // A `title` is a mouse affordance: it never reaches the keyboard, and this
     // element is not focusable to begin with. The sentence is the only thing
-    // that says what the cream on the map means, so it is in the text as well.
+    // that says what the grey on the map means, so it is in the text as well.
     const noDataText = document.createElement("span");
     noDataText.className = "visually-hidden";
     noDataText.textContent = ` — ${noDataNote}`;
     this.legendNoDataEl.appendChild(noDataText);
     this.legend = div;
-    this.legend.style.setProperty("--land-basemap", LAND_BASEMAP_COLOR);
+    this.legend.style.setProperty("--no-data-color", NO_DATA_COLOR);
     this.mapChoiceDashboardEl.querySelector(".map-legend-slot").append(div);
 
     // The swatches are built once and only recoloured afterwards: rebuilding the
@@ -1695,7 +1780,7 @@ export class MapController extends BaseController {
       classCount: this.classCountForBreaks(),
       paletteLabel: paletteLabelFor(this.paletteKey, polarity),
       projectionTitle: this.projection?.title || this.projectionKey,
-      noDataNote: "Areas with no value for this variable and year are drawn as plain land, with no hexagons.",
+      noDataNote: "Countries with no value for this variable and year are drawn as grey hexagons.",
     };
   }
 
