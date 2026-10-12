@@ -146,6 +146,35 @@ The app was refactored into a small class hierarchy with one top-level coordinat
     `"boundary"`, so it lands on the section that answers the question it was asked from.
     There was a third, the data-table dialog's boundary footnote, which went with that
     dialog; the table view's own footnote is plain text
+- `src/controllers/MapExportController.js`
+  - the **Download dialog** (`#mapExportDialog`), opened by **Save** in the map dashboard
+    (between the outline switch and the fold button): this year as a PNG, or a span of years
+    as an MP4 (H.264) or WebM (VP9) video, at "as on screen", HD 1920×1080 or square 1080×1080
+  - it draws from **tiles of its own**, not from the canvas on screen: the screen holds one
+    year at a time, lands a swap when it is "drawn enough", and is half covered by the
+    timeline and the dashboard. `MapController.getExportView()` freezes the view (the screen
+    exactly for "as on screen", otherwise the part of the screen that has the world in it,
+    fitted to the frame) and `getExportTileRequests()` spells one year's tile URLs from the
+    same `buildWmsParams()` the live layer uses -- so a download hits the same caches. The
+    mesh is the one on screen whatever the frame's scale
+  - a frame with a tile missing is never written (three attempts, then the download fails):
+    a hole would read as a country with no data
+  - the frame -- title, year, map, legend, the Demscore and InfraVis logos, and the credits
+    -- is composed in `src/core/exportFrame.js`. **The credits are not optional**: the
+    boundary line is the same generated `shortLine` the map's credit line carries, plus the
+    map's own licence (CC BY-NC-SA 4.0, with the deed address, since an image cannot carry a
+    link) and the site address, where the full citations and the GPL-3.0 notice are. A file
+    that leaves the site is the one place the page's credit line does not go with the map
+  - the PNG also carries the same in iTXt chunks (`src/core/pngText.js`), the video in its
+    container tags; the pixels are what counts, the metadata is for a cropped copy
+  - videos are encoded with WebCodecs through Mediabunny (`src/core/videoExport.js`), loaded
+    on first use as a chunk of its own. Each frame gets its own timestamp, so the video plays
+    at the chosen speed however slowly a year's tiles arrived; a year is held for a whole
+    number of frames at ~24fps, not written as one long frame, because a constant rate is
+    what players and upload services agree on. MP4 is offered only where the browser can
+    encode H.264 (not Firefox on Linux); WebM is the fallback
+  - the dialog's canvas *is* the frame: the PNG is saved from it and the encoder captures it,
+    so the preview shows each frame of a video as it is written
 - `src/core/csv.js`
   - the countries of one variable-year as a file, and the only place that file is
     spelled. The table view's download goes through it, as the data-table dialog's did
@@ -656,7 +685,7 @@ Common tasks and where to work:
     map — a line that wrapped would move `--timeline-inset` and with it the top of the
     table view. It is in `#mapSummary` in full for anyone not hovering
   - **the dashboard is one row**: View, the legend, the Colours dropdown, the outline
-    switch and the fold button, as the client's mockup has it. It used to be two (a label
+    switch, Save and the fold button, as the client's mockup has it (Save was added after). It used to be two (a label
     over each section's control, and a strip of swatch buttons for the schemes), and every
     pixel of its height comes out of the map, so nothing goes into it that would make it
     two rows again. The legend is the part that gives when the row is short

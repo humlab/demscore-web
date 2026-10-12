@@ -5,6 +5,7 @@ import ChevronLeft from "lucide/dist/esm/icons/chevron-left.mjs";
 import ChevronRight from "lucide/dist/esm/icons/chevron-right.mjs";
 import ChevronUp from "lucide/dist/esm/icons/chevron-up.mjs";
 import ChevronsLeft from "lucide/dist/esm/icons/chevrons-left.mjs";
+import Download from "lucide/dist/esm/icons/download.mjs";
 import Globe from "lucide/dist/esm/icons/globe.mjs";
 import Hexagon from "lucide/dist/esm/icons/hexagon.mjs";
 import Info from "lucide/dist/esm/icons/info.mjs";
@@ -23,6 +24,7 @@ const ICONS = {
   "chevron-right": ChevronRight,
   "chevron-up": ChevronUp,
   "chevrons-left": ChevronsLeft,
+  download: Download,
   "globe-2": Globe,
   hexagon: Hexagon,
   info: Info,

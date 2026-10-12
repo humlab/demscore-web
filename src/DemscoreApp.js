@@ -7,6 +7,7 @@ import { MetadataController } from "./controllers/MetadataController.js";
 import { LayerPreloadController } from "./controllers/LayerPreloadController.js";
 import { MapController } from "./controllers/MapController.js";
 import { MapDataController } from "./controllers/MapDataController.js";
+import { MapExportController } from "./controllers/MapExportController.js";
 import { PanelCollapseController } from "./controllers/PanelCollapseController.js";
 import { TableViewController } from "./controllers/TableViewController.js";
 
@@ -29,6 +30,7 @@ export class DemscoreApp extends BaseController {
     this.mapDataController = null;
     this.tableViewController = null;
     this.aboutController = null;
+    this.mapExportController = null;
     this.layerPreloadController = null;
 
     this.yearSlider = null;
@@ -241,6 +243,23 @@ export class DemscoreApp extends BaseController {
       },
     });
     this.tableViewController.initialize();
+
+    // The Download dialog. It draws from the selection as it stands when it
+    // opens, so a running animation is stopped first: a video of years the
+    // timeline is meanwhile walking past would be a picture of nothing in
+    // particular.
+    this.mapExportController = new MapExportController({
+      state: this.state,
+      meta,
+      mapController: this.mapController,
+      metadataController: this.metadataController,
+      attributionMeta,
+      getCoverage: () => this.getActiveTimelineCoverage(),
+      onBeforeOpen: () => {
+        if (this.state.isAutoPlaying) this.stopAutoPlay();
+      },
+    });
+    this.mapExportController.initialize();
 
     this.layerPreloadController = new LayerPreloadController({
       state: this.state,

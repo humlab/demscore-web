@@ -124,6 +124,9 @@ const ZOOM_DURATION_MS = 250;
 // fuse before it is worth *saying*. See showLoadingIndicator.
 const LOADING_SPINNER_REVEAL_MS = 500;
 const LOADING_ANNOUNCE_MS = 1500;
+// How much larger than the world on screen a downloaded frame is fitted to; see
+// getExportView.
+const EXPORT_FIT_MARGIN = 1.03;
 // Zoom is continuous, and "Zoom: 3.2500000000000004" is not a reading anyone
 // wants.
 function formatZoom(zoom) {
@@ -677,6 +680,93 @@ export class MapController extends BaseController {
     return [...new Set(urls)];
   }
 
+  // ---- downloads ------------------------------------------------------------
+  //
+  // A downloaded image or video is drawn from tiles of its own, not read off the
+  // canvas on screen. The screen holds one year at a time, swaps it in when it
+  // is "drawn enough" (see whenPendingLayerDrawn) and covers the edges with the
+  // timeline and the dashboard; a file needs every tile of every year, at a
+  // size of its own, and must not move the map the reader is looking at.
+
+  // Where a download looks, frozen when it starts.
+  //
+  // `matchScreen` is the screen exactly -- its centre and its scale, in a frame
+  // the pane's own size -- so it is the same tiles the map asked for, served
+  // from whatever the read-ahead has already cached. Otherwise the frame is
+  // fitted to the part of the screen that has the world in it: a world view on
+  // screen has sky and sea above and below the map, and fitting those into a
+  // 16:9 frame as well drew the world at half the frame's width.
+  //
+  // The mesh is the one on screen even where the frame's scale would pick
+  // another: a reader who framed Europe at 50 km expects 50 km hexagons in the
+  // file, not whatever the HD frame's zoom happens to round to.
+  getExportView(width, height, { matchScreen = false } = {}) {
+    const view = this.map.getView();
+    const size = this.map.getSize();
+    let center = view.getCenter();
+    let resolution = view.getResolution();
+    if (!matchScreen && size && size[0] && size[1]) {
+      const visible = view.calculateExtent(size);
+      const world = this.projection.viewExtent;
+      const box = [
+        Math.max(visible[0], world[0]),
+        Math.max(visible[1], world[1]),
+        Math.min(visible[2], world[2]),
+        Math.min(visible[3], world[3]),
+      ];
+      if (box[2] > box[0] && box[3] > box[1]) {
+        // A little air around the box, or the islands either side of the
+        // antimeridian are cut in half by the frame's edge.
+        resolution = EXPORT_FIT_MARGIN * Math.max((box[2] - box[0]) / width, (box[3] - box[1]) / height);
+        center = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
+      }
+    }
+    const halfWidth = (resolution * width) / 2;
+    const halfHeight = (resolution * height) / 2;
+    return {
+      width,
+      height,
+      resolution,
+      extent: [center[0] - halfWidth, center[1] - halfHeight, center[0] + halfWidth, center[1] + halfHeight],
+      projection: this.projection,
+      params: this.buildWmsParams(),
+    };
+  }
+
+  // The tiles one year of an export view is made of, each with the box it
+  // covers in the frame's pixels. The edges are rounded from the tile's own
+  // extent rather than stepped by a rounded tile size, so neighbours meet
+  // exactly and no hairline of ocean shows between them.
+  getExportTileRequests(exportView, year) {
+    const { extent, resolution, projection } = exportView;
+    const tileGrid = projection.tileGrid;
+    const z = tileGrid.getZForResolution(resolution, TILE_Z_DIRECTION);
+    const worldRange = tileGrid.getFullTileRange(z);
+    const speller = new ol.source.TileWMS({
+      url: this.mapServerBase,
+      projection: projection.projection,
+      tileGrid,
+      params: { ...exportView.params, year: String(year) },
+      hidpi: false,
+    });
+    const tileUrl = speller.getTileUrlFunction();
+    const requests = [];
+
+    tileGrid.forEachTileCoord(extent, z, (coord) => {
+      if (worldRange && !worldRange.containsXY(coord[1], coord[2])) return;
+      const url = tileUrl(coord, 1, projection.projection);
+      if (!url) return;
+      const [minX, minY, maxX, maxY] = tileGrid.getTileCoordExtent(coord);
+      const left = Math.round((minX - extent[0]) / resolution);
+      const right = Math.round((maxX - extent[0]) / resolution);
+      const top = Math.round((extent[3] - maxY) / resolution);
+      const bottom = Math.round((extent[3] - minY) / resolution);
+      requests.push({ url, left, top, width: right - left, height: bottom - top });
+    });
+
+    return requests;
+  }
+
   advanceAutoPlayLayer(onReady) {
     this.loadNextLayer(() => {
       if (typeof onReady === "function") {
@@ -733,7 +823,11 @@ export class MapController extends BaseController {
     for (const resolve of waiters) resolve();
   }
 
-  createWmsLayer() {
+  // The GetMap parameters for what the map is drawing now. The live layer and
+  // the download (see getExportTileRequests) both spell their requests from
+  // this, so a downloaded frame is the same request the map makes -- and is
+  // served from the same caches.
+  buildWmsParams() {
     const polarity = this.metadataController.getActivePolarity();
     // Blue-Red requests leave `palette` out, because that is what MapServer
     // paints unnamed and the long-lived cache is warm under those URLs. This is
@@ -741,6 +835,25 @@ export class MapController extends BaseController {
     // Blue-Red has its own ramp, though, so spelling it out gives that changed
     // rendering a fresh URL instead of reusing the old neutral-Viridis tiles.
     const explicitlyNamePalette = this.paletteKey !== SERVER_DEFAULT_PALETTE_KEY || polarity === "neutral";
+    return {
+      LAYERS: this.wmsLayerNames(),
+      STYLES: "",
+      FORMAT: "image/png",
+      TRANSPARENT: true,
+      // 1.1.1 rather than OpenLayers' default 1.3.0: 1.3.0 would spell the
+      // projection as CRS and reorder the BBOX for north-east axis order,
+      // which is a second thing to get right for no gain here.
+      VERSION: "1.1.1",
+      dataset: this.state.dataset,
+      variable: this.state.variable,
+      polarity,
+      year: String(this.state.year),
+      hex_size: String(this.hexSizeFromZoom()),
+      ...(explicitlyNamePalette ? { palette: this.paletteKey } : {}),
+    };
+  }
+
+  createWmsLayer() {
     const source = new ol.source.TileWMS({
       url: this.mapServerBase,
       projection: this.projection.projection,
@@ -749,22 +862,7 @@ export class MapController extends BaseController {
       // BBOX of every request is derived from the same two numbers the mapfile
       // and the mapcache preloader use.
       tileGrid: this.projection.tileGrid,
-      params: {
-        LAYERS: this.wmsLayerNames(),
-        STYLES: "",
-        FORMAT: "image/png",
-        TRANSPARENT: true,
-        // 1.1.1 rather than OpenLayers' default 1.3.0: 1.3.0 would spell the
-        // projection as CRS and reorder the BBOX for north-east axis order,
-        // which is a second thing to get right for no gain here.
-        VERSION: "1.1.1",
-        dataset: this.state.dataset,
-        variable: this.state.variable,
-        polarity,
-        year: String(this.state.year),
-        hex_size: String(this.hexSizeFromZoom()),
-        ...(explicitlyNamePalette ? { palette: this.paletteKey } : {}),
-      },
+      params: this.buildWmsParams(),
       // No high-DPI request. A retina screen would otherwise ask MapServer for a
       // doubled tile with MAP_RESOLUTION appended, which is a different URL per
       // device -- a separate tile cache per device, and preload marks describing
@@ -857,8 +955,8 @@ export class MapController extends BaseController {
   }
 
   // The map dashboard: one row along the foot of the map -- the View switch, the
-  // legend, the colour-scheme dropdown, the outline switch and the button that
-  // folds it down to its legend. It was two rows (labelled sections over their
+  // legend, the colour-scheme dropdown, the outline switch, Save (the Download
+  // dialog) and the button that folds it down to its legend. It was two rows (labelled sections over their
   // controls, and a strip of swatch buttons for the schemes), which made it the
   // tallest thing on the map after the timeline; the client's mockup put it on
   // one row with the schemes behind a dropdown.
@@ -945,6 +1043,21 @@ export class MapController extends BaseController {
           </span>
           <span id="mapOutlineCopy" class="map-outline-copy">Outline equal values</span>
         </label>
+      </div>
+      <span class="map-choice-divider" aria-hidden="true"></span>
+      <!-- Opens the Download dialog: this year as an image, or a span of years
+           as a video. MapExportController binds it by id. -->
+      <div class="map-choice-section map-export-panel">
+        <button
+          id="mapExportBtn"
+          class="map-export-button"
+          type="button"
+          aria-haspopup="dialog"
+          title="Download an image or a video of the map"
+        >
+          <i data-lucide="download" aria-hidden="true"></i>
+          <span>Save</span>
+        </button>
       </div>
       <span class="map-choice-divider map-collapse-divider" aria-hidden="true"></span>
       <!-- Folds the dashboard down to its legend; see sidebarCollapseBtn in

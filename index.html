@@ -390,6 +390,67 @@
       </div>
     </dialog>
 
+    <!-- Downloading the map. Modal, because a download is drawn from the
+         selection as it stood when the dialog opened, and a reader changing the
+         variable underneath a video halfway through it would get neither one.
+         The canvas is the frame itself, not a picture of it: it is what the
+         image is saved from and what the video encoder captures, so the
+         preview shows each frame of a video as it is written. Everything in
+         here is driven by MapExportController. -->
+    <dialog id="mapExportDialog" class="export-dialog" aria-labelledby="mapExportTitle">
+      <div class="mobile-dialog-header">
+        <h2 id="mapExportTitle">Download the map</h2>
+        <button id="mapExportCloseBtn" type="button" class="mobile-dialog-close-btn" aria-label="Close the download dialog">
+          <i data-lucide="x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="export-body">
+        <div class="export-preview">
+          <canvas id="mapExportCanvas" class="export-canvas" role="img" aria-label="Preview of the downloaded frame"></canvas>
+        </div>
+        <form id="mapExportForm" class="export-options">
+          <fieldset class="export-field">
+            <legend>What</legend>
+            <label class="export-choice">
+              <input type="radio" name="exportKind" value="image" checked />
+              <span>Image of <span id="mapExportImageYear"></span> <span class="export-choice-note">PNG</span></span>
+            </label>
+            <label class="export-choice">
+              <input type="radio" name="exportKind" value="video" />
+              <span>Animation <span class="export-choice-note" id="mapExportVideoNote">video</span></span>
+            </label>
+          </fieldset>
+          <fieldset class="export-field">
+            <legend>Size</legend>
+            <!-- One radio per entry in EXPORT_SIZES, written by the controller. -->
+            <div id="mapExportSizes"></div>
+          </fieldset>
+          <fieldset id="mapExportVideoOptions" class="export-field export-video-options" disabled>
+            <legend>Animation</legend>
+            <div class="export-grid">
+              <label for="mapExportFrom">From</label>
+              <select id="mapExportFrom"></select>
+              <label for="mapExportTo">To</label>
+              <select id="mapExportTo"></select>
+              <label for="mapExportSpeed">Speed</label>
+              <select id="mapExportSpeed"></select>
+              <label for="mapExportFormat">Format</label>
+              <select id="mapExportFormat"></select>
+            </div>
+            <p id="mapExportEstimate" class="export-estimate"></p>
+          </fieldset>
+        </form>
+        <div class="export-progress">
+          <progress id="mapExportProgress" max="1" value="0" hidden></progress>
+          <p id="mapExportStatus" class="export-status" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+      <div class="export-actions">
+        <button id="mapExportCancelBtn" type="button" class="export-secondary">Close</button>
+        <button id="mapExportStartBtn" type="button" class="export-primary">Download</button>
+      </div>
+    </dialog>
+
     <!-- Two cards in one element. Hovering a row shows it as a `tooltip`:
          transient, tied to the pointer, nothing to operate inside it. Clicking
          an info button shows the same content as a non-modal `dialog`: it stays

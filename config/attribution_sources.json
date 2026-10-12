@@ -175,6 +175,12 @@
       "url": "https://lucide.dev/"
     },
     {
+      "name": "Mediabunny",
+      "version": "1.60.0",
+      "license": "MPL-2.0",
+      "url": "https://mediabunny.dev/"
+    },
+    {
       "name": "Lato and Open Sans",
       "version": null,
       "license": "SIL Open Font License 1.1",

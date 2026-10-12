@@ -1302,6 +1302,192 @@ textarea {
   background: color-mix(in srgb, var(--navy-deep) 48%, transparent);
 }
 
+/* ---- Download dialog ----
+   The frame on the left at whatever size the browser can spare, the options on
+   the right; stacked on a narrow window. The canvas holds the frame at its
+   real size (up to 1920 px across) and is only scaled down here. */
+.export-dialog {
+  box-sizing: border-box;
+  width: min(1040px, calc(100vw - 24px));
+  max-height: calc(100vh - 40px);
+  padding: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  color: var(--text);
+}
+
+.export-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.export-dialog::backdrop {
+  background: color-mix(in srgb, var(--navy-deep) 48%, transparent);
+}
+
+.export-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-areas:
+    "preview options"
+    "progress progress";
+  gap: 14px 20px;
+  min-height: 0;
+  padding: 16px 18px;
+  overflow: auto;
+  font-size: 0.86rem;
+}
+
+.export-preview {
+  grid-area: preview;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 10px;
+  border-radius: var(--radius-control);
+  background: var(--surface-well);
+}
+
+.export-canvas {
+  display: block;
+  max-width: 100%;
+  max-height: min(56vh, 520px);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
+}
+
+.export-options {
+  grid-area: options;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.export-field {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.export-field legend {
+  margin-bottom: 6px;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.export-field[disabled] {
+  opacity: 0.55;
+}
+
+.export-choice {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+
+.export-choice-note {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.export-grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.export-grid select {
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--text);
+  font: inherit;
+}
+
+.export-estimate {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.export-progress {
+  grid-area: progress;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 1.5em;
+}
+
+.export-progress progress {
+  flex: 0 0 200px;
+  accent-color: var(--accent);
+}
+
+.export-progress progress[hidden] {
+  display: none;
+}
+
+.export-status {
+  margin: 0;
+  color: var(--text);
+}
+
+.export-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.export-actions button {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.export-actions .export-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--paper);
+}
+
+.export-actions .export-primary:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.export-actions button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+@media (max-width: 760px) {
+  .export-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "preview"
+      "options"
+      "progress";
+  }
+}
+
 .about-body {
   max-height: min(72vh, 620px);
   padding: 16px 18px 20px;
@@ -3404,6 +3590,43 @@ textarea {
   transition: transform 0.2s ease;
 }
 
+/* ---- Save: opens the Download dialog ----
+   Drawn like the Colours button beside it, an icon and a word, so the two
+   read as the row's two buttons. */
+.map-export-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 12px 0 10px;
+  border: 1px solid rgba(148, 163, 184, 0.65);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1e293b;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.map-export-button:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.map-export-button:focus-visible {
+  outline: 3px solid #7ca8dd;
+  outline-offset: 2px;
+}
+
+.map-export-button svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.4;
+}
+
 /* Up while closed, because the list opens upwards off the foot of the map;
    down while open, towards where it will close to. */
 .map-palette-button[aria-expanded="true"] svg {
@@ -3996,10 +4219,10 @@ textarea {
      the phone (see "panels put away"). */
   .map-choice-dashboard {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     grid-template-areas:
-      "legend legend legend"
-      "view palette outline";
+      "legend legend legend legend"
+      "view palette outline export";
     align-items: center;
     gap: 6px 8px;
     width: min(620px, calc(100% - 20px));
@@ -4041,6 +4264,15 @@ textarea {
     grid-area: outline;
   }
 
+  .map-export-panel {
+    grid-area: export;
+  }
+
+  .map-export-button {
+    height: 32px;
+    padding: 0 10px;
+  }
+
   .map-view-choice {
     height: 26px;
     padding: 0 8px;
@@ -4059,10 +4291,10 @@ textarea {
      as they were set (on by default). The Colours button takes its column. */
   @media (max-width: 520px) {
     .map-choice-dashboard {
-      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-areas:
-        "legend legend"
-        "view palette";
+        "legend legend legend"
+        "view palette export";
     }
 
     .map-outline-panel {

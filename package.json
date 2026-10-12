@@ -12,6 +12,7 @@
     "@fontsource/lato": "^5.2.8",
     "@fontsource/open-sans": "^5.2.8",
     "lucide": "1.48.0",
+    "mediabunny": "1.60.0",
     "ol": "10.10.0",
     "proj4": "2.22.0"
   },
