@@ -56,6 +56,10 @@ export class DemscoreApp extends BaseController {
 
     this.autoPlayTicket = 0;
     this.autoPlayWatchdog = null;
+    // Where the timeline marker stands while autoplay crosses a year with no
+    // data; null whenever it stands on `state.year`, which is the rest of the
+    // time. See scheduleAutoPlayTick.
+    this.playheadYear = null;
     // The tail of the read-ahead queue while it is standing aside for the map;
     // see takePreloadNetworkTurn.
     this.preloadNetworkTurn = Promise.resolve();
@@ -89,7 +93,7 @@ export class DemscoreApp extends BaseController {
     // How tall a read-ahead mark is drawn, in the px the CSS reserves for the
     // band (`--coverage-band-height`). A mark for years that carry any data at
     // all is floored well clear of nothing, so a thin stretch reads as thin
-    // rather than as absent -- absent is the hairline `.is-unavailable` draws.
+    // rather than as absent -- absent is `.is-unavailable`, which draws nothing.
     this.COVERAGE_BAND_PX = 20;
     this.COVERAGE_BAR_MIN_PX = 5;
     // Clearance around the two end-year labels. They are the ones that say what
@@ -1034,11 +1038,24 @@ export class DemscoreApp extends BaseController {
     // ending, so its answer must not schedule a year after it.
     this.autoPlayTicket += 1;
     this.clearAutoPlayWatchdog();
+    // A pause in a gap leaves the marker on the year the map is showing, not
+    // on one it is not; play resumes from there.
+    if (this.playheadYear !== null) {
+      this.playheadYear = null;
+      this.updateTimelineMarker();
+    }
     this.updatePlayButton();
     this.mapController.getContainer().classList.remove("autoplay-active");
     this.mapController.stopPendingLayerSwap();
   }
 
+  // Autoplay steps through calendar years, one per tick, so its speed is years
+  // per second as the control says. It used to step from one year with data to
+  // the next, which played a variable coded every other year at twice the speed
+  // the button named. A year with no data moves only the marker
+  // (`playheadYear`): the map, the year readout and the slider's value stay on
+  // the year still drawn, and nothing is requested, so the tick does not wait
+  // for a frame.
   scheduleAutoPlayTick() {
     this.clearAutoPlayTimer();
     this.clearAutoPlayWatchdog();
@@ -1048,9 +1065,18 @@ export class DemscoreApp extends BaseController {
       if (!this.state.isAutoPlaying) return;
 
       const coverage = this.getActiveTimelineCoverage();
-      const nextYear = this.findNextAvailableYear(this.state.year, coverage.availableYears);
+      const position = this.playheadYear ?? this.state.year;
+      const nextYear = this.findNextAvailableYear(position, coverage.availableYears);
       if (nextYear === null) {
         this.stopAutoPlay();
+        return;
+      }
+
+      if (nextYear > position + 1) {
+        this.playheadYear = position + 1;
+        this.updateTimelineMarker();
+        this.highlightTimelineTick(this.playheadYear);
+        this.scheduleAutoPlayTick();
         return;
       }
 
@@ -1099,6 +1125,9 @@ export class DemscoreApp extends BaseController {
   }
 
   refreshYearDisplay({ coverage = null, requestedYear = null } = {}) {
+    // Every change of year passes through here, and each one puts the marker
+    // back on the year it names.
+    this.playheadYear = null;
     const yearText = String(this.state.year);
     this.yearDisplay.textContent = yearText;
     this.yearDisplayHero.textContent = yearText;
@@ -1125,13 +1154,18 @@ export class DemscoreApp extends BaseController {
     return String(year);
   }
 
+  // The marker follows the playhead, which is the year on the map except while
+  // autoplay is crossing a gap; it is drawn quieter there, since the number in
+  // the year readout and the orange mark both stay on the year still drawn.
   updateTimelineMarker() {
+    const year = this.playheadYear ?? this.state.year;
     const yearMin = Number.parseInt(this.yearSlider.min, 10);
     const yearMax = Number.parseInt(this.yearSlider.max, 10);
     const span = yearMax - yearMin;
-    const pct = span > 0 ? ((this.state.year - yearMin) / span) * 100 : 50;
+    const pct = span > 0 ? ((year - yearMin) / span) * 100 : 50;
     const clampedPct = Math.max(0, Math.min(100, pct));
     this.timelineWrap.style.setProperty("--selected-pct", `${clampedPct}%`);
+    this.timelineSelectedMarker.classList.toggle("is-between", year !== this.state.year);
     this.highlightCurrentSegment();
   }
 
@@ -1461,8 +1495,8 @@ export class DemscoreApp extends BaseController {
         segment.el.style.left = `${yearPct(segment.centerYear)}%`;
       }
       segment.el.style.setProperty("--preload-progress", "0%");
-      // Years with nothing to draw keep the hairline the stylesheet gives them:
-      // a mark floored at the coverage minimum would claim data they do not have.
+      // Years with nothing to draw get no height: a mark floored at the
+      // coverage minimum would claim data they do not have.
       const height = segment.dataYears.length > 0 && coverageHeight ? coverageHeight(segment.years) : null;
       if (height !== null) segment.el.style.height = `${height.toFixed(1)}px`;
       this.timelinePreloadTrack.appendChild(segment.el);

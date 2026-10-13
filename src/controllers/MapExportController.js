@@ -340,8 +340,12 @@ export class MapExportController extends BaseController {
     this.cancelBtn.textContent = this.busy ? "Cancel" : "Close";
 
     const years = this.videoYears(options);
-    const seconds = years.length / options.speed + HOLD_FIRST_SECONDS + HOLD_LAST_SECONDS;
-    this.estimateEl.textContent = `${years.length} ${years.length === 1 ? "year" : "years"}, about ${Math.round(seconds)} seconds of video.`;
+    const span = years.length > 0 ? years[years.length - 1] - years[0] + 1 : 0;
+    const seconds = span / options.speed + HOLD_FIRST_SECONDS + HOLD_LAST_SECONDS;
+    const counted = span === years.length
+      ? `${years.length} ${years.length === 1 ? "year" : "years"}`
+      : `${years.length} years with data across ${span}`;
+    this.estimateEl.textContent = `${counted}, about ${Math.round(seconds)} seconds of video.`;
   }
 
   // Which formats this browser can encode at the chosen size. Asked again when
@@ -584,7 +588,11 @@ export class MapExportController extends BaseController {
         throwIfAborted(signal);
 
         await this.drawFrame(layout, years[index], tiles);
-        let repeat = framesPerYear;
+        // Held until the next year with data, so the speed is calendar years
+        // per second, as it is in the app's own autoplay: a variable coded
+        // every other year holds each frame for two years' worth.
+        const yearsHeld = index < years.length - 1 ? years[index + 1] - years[index] : 1;
+        let repeat = framesPerYear * yearsHeld;
         if (index === 0) repeat += Math.round(HOLD_FIRST_SECONDS * frameRate);
         if (index === years.length - 1) repeat += Math.round(HOLD_LAST_SECONDS * frameRate);
         await writer.addFrame(repeat);

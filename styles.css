@@ -2249,11 +2249,13 @@ textarea {
   display: none;
 }
 
-/* years with no data at all shrink to a hairline: nothing to cache, and nothing
-   to be tall about, with the floor behind them carrying the axis across the gap */
+/* Years with no data draw no mark: the height is how much data a year has, and
+   this one has none. They used to keep a 3px grey stub, which read as a mark
+   still waiting for its tiles -- grey is the resting state of a mark that has
+   not loaded -- so a variable coded every other year looked half broken. The
+   axis line and the tick carry the year, and its hover card says "No data". */
 .timeline-preload-segment.is-unavailable {
-  height: 3px;
-  background: rgba(17, 17, 17, 0.28);
+  background: none;
 }
 
 .timeline-preload-segment.is-unavailable::after {
@@ -2399,6 +2401,13 @@ textarea {
 
 .timeline-selected-marker.is-dragging {
   cursor: grabbing;
+}
+
+/* Autoplay crossing a year with no data: the marker keeps time while the map
+   holds the last year drawn, and is drawn quieter so it is not read as that
+   year's picture. See scheduleAutoPlayTick. */
+.timeline-selected-marker.is-between {
+  opacity: 0.5;
 }
 
 .timeline-marker-knob {

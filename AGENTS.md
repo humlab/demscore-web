@@ -714,6 +714,15 @@ Common tasks and where to work:
     `renderAutoPlaySpeed()` keeps the reading, the button's name (the speed in words) and
     the selected option in step. `.timeline-controls` sits above the slider wrap so the
     list paints over the axis. On the phone the two share the controls' full-width row
+  - **a speed is calendar years per second, not years with data.** Autoplay steps one
+    calendar year per tick; a year with no data moves only the marker (`playheadYear`,
+    drawn half-opaque as `.is-between`) while the map, the year readout and the slider's
+    value stay on the year still drawn. It used to jump from data year to data year, which
+    played a variable coded every other year at twice the speed the button named. The video
+    export (`MapExportController.exportVideo`) holds each year until the next one with data
+    for the same reason, so a video and the animation it records run at the same rate
+  - a year with no data draws no mark on the timeline (`.is-unavailable`). It used to keep a
+    3px grey stub, which read as a mark whose tiles had not loaded yet
   - the timeline's hover card says the year and how many countries have data in it --
     nothing else. The read-ahead state ("Map tiles ready", left in from debugging) and
     the note on what bar height means were taken out at the client's request
