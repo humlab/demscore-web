@@ -72,7 +72,9 @@
 // meshes. Nothing below needs to tell them apart: the layer names, the SRS and
 // the BBOX all ride along in the URL that is the cache key, so the two caches
 // are the same cache and can never collide.
-const WMS_TILE_CACHE = "demscore-wms-tile-cache-v17";
+//
+// v18 sheds MapServer errors that v17 stored as tiles (see the fetch handler).
+const WMS_TILE_CACHE = "demscore-wms-tile-cache-v18";
 
 // The fills may be asked for alone or together with the outline layer that rides
 // along in the same GetMap (see MapController.wmsLayerNames), and the two spell
@@ -142,7 +144,10 @@ self.addEventListener("fetch", (event) => {
       // nothing but a way for a bumped version to refill itself with the old
       // pixels. Hits never reach here, so this costs nothing in normal use.
       const response = await fetch(event.request, { cache: "reload" });
-      if (response.ok) {
+      // An image, not merely a 200: MapServer answers a failed GetMap with a
+      // 200 and an XML ServiceException, and storing that kept a reader's map
+      // blank long after the server was fixed -- this cache has no expiry.
+      if (response.ok && (response.headers.get("Content-Type") || "").startsWith("image/")) {
         event.waitUntil(cache.put(event.request, response.clone()));
       }
       return response;
