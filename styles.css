@@ -40,6 +40,10 @@
   --timeline-paper: var(--paper);
   --timeline-fill: var(--accent);
   --timeline-fail: #b91c1c;
+  /* The playhead: the marker and the mark for the year on the map. Bright on
+     purpose, as the one warm thing on a navy-and-grey timeline; 3.6:1 against
+     the white card, past the 3:1 a graphic needs. */
+  --timeline-current: #ea580c;
   /* Up and down the table, in the table view's leading column. Terracotta is
      the handbook's own accent and its one previous use — the rule over the
      legend dock — went with that dock, so it is spent here instead, darkened to
@@ -813,21 +817,22 @@ textarea {
    It is the one way to tell which variable the map is showing since the title
    over the map was removed, so it has to be found at a glance.
 
-   A mid steel blue, halfway in lightness between the white rows and the navy
-   column: the old pale wash (#d7e3ee) was a 1.3:1 step from a white row and
-   read as a hover, while navy itself would sink into the column behind it. This
-   is 1.9:1 from a white row and 6.2:1 from the column, and navy text on it is
-   6.0:1. The left edge doubles to 6px and takes the terracotta of the band
-   between the sidebar and the map (`--sidebar-rule`, the same token): navy, as
-   the other rows' edges are, it would vanish into a blue row on a navy column.
-   That is a second use of the handbook's terracotta, made on purpose -- see
-   "Visual System" in AGENTS.md. */
+   The row is filled a near-black grey with a tenth of the terracotta mixed into
+   it -- dark enough to read as black, warm enough to belong to its edge -- with
+   white text and a 6px left edge in the terracotta of the band between the
+   sidebar and the map (`--sidebar-rule`, the same token, and the same token the
+   fill is mixed from). It has been a mid steel blue (#9dbfda) with a terracotta
+   edge, then terracotta with a white edge, then black and a plain dark grey;
+   this is the client's latest. White on the fill (about #2d2421) is 15.2:1.
+   Against the navy column the fill is only about 1.6:1, which is what the edge
+   is for. */
 #controls .variable-option.is-selected,
 #controls .variable-option.is-selected:hover {
+  --selected-row-ink: #ffffff;
   border-left-width: 6px;
   border-left-color: var(--sidebar-rule);
-  background: #9dbfda;
-  color: var(--accent);
+  background: color-mix(in srgb, var(--sidebar-rule) 10%, #1c1c1c);
+  color: var(--selected-row-ink);
 }
 
 #controls .variable-option.is-selected .variable-option-name {
@@ -841,8 +846,9 @@ textarea {
 }
 
 #controls .variable-option.is-selected .variable-option-info {
-  background: rgba(255, 255, 255, 0.4);
-  color: var(--accent);
+  border-color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--selected-row-ink);
 }
 
 #controls .variable-option.is-selected .variable-option-info:hover:not(:disabled),
@@ -965,16 +971,18 @@ textarea {
   opacity: 0.8;
 }
 
-/* On the tinted fill the ink is navy rather than the row's usual grey, which is
-   darker than the strip wants to be against a pale ground — so the bars sit a
-   little below the hover opacity and the baseline only just above the resting
-   one, and the strip reads the same weight as it does on a white row. */
+/* On the near-black fill the strip and its years are drawn in white at nearly full
+   strength, as the brightest thing in the row after the title. */
 .variable-option.is-selected .variable-option-coverage-svg {
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 .variable-option.is-selected .variable-option-coverage::before {
-  opacity: 0.32;
+  opacity: 0.45;
+}
+
+.variable-option.is-selected .variable-option-coverage-axis {
+  opacity: 1;
 }
 
 /* Direct children only: the filter chips and per-row info icons are
@@ -2069,7 +2077,10 @@ textarea {
   align-items: flex-start;
   gap: 0;
   min-height: 72px;
-  padding: 0 10px 0 0;
+  /* The same 22px as the wrap's left margin, so the scale sits evenly in the
+     card and the last mark, which hangs half its width past the wrap's end,
+     clears the card's rounded corner. */
+  padding: 0 22px 0 0;
 }
 
 /* Tall enough for the marks, the axis they stand on and the tick labels under
@@ -2211,6 +2222,12 @@ textarea {
   overflow: hidden;
 }
 
+/* Laid out in whole device pixels by the script, which writes left and width
+   itself; centring with a transform would put the edges back between pixels. */
+.timeline-preload-segment.is-pixel-snapped {
+  transform: none;
+}
+
 .timeline-preload-segment::after {
   position: absolute;
   inset: auto 0 0 0;
@@ -2243,6 +2260,17 @@ textarea {
   display: none;
 }
 
+/* The year on the map, in the playhead's colour. Last, so it wins over the
+   loaded, failed and no-data states; the cache fill is not drawn on it, since
+   the year being shown is the one year certain to have loaded. */
+.timeline-preload-segment.is-current {
+  background: var(--timeline-current);
+}
+
+.timeline-preload-segment.is-current::after {
+  display: none;
+}
+
 #yearSlider {
   position: absolute;
   inset: 0;
@@ -2262,20 +2290,13 @@ textarea {
   outline: none;
 }
 
-.timeline-slider-wrap:has(#yearSlider:focus-visible) .timeline-marker-line,
-.timeline-selected-marker:focus-visible .timeline-marker-line {
+.timeline-slider-wrap:has(#yearSlider:focus-visible) .timeline-marker-knob,
+.timeline-selected-marker:focus-visible .timeline-marker-knob {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  /* The marker line is navy on a white backdrop over a map that may be any
-     colour; the white keeps the ring visible against the dark line itself. */
+  /* The knob is orange on a white card that may sit over a map of any colour;
+     the white keeps the ring apart from the knob itself. */
   box-shadow: 0 0 0 4px var(--timeline-paper);
-}
-
-.timeline-slider-wrap:has(#yearSlider:focus-visible) .timeline-year-label,
-.timeline-selected-marker:focus-visible .timeline-year-label {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-  box-shadow: 0 0 0 5px var(--timeline-paper);
 }
 
 /* Browsers without `:has()` still get the input's own ring rather than nothing,
@@ -2350,11 +2371,22 @@ textarea {
   transform: translateX(-75%);
 }
 
+/* The playhead. A knob at the top of the card and a stem down through the
+   marks to just past the axis, all inside the card: it used to drop a 60px
+   line from the axis to a large year label under the card, which hung over
+   the map's northern edge. The year is read in the controls now
+   (`.year-readout`), and the mark for it is painted in the same orange
+   (`.timeline-preload-segment.is-current`), so the stem only has to say where.
+
+   Wider than it looks: the box is a grab area, and the knob and stem are
+   centred in it. */
 .timeline-selected-marker {
   position: absolute;
-  top: var(--axis-y);
+  top: 3px;
   left: var(--selected-pct);
-  transform: translate(-50%, 0%);
+  width: 16px;
+  height: calc(var(--axis-y) + 3px);
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2369,26 +2401,31 @@ textarea {
   cursor: grabbing;
 }
 
-.timeline-year-label {
-  background: var(--timeline-ink);
-  color: var(--timeline-paper);
-  font-family: var(--font-numeric);
-  /* A notch smaller than it was (clamp(2rem, 4vw, 2.75rem), 8px 20px), at
-     the client's request: it is still the largest thing on the timeline, but
-     it no longer reaches down over the map's northern edge. */
-  font-size: clamp(1.7rem, 3.2vw, 2.3rem);
-  line-height: 1;
-  font-weight: 700;
-  padding: 7px 17px;
-  border-radius: var(--radius-control);
-  letter-spacing: 0.01em;
-  transform: translateX(var(--selected-label-offset, 0px));
+.timeline-marker-knob {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--timeline-current);
+  box-shadow: 0 0 0 2px var(--timeline-paper);
+  transition: transform 120ms ease-out;
+}
+
+.timeline-selected-marker:hover .timeline-marker-knob,
+.timeline-selected-marker.is-dragging .timeline-marker-knob {
+  transform: scale(1.3);
 }
 
 .timeline-marker-line {
-  width: 3px;
-  height: 60px;
-  background: var(--timeline-ink);
+  flex: 1 1 auto;
+  width: 2px;
+  background: var(--timeline-current);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline-marker-knob {
+    transition: none;
+  }
 }
 
 .timeline-controls {
@@ -2472,6 +2509,42 @@ textarea {
 }
 
 .speed-button-label {
+  color: color-mix(in srgb, var(--timeline-ink) 62%, transparent);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+/* The third square: the year on the map, built like the speed square beside it
+   -- value over label -- but larger, since it is what the timeline is for. Wide
+   enough for any four-digit year, so the axis does not shift as the year
+   changes. */
+.year-readout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  box-sizing: border-box;
+  min-width: 96px;
+  height: 72px;
+  padding: 0 14px;
+  border-right: 2px solid color-mix(in srgb, var(--timeline-ink) 12%, transparent);
+}
+
+.year-readout-value {
+  min-height: 1em;
+  color: var(--timeline-ink);
+  font-family: var(--font-numeric);
+  font-size: 1.6rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.year-readout-label {
   color: color-mix(in srgb, var(--timeline-ink) 62%, transparent);
   font-size: 0.6rem;
   font-weight: 700;
@@ -4439,13 +4512,18 @@ textarea {
     padding: 0 14px;
   }
 
-  .timeline-year-label {
-    font-size: clamp(1.4rem, 5vw, 1.9rem);
-    padding: 6px 14px;
+  /* In the bar at its right end, value beside label like the speed. */
+  .year-readout {
+    flex-direction: row-reverse;
+    gap: 8px;
+    min-width: 0;
+    height: 44px;
+    margin-left: auto;
+    border-right: 0;
   }
 
-  .timeline-marker-line {
-    height: 50px;
+  .year-readout-value {
+    font-size: 1.3rem;
   }
 
   .timeline-tick-mark {
@@ -4566,66 +4644,8 @@ textarea {
   height: 17px;
 }
 
-/* The timeline's, at the right end of the card behind a rule: a pale square
-   with the word under the chevron. Its column is the card's height, so it sits
-   centred in the 72px band whatever the slider wrap below it is doing. */
-.timeline-collapse {
-  position: relative;
-  z-index: 6;
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  height: 72px;
-  margin-left: 14px;
-  padding-left: 12px;
-}
-
-/* The rule stops short of the card's top and bottom, so it parts the button
-   from the scale without cutting the card in two. */
-.timeline-collapse::before {
-  content: "";
-  position: absolute;
-  top: 14px;
-  bottom: 14px;
-  left: 0;
-  width: 2px;
-  border-radius: 1px;
-  background: color-mix(in srgb, var(--timeline-ink) 12%, transparent);
-}
-
-.panel-collapse-timeline {
-  flex-direction: column;
-  gap: 1px;
-  width: 44px;
-  height: 46px;
-  border-radius: 8px;
-  background: #e9eef1;
-  color: var(--timeline-ink);
-  opacity: 0.85;
-}
-
-.panel-collapse-timeline:hover,
-.panel-collapse-timeline:focus-visible {
-  background: #dde5ea;
-  opacity: 1;
-}
-
-.panel-collapse-timeline svg {
-  width: 17px;
-  height: 17px;
-  stroke-width: 2.2;
-}
-
-.panel-collapse-text {
-  font-size: 0.6rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-/* The dashboard's, at the end of its row behind a rule -- the same pale
-   square as the timeline's, without the word: the row is too short for it. */
+/* The dashboard's, at the end of its row behind a rule: a pale square with no
+   word under the chevron, since the row is too short for one. */
 .panel-collapse-dashboard {
   flex: 0 0 auto;
   width: 32px;
@@ -4650,7 +4670,6 @@ textarea {
 
 /* Turned round while the panel is away: pressing it now brings it back. */
 #app.is-collapsed-sidebar .panel-collapse-sidebar svg,
-#app.is-collapsed-timeline .panel-collapse-timeline svg,
 #app.is-collapsed-dashboard .panel-collapse-dashboard svg {
   transform: rotate(180deg);
 }
@@ -4690,25 +4709,12 @@ textarea {
   height: 44px;
 }
 
-.panel-reveal-timeline {
-  top: 0;
-  right: 0;
-  left: var(--sidebar-width);
-  height: var(--reveal-size);
-}
-
-.panel-reveal-timeline .panel-reveal-grip {
-  width: 44px;
-  height: 4px;
-}
-
 /* The dashboard's legend is its strip. */
 .panel-reveal-dashboard {
   display: none !important;
 }
 
-#app.is-collapsed-sidebar:not(.is-map-only) .panel-reveal-sidebar,
-#app.is-collapsed-timeline:not(.is-map-only) .panel-reveal-timeline {
+#app.is-collapsed-sidebar:not(.is-map-only) .panel-reveal-sidebar {
   display: flex;
 }
 
@@ -4746,21 +4752,10 @@ textarea {
     transform: none;
     box-shadow: 8px 0 28px rgba(15, 23, 42, 0.28);
   }
-
-  #timeline-overlay {
-    transition: transform 0.25s ease;
-  }
-
-  /* Up and off: the box is taller than the card (the year label hangs below
-     it), so -100% takes the whole of it out of sight. */
-  #app.is-collapsed-timeline:not(.is-peek-timeline) #timeline-overlay {
-    transform: translate(-50%, calc(-100% - 16px));
-  }
 }
 
-/* The phone layout has the sidebar as a band across the top and the timeline in
-   the flow under it rather than over the map, so neither covers the map and
-   neither is offered as something to put away there. */
+/* The phone layout has the sidebar as a band across the top rather than over
+   the map, so it is not offered as something to put away there. */
 /* The dashboard's fold button is held back on the phone too, for now: the
    compact dashboard has no free corner for it -- the Colours label it sits
    beside on the desktop is not drawn there, so it lands on "No data", and the
@@ -4769,9 +4764,7 @@ textarea {
 @media (max-width: 900px) {
   .panel-collapse-dashboard,
   #controls .panel-collapse-sidebar,
-  .timeline-collapse,
-  .panel-reveal-sidebar,
-  .panel-reveal-timeline {
+  .panel-reveal-sidebar {
     display: none !important;
   }
 }

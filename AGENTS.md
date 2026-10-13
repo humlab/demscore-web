@@ -147,7 +147,7 @@ The app was refactored into a small class hierarchy with one top-level coordinat
     There was a third, the data-table dialog's boundary footnote, which went with that
     dialog; the table view's own footnote is plain text
 - `src/controllers/MapExportController.js`
-  - the **Download dialog** (`#mapExportDialog`), opened by **Save** in the map dashboard
+  - the **Download dialog** (`#mapExportDialog`), opened by **Export** in the map dashboard
     (between the outline switch and the fold button): this year as a PNG, or a span of years
     as an MP4 (H.264) or WebM (VP9) video, at "as on screen", HD 1920×1080 or square 1080×1080
   - it draws from **tiles of its own**, not from the canvas on screen: the screen holds one
@@ -202,10 +202,11 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - per-year country counts for the variable on screen (`loadYearCounts()`, from
     `/api/year-counts`), for the timeline's hover card and its bar heights
 - `src/controllers/PanelCollapseController.js`
-  - putting the three panels that stand over the map away, and the map-only mode. State
-    is classes on `#app`: `is-collapsed-sidebar|timeline|dashboard`, `is-peek-*` while
-    a collapsed one is pointed at or has focus inside it, and `is-map-only`
-  - a collapsed sidebar or timeline slides off its edge and leaves a `.panel-reveal-*`
+  - putting the sidebar and the dashboard away, and the map-only mode. State is classes
+    on `#app`: `is-collapsed-sidebar|dashboard`, `is-peek-*` while a collapsed one is
+    pointed at or has focus inside it, and `is-map-only`. The timeline has no hide
+    button (removed at the client's request); only map-only hides it
+  - a collapsed sidebar slides off its edge and leaves a `.panel-reveal-*`
     strip; hovering the strip *peeks* the panel, its own button (turned round) pins it
     back, and on touch a tap or a drag off the edge pins it back. Focus moving into a
     collapsed panel peeks it, so Tab never lands on something invisible
@@ -214,12 +215,13 @@ The app was refactored into a small class hierarchy with one top-level coordinat
     map's bottom-left corner -- clear of the credit line, which runs in from the right.
     It does not peek on hover: the folded legend is not where it sits in the full row,
     so a peek would lift it out from under the pointer
-  - map-only (the button bottom right, over the credit line) hides all three, the folded
+  - map-only (the button bottom right, over the credit line) hides the sidebar, the
+    timeline and the dashboard, the folded
     legend, the strips and the zoom buttons, and asks for full screen. **The attribution
     line stays** -- the licence is discharged by it being always visible. Escape, or
     leaving full screen, ends it
-  - the sidebar and timeline collapse are desktop-only (on the phone the sidebar is a band
-    over the map and the timeline sits in the flow); the dashboard's fold button is held
+  - the sidebar collapse is desktop-only (on the phone the sidebar is a band over the
+    map); the dashboard's fold button is held
     back on the phone for want of a corner to put it in. Nothing is remembered between
     visits
   - cross-controller event coordination
@@ -302,10 +304,10 @@ the structural colour, terracotta only as a thin accent, and soft neutral surfac
   the brief calls out heavy rounded cards as the thing to avoid. Pills (`999px`) are for
   chips, which read as toggles by being pill-shaped
 - the brief asks for terracotta *sparingly*. It has two uses, both through the one token
-  `--sidebar-rule`: the band down the sidebar's outer edge (below), and the left edge of the
-  selected variable row -- asked for by the client, because the row is a mid blue on a navy
-  column and a navy edge disappeared into it. That is the whole of its budget — do not spend
-  it on buttons or other active states as well. Its earlier use, the rule above the legend
+  `--sidebar-rule`: the band down the sidebar's outer edge (below), and the 6px left edge of
+  the selected variable row, which is a near-black grey warmed with a tenth of the same terracotta, with white text -- asked
+  for by the client, since the dark row on a navy column needs an edge to stand apart. That
+  is the whole of its budget: do not spend it on buttons or other active states as well. Its earlier use, the rule above the legend
   dock, went with that dock
 - the per-dataset palettes (`--ds-1`..`--ds-5`, from backend config) and the map's own
   colours — legend ramps, `LAND_BASEMAP_COLOR` — are data graphics, not interface chrome,
@@ -597,7 +599,7 @@ Common tasks and where to work:
   - bar height folds sampling frequency and country coverage into one number, and is
     floored at level 1 so a 32-country sample still shows where its span begins
   - `.variable-option-coverage*` in `styles.css`; the SVG is `fill: currentColor`, which
-    is what lets a selected row's white background flip the bars to dark ink for free
+    is what lets a selected row's ink colour carry to the bars for free
 
 - Change the variable hover card:
   - `MetadataController.bindVariableTooltip()` (hover intent, dismissal) ->
@@ -805,7 +807,7 @@ Common tasks and where to work:
   - `--axis-y` is the floor the marks stand on and the line the whole axis is placed
     from: marks grow up from it by `--coverage-band-height` (which must equal
     `COVERAGE_BAND_PX` in `DemscoreApp`), the tick marks and labels hang below it, and
-    the year marker drops from it. `.timeline-preload-track::before` draws that floor,
+    the playhead's stem runs down to just past it. `.timeline-preload-track::before` draws that floor,
     always -- it used to appear only where the boxes were too far apart to tile, but
     marks of differing heights need a line to stand on at every spacing. It is darker
     than a resting mark on purpose: at the same weight the two merge and the marks
@@ -830,9 +832,15 @@ Common tasks and where to work:
     white backdrop (`.timeline-slider-wrap::before`) therefore reaches out by
     `--backdrop-overhang`, derived from the box width, and `#timeline-overlay` keeps a
     gutter wide enough for it; a fixed inset left the end box grazing the corner
+  - the year on the map is read in `.year-readout`, the third square of the controls row
+    (`#yearDisplayHero`), and marked on the axis by an orange playhead
+    (`--timeline-current`): `.timeline-selected-marker` is a knob at the top of the card
+    and a stem through the marks, and the mark for that year is painted the same colour
+    (`.is-current`, set by `highlightCurrentSegment()`). All of it stays inside the card.
+    It replaced a large year label hanging from the marker below the card, which sat over
+    the map's northern edge
   - `.timeline-scale` sits above the marker on purpose, and tick labels use an opaque
-    halo instead of `opacity`, so the marker line breaks around a label instead of
-    striking through it. A resting `.timeline-preload-segment` is mixed towards the
+    halo instead of `opacity`, so the marker stem never strikes through a label. A resting `.timeline-preload-segment` is mixed towards the
     paper colour for the same reason rather than given an `opacity`: on a phone the
     axis is drawn over hexagons, and a translucent mark would take its colour from them
 
@@ -1043,8 +1051,8 @@ Common tasks and where to work:
   - `:focus-visible` at the top of `styles.css` is the floor every control falls back to.
     A rule that sets `outline: none` has to put something at least as visible in its place
     in the same block — `#yearSlider` is the worked example: the input is transparent and
-    stretched over the whole wrap, so its ring is drawn on `.timeline-marker-line` and
-    `.timeline-year-label` through `.timeline-slider-wrap:has(#yearSlider:focus-visible)`
+    stretched over the whole wrap, so its ring is drawn on the playhead's
+    `.timeline-marker-knob` through `.timeline-slider-wrap:has(#yearSlider:focus-visible)`
   - `#variableTooltip` is two cards in one element. Hovering a row shows it as a `tooltip`;
     clicking an info button shows the same content as a non-modal `dialog` with a close
     button, a focus moved into it and a focus given back.

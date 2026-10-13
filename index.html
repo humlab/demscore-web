@@ -164,6 +164,14 @@
                      from AUTO_PLAY_MIN_SPEED to AUTO_PLAY_MAX_SPEED. -->
                 <div id="speedListbox" class="speed-popup" role="listbox" aria-label="Animation speed" tabindex="-1" hidden></div>
               </div>
+              <!-- The year on the map, as the third square of the row. It used
+                   to be a large label hanging from the marker under the card,
+                   over the map's northern edge; here it stays put while the
+                   marker moves. Decorative: the slider speaks the year. -->
+              <div class="year-readout" aria-hidden="true">
+                <span id="yearDisplayHero" class="year-readout-value"></span>
+                <span class="year-readout-label">Year</span>
+              </div>
             </div>
           </div>
           <div class="timeline-slider-wrap is-awaiting-data" id="timelineWrap">
@@ -186,27 +194,9 @@
             <input id="yearSlider" type="range" step="1" aria-label="Year" />
             <div id="timelineScale" class="timeline-scale" aria-hidden="true"></div>
             <div id="timelineSelectedMarker" class="timeline-selected-marker" aria-hidden="true">
+              <div class="timeline-marker-knob"></div>
               <div class="timeline-marker-line"></div>
-              <div id="yearDisplayHero" class="timeline-year-label"></div>
             </div>
-          </div>
-          <!-- Slides the timeline up out of the way; see sidebarCollapseBtn. At
-               the card's right end behind a rule, with the word under the
-               chevron so nobody has to guess what an arrow on a timeline does.
-               PanelCollapseController rewrites the word with the state. -->
-          <div class="timeline-collapse">
-            <button
-              id="timelineCollapseBtn"
-              type="button"
-              class="panel-collapse-button panel-collapse-timeline"
-              aria-controls="timeline-overlay"
-              aria-expanded="true"
-              aria-label="Hide the timeline"
-              title="Hide the timeline"
-            >
-              <i data-lucide="chevron-up" aria-hidden="true"></i>
-              <span class="panel-collapse-text" aria-hidden="true">Hide</span>
-            </button>
           </div>
         </div>
         <!-- Not a live region any more. The slider announces its own value (and

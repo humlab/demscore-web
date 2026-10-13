@@ -309,9 +309,10 @@ export class DemscoreApp extends BaseController {
   // Measured rather than written down: the overlay's height changes with the
   // window width and with the variable's year span.
   syncTimelineInset() {
-    // Put away, the timeline stands on nothing but its reveal strip.
-    if (this.panelCollapseController?.isCollapsed("timeline")) {
-      this.mapContainer.style.setProperty("--timeline-inset", "24px");
+    // Map-only hides the timeline, and then it stands on nothing.
+    if (this.panelCollapseController?.isMapOnly()) {
+      this.mapContainer.style.setProperty("--timeline-inset", "0px");
+      this.mapController.setWorldFitInset("top", 0);
       return;
     }
     const height = this.timelineOverlayEl?.getBoundingClientRect().height;
@@ -319,6 +320,7 @@ export class DemscoreApp extends BaseController {
     // The overlay's own top offset is 12px; the rest is the gutter between it
     // and the first thing below it.
     this.mapContainer.style.setProperty("--timeline-inset", `${Math.round(height) + 20}px`);
+    this.mapController.setWorldFitInset("top", Math.round(height) + 20);
   }
 
   // ...and how much of the foot of it the map dashboard is standing on, for the
@@ -329,9 +331,17 @@ export class DemscoreApp extends BaseController {
   syncDashboardInset() {
     const dashboard = this.mapController.getMapChoiceDashboard();
     if (!dashboard) return;
+    // Map-only hides it outright, and a hidden element measures as a box at the
+    // viewport's origin -- which would read as the dashboard covering the whole
+    // canvas. Only the world fit cares then; the table view is not on screen.
+    if (this.panelCollapseController?.isMapOnly() || dashboard.getClientRects().length === 0) {
+      this.mapController.setWorldFitInset("bottom", 0);
+      return;
+    }
     const inset = this.mapCanvas.getBoundingClientRect().bottom - dashboard.getBoundingClientRect().top;
     if (!Number.isFinite(inset) || inset <= 0) return;
     this.mapContainer.style.setProperty("--dashboard-inset", `${Math.round(inset)}px`);
+    this.mapController.setWorldFitInset("bottom", Math.round(inset));
   }
 
   // The switcher lives in the map dashboard now, built and bound by
@@ -493,6 +503,16 @@ export class DemscoreApp extends BaseController {
       new ResizeObserver(() => this.syncTimelineInset()).observe(this.timelineOverlayEl);
       const dashboard = this.mapController.getMapChoiceDashboard();
       if (dashboard) new ResizeObserver(() => this.syncDashboardInset()).observe(dashboard);
+      // The marks are laid out in pixels now (see buildPreloadSegmentLayout), so
+      // a track that changes width without the window doing so -- the sidebar
+      // folding away -- has to lay them out again rather than stretch them.
+      let trackWidth = this.timelinePreloadTrack.clientWidth;
+      new ResizeObserver(() => {
+        const width = this.timelinePreloadTrack.clientWidth;
+        if (width === trackWidth) return;
+        trackWidth = width;
+        this.redrawTimelineScale?.();
+      }).observe(this.timelinePreloadTrack);
     }
     this.syncTimelineInset();
     this.syncDashboardInset();
@@ -1111,19 +1131,17 @@ export class DemscoreApp extends BaseController {
     const span = yearMax - yearMin;
     const pct = span > 0 ? ((this.state.year - yearMin) / span) * 100 : 50;
     const clampedPct = Math.max(0, Math.min(100, pct));
-    const wrapWidth = this.timelineWrap.clientWidth;
-    const labelWidth = this.yearDisplayHero.offsetWidth;
-    let labelOffset = 0;
-
-    if (wrapWidth > 0 && labelWidth > 0) {
-      const selectedLeft = (clampedPct / 100) * wrapWidth;
-      const minLeft = labelWidth / 2;
-      const maxLeft = Math.max(minLeft, wrapWidth - labelWidth / 2);
-      labelOffset = Math.min(maxLeft, Math.max(minLeft, selectedLeft)) - selectedLeft;
-    }
-
     this.timelineWrap.style.setProperty("--selected-pct", `${clampedPct}%`);
-    this.timelineWrap.style.setProperty("--selected-label-offset", `${labelOffset}px`);
+    this.highlightCurrentSegment();
+  }
+
+  // The year on the map is the one mark drawn in the playhead's colour, so
+  // where the timeline is stands out of the run of marks around it even where
+  // the marks are only a few pixels wide and the marker line is lost among them.
+  highlightCurrentSegment() {
+    for (const segment of this.preloadSegments) {
+      segment.el?.classList.toggle("is-current", segment.years.includes(this.state.year));
+    }
   }
 
   highlightTimelineTick(year) {
@@ -1220,6 +1238,7 @@ export class DemscoreApp extends BaseController {
     const boxWidth = spacing > 0
       ? Math.min(this.PRELOAD_SEGMENT_MAX_PX, spacing - gap)
       : this.PRELOAD_SEGMENT_MAX_PX;
+    const layoutBox = this.buildPreloadSegmentLayout(trackWidth, yearCount, spacing, gap);
 
     const segments = [];
     for (let index = 0; index < segmentCount; index += 1) {
@@ -1234,13 +1253,59 @@ export class DemscoreApp extends BaseController {
       // k + 1 years, so integer midpoints jitter each box by up to half a year
       // and neighbours visibly bunch up and drift apart along the track.
       const centerYear = yearMin + ((index + 0.5) * yearCount) / segmentCount - 0.5;
-      segments.push({ years, centerYear, dataYears: years.filter((year) => availableYearSet.has(year)) });
+      segments.push({
+        years,
+        centerYear,
+        dataYears: years.filter((year) => availableYearSet.has(year)),
+        box: layoutBox ? layoutBox(index) : null,
+      });
     }
 
     // Whether the marks tile the track or stand apart as beads used to decide
     // whether a baseline was drawn behind them. The marks are bars now and the
     // floor is always there, so the spacing no longer changes anything.
     return { segments, boxWidth };
+  }
+
+  // Where each mark sits, in whole device pixels.
+  //
+  // The marks used to be placed at a percentage and centred with a transform, so
+  // with a spacing like 12.3px every edge landed somewhere inside a pixel and was
+  // antialiased there. A 2px gap then rendered as anything from a crisp pair of
+  // pixels to a grey smear that closed it, depending on where it fell, and a long
+  // series showed it as banding: runs of marks fused together, then a clean gap,
+  // then another run.
+  //
+  // So every slot boundary is rounded to a device pixel first and each mark
+  // fills its slot less the gap. The gap is one whole number of device pixels
+  // everywhere, which is the regularity the eye reads; what absorbs the rounding
+  // is the marks' width, which then differs by at most one device pixel between
+  // neighbours. Where the slot is wider than a mark may be, the mark keeps its
+  // fixed width and is centred in it instead. Returns null before the track has
+  // a width, and the marks fall back to the stylesheet's percentage layout.
+  buildPreloadSegmentLayout(trackWidth, yearCount, spacing, gap) {
+    if (!(trackWidth > 0) || !(spacing > 0)) return null;
+    const dpr = window.devicePixelRatio || 1;
+    const toDevice = (px) => Math.round(px * dpr);
+    const gapDevice = toDevice(gap);
+    const maxDevice = toDevice(this.PRELOAD_SEGMENT_MAX_PX);
+    const leadDevice = Math.floor(gapDevice / 2);
+    // Mark i is centred on i * spacing, so its slot runs half a spacing either
+    // side of that -- the first and last marks hang over the track's ends, as
+    // they always have.
+    const boundary = (index) => toDevice((index - 0.5) * spacing);
+
+    return (index) => {
+      const slotStart = boundary(index);
+      const slotEnd = boundary(index + 1);
+      let left = slotStart + leadDevice;
+      let width = Math.max(1, slotEnd - slotStart - gapDevice);
+      if (width > maxDevice) {
+        left = toDevice(index * spacing) - Math.floor(maxDevice / 2);
+        width = maxDevice;
+      }
+      return { left: left / dpr, width: width / dpr };
+    };
   }
 
   // The year each of the precomputed strip's buckets starts at, built the same
@@ -1388,7 +1453,13 @@ export class DemscoreApp extends BaseController {
     for (const segment of segments) {
       segment.el = document.createElement("span");
       segment.el.className = `timeline-preload-segment${segment.dataYears.length > 0 ? "" : " is-unavailable"}`;
-      segment.el.style.left = `${yearPct(segment.centerYear)}%`;
+      if (segment.box) {
+        segment.el.classList.add("is-pixel-snapped");
+        segment.el.style.left = `${segment.box.left}px`;
+        segment.el.style.width = `${segment.box.width}px`;
+      } else {
+        segment.el.style.left = `${yearPct(segment.centerYear)}%`;
+      }
       segment.el.style.setProperty("--preload-progress", "0%");
       // Years with nothing to draw keep the hairline the stylesheet gives them:
       // a mark floored at the coverage minimum would claim data they do not have.
@@ -1420,6 +1491,7 @@ export class DemscoreApp extends BaseController {
 
     this.dropTimelineLabelsNearEdges();
     this.highlightTimelineTick(this.state.year);
+    this.highlightCurrentSegment();
 
     if (this.preloadSnapshot) {
       this.renderPreloadState(this.preloadSnapshot);

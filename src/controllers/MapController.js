@@ -69,6 +69,14 @@ const VIEW_CHOICE_ICONS = {
 const TABLE_VIEW_TITLE = "This year as a sortable table of countries, instead of the map";
 
 const MIN_ZOOM_FLOOR = 0;
+// Clear space kept between the fitted world and the panels floating over the
+// map, so the northernmost and southernmost hexagons are not drawn flush
+// against them.
+const WORLD_FIT_GUTTER_PX = 8;
+// However tall the panels get on a short window, the world is fitted to at
+// least this share of the map's height; past that, it is the panels' turn to
+// stand on it, and the reader can pan.
+const WORLD_FIT_MIN_HEIGHT_SHARE = 0.5;
 const MAX_ZOOM = 6;
 const INITIAL_CENTER_LON_LAT = [10, 20];
 const INITIAL_ZOOM = 2;
@@ -302,6 +310,10 @@ export class MapController extends BaseController {
 
     this.loadingRevealTimer = null;
     this.loadingAnnounceTimer = null;
+
+    // How much of the map's top and foot the timeline and the dashboard stand
+    // on, as DemscoreApp measures them. See measureWorldFit.
+    this.worldFitInsets = { top: 0, bottom: 0 };
   }
 
   initialize() {
@@ -485,10 +497,30 @@ export class MapController extends BaseController {
   // window, or 0 before the map has a size to measure. The view box is the
   // world with the empty south cropped off, so this is the zoom the populated
   // part of the world is fitted at.
+  //
+  // Fitted to the part of the window nothing floats over. The timeline across
+  // the top and the dashboard across the foot are both over the map rather than
+  // beside it, and a world fitted to the whole canvas put Canada and Greenland
+  // under the one and Australia and Patagonia under the other at the furthest
+  // a reader could zoom out -- so the widest view never showed the world.
   measureWorldFit() {
     const size = this.map?.getSize();
     if (!size || !size[0] || !size[1]) return 0;
-    return worldFitResolution(this.projection.viewExtent, size);
+    const { top, bottom } = this.worldFitInsets;
+    const covered = top + bottom + 2 * WORLD_FIT_GUTTER_PX;
+    const height = Math.max(size[1] - covered, size[1] * WORLD_FIT_MIN_HEIGHT_SHARE);
+    return worldFitResolution(this.projection.viewExtent, [size[0], height]);
+  }
+
+  // DemscoreApp measures the panels and reports each as it changes: a new
+  // variable can change the timeline's height, and folding either panel away
+  // gives its space back to the world view.
+  setWorldFitInset(side, px) {
+    if (!(side in this.worldFitInsets) || !Number.isFinite(px)) return;
+    const value = Math.max(0, px);
+    if (this.worldFitInsets[side] === value) return;
+    this.worldFitInsets[side] = value;
+    if (this.map) this.applyWorldFit();
   }
 
   // Web Mercator metres per pixel, read off the resolution rather than taken
@@ -955,7 +987,7 @@ export class MapController extends BaseController {
   }
 
   // The map dashboard: one row along the foot of the map -- the View switch, the
-  // legend, the colour-scheme dropdown, the outline switch, Save (the Download
+  // legend, the colour-scheme dropdown, the outline switch, Export (the Download
   // dialog) and the button that folds it down to its legend. It was two rows (labelled sections over their
   // controls, and a strip of swatch buttons for the schemes), which made it the
   // tallest thing on the map after the timeline; the client's mockup put it on
@@ -1056,7 +1088,7 @@ export class MapController extends BaseController {
           title="Download an image or a video of the map"
         >
           <i data-lucide="download" aria-hidden="true"></i>
-          <span>Save</span>
+          <span>Export</span>
         </button>
       </div>
       <span class="map-choice-divider map-collapse-divider" aria-hidden="true"></span>

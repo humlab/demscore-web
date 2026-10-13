@@ -1,8 +1,11 @@
 import { BaseController } from "../core/BaseController.js";
 import { refreshIcons } from "../core/icons.js";
 
-// The three panels that stand over the map -- the sidebar, the timeline and the
-// map dashboard -- can each be put away, and the map can be shown on its own.
+// Two of the panels that stand over the map -- the sidebar and the map
+// dashboard -- can each be put away, and the map can be shown on its own, which
+// hides the timeline too. The timeline itself has no hide button any more, at
+// the client's request: it is one 72px card, and the readout of the year on the
+// map is in it.
 //
 // Asked for because on a laptop panel the three covered a good part of the map
 // even zoomed all the way out. Most of that is answered by `--ui-scale` in
@@ -50,13 +53,11 @@ const DRAG_REVEAL_PX = 16;
 // Which way each strip is dragged to bring its panel out: x or y, and sign.
 const DRAG_DIRECTION = {
   sidebar: { axis: "x", sign: 1 },
-  timeline: { axis: "y", sign: 1 },
   dashboard: { axis: "y", sign: -1 },
 };
 
 const LABELS = {
   sidebar: { hide: "Hide the side panel", show: "Show the side panel", reveal: "Show the side panel" },
-  timeline: { hide: "Hide the timeline", show: "Show the timeline", reveal: "Show the timeline" },
   dashboard: {
     hide: "Hide the map controls, keeping the legend",
     show: "Show the map controls",
@@ -80,7 +81,6 @@ export class PanelCollapseController extends BaseController {
     this.appEl = this.getEl("app");
 
     this.register("sidebar", this.getEl("controls"), this.getEl("sidebarCollapseBtn"));
-    this.register("timeline", this.getEl("timeline-overlay"), this.getEl("timelineCollapseBtn"));
     const dashboard = this.mapController.getMapChoiceDashboard();
     // No strip and no peek for the dashboard: see the note at the top.
     if (dashboard) {
@@ -175,6 +175,10 @@ export class PanelCollapseController extends BaseController {
     entry.strip.addEventListener("pointercancel", end);
   }
 
+  isMapOnly() {
+    return this.mapOnly;
+  }
+
   isCollapsed(key) {
     const entry = this.panels.get(key);
     return Boolean(entry && (entry.collapsed || this.mapOnly) && !entry.peeking);
@@ -241,9 +245,6 @@ export class PanelCollapseController extends BaseController {
     button.setAttribute("aria-expanded", away ? "false" : "true");
     button.setAttribute("aria-label", label);
     button.title = label;
-    // The one-word caption some buttons carry under their chevron.
-    const caption = button.querySelector(".panel-collapse-text");
-    if (caption) caption.textContent = away ? "Show" : "Hide";
   }
 
   // ---- map only -------------------------------------------------------------
