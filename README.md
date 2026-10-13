@@ -54,6 +54,6 @@ directory through nginx.
 - Toggle cache in repo `.env`:
   - `DEMSCORE_ENABLE_MAPCACHE=0` disables server and browser tile caching
   - `DEMSCORE_ENABLE_MAPCACHE=1` enables server and browser tile caching
-- Start services for local dev: `./scripts/dev_up.sh`
+- Start services, in development and production alike, from the deployment repo root: `./scripts/start_services.sh` (or `./deploy.sh start`)
 - Open app normally: `http://127.0.0.1:8090/`
 - WMS requests always use the same-origin `/mapserver` route; the cache policy behind that route is selected from `DEMSCORE_ENABLE_MAPCACHE` via `web-backend` runtime config.
