@@ -58,7 +58,6 @@
       ],
       "variables": [
         "repdem_basic_cab_num_parties",
-        "repdem_basic_cab_composition2",
         "repdem_basic_govtype",
         "repdem_basic_form_duration_alt",
         "repdem_basic_cab_duration_days",

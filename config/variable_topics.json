@@ -84,7 +84,6 @@
       "qog_std_ts_gggi_ggi": ["gender"]
     },
     "repdem": {
-      "repdem_basic_cab_composition2": ["cabinets"],
       "repdem_basic_cab_duration_days": ["cabinets"],
       "repdem_basic_cab_num_parties": ["cabinets"],
       "repdem_basic_cab_seatshare": ["cabinets"],

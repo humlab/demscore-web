@@ -3270,32 +3270,6 @@
                 "dataset_citation": "Hellström et al. (2025), Bergman & Hellström (2021), Bergman & Hellström (2024)",
                 "description_full": "Number of cabinet parties"
             },
-            "repdem_basic_cab_composition2": {
-                "title": "Cabinet composition",
-                "matched_by": "direct",
-                "source_pdf": "/home/johan/demscore-deployment/data/Demscore_Module_Vars/REPDEM/codebook.pdf",
-                "dataset_tag": "repdem_basic",
-                "description": "Party Ids (see party codebook). List of cabinet parties, beginning with the party of the PM.",
-                "heading_raw": "Cabinet composition (cab_composition2)",
-                "original_tag": "cab_composition2",
-                "raw_block_text": "Long tag: repdem_basic_cab_composition2\n  Original tag: cab_composition2\n  Dataset citation: Hellström et al. (2026)\n  Merge scores:\n  Non-missing observations in original unit: Sum: 1141, Percent: 95.56\n  Non-missing observations in chosen unit: Sum: 2047, Percent: 99.9\n  Description:\n      Party Ids (see party codebook). List of cabinet parties, beginning with the party of the PM.\n\n2.1.1.3 Cabinet duration (cab_duration_days)",
-                "source_long_tag": "repdem_basic_cab_composition2",
-                "dataset_citation": "Hellström et al. (2026)",
-                "description_full": "Party Ids (see party codebook). List of cabinet parties, beginning with the party of the PM."
-            },
-            "repdem_wecee_cab_composition2": {
-                "title": "Cabinet composition",
-                "matched_by": "direct",
-                "source_pdf": "/home/johan/demscore-deployment/data/Demscore_Module_Vars/REPDEM/codebook.pdf",
-                "dataset_tag": "repdem_wecee",
-                "description": "Party Ids (see party codebook). List of cabinet parties, beginning with the party of the PM.",
-                "heading_raw": "Cabinet composition (cab_composition2)",
-                "original_tag": "cab_composition2",
-                "raw_block_text": "Long tag: repdem_wecee_cab_composition2\n  Original tag: cab_composition2\n  Dataset citation: Hellström et al. (2025), Bergman & Hellström (2021), Bergman & Hellström\n      (2024)\n  Merge scores:\n  Non-missing observations in original unit: Sum: 772, Percent: 64.66\n  Non-missing observations in chosen unit: Sum: 1449, Percent: 70.72\n  Description:\n      Party Ids (see party codebook). List of cabinet parties, beginning with the party of the PM.\n\n2.2.1.3 Cabinet duration (cab_duration_days)",
-                "source_long_tag": "repdem_wecee_cab_composition2",
-                "dataset_citation": "Hellström et al. (2025), Bergman & Hellström (2021), Bergman & Hellström (2024)",
-                "description_full": "Party Ids (see party codebook). List of cabinet parties, beginning with the party of the PM."
-            },
             "repdem_basic_cab_duration_days": {
                 "title": "Cabinet duration",
                 "matched_by": "direct",
