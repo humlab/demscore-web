@@ -645,7 +645,9 @@ Common tasks and where to work:
     serving the old colours under the new legend. Add a band at a fresh base
   - `honoursPolarity` is the real difference between the two kinds of scheme. The diverging
     ones encode *valence* -- one end is the unfavourable end, and `polarity` picks which --
-    so their signed band is reversed for positive polarity, here and identically in SQL. The
+    so their band is reversed for positive polarity, here and identically in SQL. A neutral
+    variable is drawn in the same band, reversed like positive, so the scheme's name reads
+    low-to-high; it no longer has a band of its own (bases 40 and 50 are retired). The
     sequential ones have no second end to put anything at, so they run low-to-high always and
     ignore polarity; the "which end is bad" cue then lives only in the legend's end labels,
     which are words. That is the trade the reader makes by picking one

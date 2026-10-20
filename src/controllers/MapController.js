@@ -863,10 +863,8 @@ export class MapController extends BaseController {
     const polarity = this.metadataController.getActivePolarity();
     // Blue-Red requests leave `palette` out, because that is what MapServer
     // paints unnamed and the long-lived cache is warm under those URLs. This is
-    // the *server's* default, not the reader's -- see palettes.js. Neutral
-    // Blue-Red has its own ramp, though, so spelling it out gives that changed
-    // rendering a fresh URL instead of reusing the old neutral-Viridis tiles.
-    const explicitlyNamePalette = this.paletteKey !== SERVER_DEFAULT_PALETTE_KEY || polarity === "neutral";
+    // the *server's* default, not the reader's -- see palettes.js.
+    const explicitlyNamePalette = this.paletteKey !== SERVER_DEFAULT_PALETTE_KEY;
     return {
       LAYERS: this.wmsLayerNames(),
       STYLES: "",
@@ -1057,7 +1055,7 @@ export class MapController extends BaseController {
                 <span class="map-palette-name">${palette.label}</span>
                 <i class="map-palette-check" data-lucide="check" aria-hidden="true"></i>
               </span>
-              <span class="map-palette-swatches" data-palette-swatches="${key}" aria-hidden="true">${palette.signed.colors
+              <span class="map-palette-swatches" data-palette-swatches="${key}" aria-hidden="true">${palette.band.colors
                 .map((color) => `<i style="background: ${color}"></i>`)
                 .join("")}</span>
             </div>`;
@@ -1301,8 +1299,8 @@ export class MapController extends BaseController {
   }
 
   // The picker is a preview of the active map, not a catalogue of every
-  // palette's signed ramp. A neutral variable takes each scheme's dedicated
-  // sequential ramp, so the previews stay truthful when the variable changes.
+  // palette's ramp: it shows the ramp the way round the active variable's
+  // polarity draws it, so the previews stay truthful when the variable changes.
   syncPaletteSwatches() {
     const polarity = this.metadataController.getActivePolarity();
     for (const key of PALETTE_KEYS) {
@@ -1315,16 +1313,16 @@ export class MapController extends BaseController {
     this.syncPaletteLabels(polarity);
   }
 
-  // A neutral variable takes each scheme's sequential ramp, and its name with
-  // it, so the dropdown and its button say what the map is actually drawn in.
+  // A scheme's name is the same for every variable; its tooltip says whether the
+  // variable on the map has a better end, so a neutral one is not told it does.
   syncPaletteLabels(polarity = this.metadataController.getActivePolarity()) {
     for (const option of this.paletteOptions || []) {
       const key = option.dataset.value;
       const name = option.querySelector(".map-palette-name");
-      if (name) name.textContent = paletteLabelFor(key, polarity);
+      if (name) name.textContent = paletteLabelFor(key);
       option.title = paletteDescriptionFor(key, polarity);
     }
-    if (this.paletteValueEl) this.paletteValueEl.textContent = paletteLabelFor(this.paletteKey, polarity);
+    if (this.paletteValueEl) this.paletteValueEl.textContent = paletteLabelFor(this.paletteKey);
   }
 
   syncOutlineToggle() {
@@ -1923,14 +1921,14 @@ export class MapController extends BaseController {
       takeaway: text.takeaway || "",
       polarity,
       classCount: this.classCountForBreaks(),
-      paletteLabel: paletteLabelFor(this.paletteKey, polarity),
+      paletteLabel: paletteLabelFor(this.paletteKey),
       projectionTitle: this.projection?.title || this.projectionKey,
       noDataNote: "Countries with no value for this variable and year are drawn as grey hexagons.",
     };
   }
 
   // The bar reads low-to-high left to right in every scheme. A scheme that
-  // honours polarity has its signed band reversed for positive polarity here,
+  // honours polarity has its band reversed for positive and neutral polarity here,
   // and the mapfile does the same reversal in SQL (`base + (8 - class_idx)`),
   // so the bar and the map cannot disagree about which end is which.
   legendColorsForPolarity(polarity) {

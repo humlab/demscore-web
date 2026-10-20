@@ -25,13 +25,23 @@
 // both key on the request URL, and the URL carries the scheme. Renumbering a
 // band would not change any URL, so both caches would go on serving the old
 // colours under the new legend -- the one failure mode that looks like working
-// software. Add a band at a fresh base; never reuse one.
+// software. Add a band at a fresh base; never reuse one, including the retired
+// ones in RETIRED_BASES.
 //
 // ---- honoursPolarity ----
 //
 // The two diverging schemes encode *valence*: one end is the bad end, and
-// `polarity` decides which. That is why `signed` is reversed for positive
+// `polarity` decides which. That is why `band` is reversed for positive
 // polarity rather than a second band existing for it.
+//
+// A neutral variable (no better or worse end, e.g. cabinet composition) is
+// drawn in the same band, the way round the scheme's name reads: low values at
+// the first-named colour, high at the second -- the orientation positive
+// polarity gets. Each scheme used to give neutral variables a band of its own
+// (Green under Red - Blue, Purple - Magenta under Brown - Blue), which made the
+// reader's choice of scheme look different on every REPDEM variable; the client
+// asked for one scheme to mean one set of colours. What says "neither end is
+// better" now is the legend's end labels and `neutralDescription`, not a hue.
 //
 // The two sequential schemes cannot encode valence -- one ramp, dark to light,
 // with no second end to put anything at -- so they run low-to-high always and
@@ -50,31 +60,17 @@ const VIRIDIS = ["#472d7b", "#3b528b", "#2c728e", "#21918c", "#28ae80", "#5ec962
 // is centred on a mid-tone for that reason, and separates far better than
 // RdYlBu under simulated deficiency (worst adjacent pair 18.1 against 12.8).
 const INDIGO_AMBER = ["#2b2a70", "#4a54a8", "#8b93cf", "#c4bdb0", "#e0a33c", "#b2700f", "#7a4703"];
-// Green, pale to dark: low values pale, high values dark, so darker reads as
-// more -- the way most readers take a single-hue ramp. The Red – Blue scheme's
-// ramp for neutral variables. It replaced magma (black through purple and
-// orange to pale yellow), which ran in lightness but not in any way a reader
-// could name: nothing about black-to-yellow says which end is "more". One hue
-// from pale to dark does, and green shares no hue with either end of RD_YL_BU
-// beside it. Its palest class is kept off the ocean (`--map-ocean`, delta-E 21),
-// which check_palette_contrast.mjs does not measure.
-const GREEN = ["#d2edc9", "#a5d99d", "#74c476", "#41ab5d", "#238b45", "#0b6b2f", "#00441b"];
-// Pale magenta to dark purple, low to high, as GREEN above: the Brown – Blue
-// scheme's ramp for neutral variables, which have no better or worse end. It
-// replaced an indigo-to-yellow ramp that opened on the very two indigos of
-// INDIGO_AMBER, so the low values of a neutral map looked like the favourable
-// end of a democracy map; purple and magenta share no hue with either end of
-// INDIGO_AMBER. The darkest class is darker than a plain purple-magenta ramp's,
-// to clear the greyscale floor between the two darkest classes (6 and 7). Its
-// palest class is kept off the ocean (`--map-ocean`, delta-E 19), which
-// check_palette_contrast.mjs does not measure.
-const PURPLE_MAGENTA = ["#f9cdd2", "#f09cb0", "#db6e98", "#b9478f", "#8e2a86", "#651a6e", "#2e0840"];
 // cividis, trimmed at the dark end to clear the greyscale floor. Built so that
 // a protan or deutan viewer sees very nearly what everyone else does, rather
 // than something merely distinguishable.
 const CIVIDIS = ["#002d61", "#22496e", "#4a5a6e", "#70706d", "#97906b", "#c1ac60", "#f2df4a"];
 
 export const CLASS_COUNT = 7;
+
+// Bases that once held a band and must never hold another: 40 was Red - Blue's
+// neutral ramp (magma, then green) and 50 Brown - Blue's (indigo to yellow,
+// teal, then purple to magenta). paletteBands() refuses a band on either.
+export const RETIRED_BASES = [40, 50];
 
 // What a present-day country with no value for the variable-year is painted in.
 // It used to be the land basemap showing through where no hexagon was drawn,
@@ -98,7 +94,6 @@ export const MAP_PALETTES = {
   // variable where higher is better.
   default: {
     label: "Red – Blue",
-    neutralLabel: "Green",
     // The tooltip on the scheme's option in the Colours dropdown, for the
     // variable on the map: `description` when it has a better and a worse end,
     // `neutralDescription` when it has neither (polarity "neutral", e.g.
@@ -109,19 +104,16 @@ export const MAP_PALETTES = {
     // chosen, and not which end is better -- that is the legend's end labels'
     // job, in the words the codebook uses.
     description: "Red to blue, from one end of the scale to the other.",
-    neutralDescription: "Pale green to dark green, from low to high values. Neither end is better or worse.",
+    neutralDescription: "Red to blue, from low to high values. Neither end is better or worse.",
     honoursPolarity: true,
-    signed: { base: 0, colors: RD_YL_BU },
-    neutral: { base: 40, colors: GREEN },
+    band: { base: 0, colors: RD_YL_BU },
   },
   indigo_amber: {
     label: "Brown – Blue",
-    neutralLabel: "Purple – Magenta",
     description: "Brown to blue, from one end of the scale to the other.",
-    neutralDescription: "Pale magenta to dark purple, from low to high values. Neither end is better or worse.",
+    neutralDescription: "Brown to blue, from low to high values. Neither end is better or worse.",
     honoursPolarity: true,
-    signed: { base: 20, colors: INDIGO_AMBER },
-    neutral: { base: 50, colors: PURPLE_MAGENTA },
+    band: { base: 20, colors: INDIGO_AMBER },
   },
   viridis: {
     label: "Viridis",
@@ -132,8 +124,7 @@ export const MAP_PALETTES = {
     // this one flag -- and its base stays claimed, which it must anyway.
     offered: false,
     honoursPolarity: false,
-    signed: { base: 10, colors: VIRIDIS },
-    neutral: { base: 10, colors: VIRIDIS },
+    band: { base: 10, colors: VIRIDIS },
   },
   cividis: {
     label: "Cividis",
@@ -141,8 +132,7 @@ export const MAP_PALETTES = {
     // Withdrawn from the picker; see viridis above.
     offered: false,
     honoursPolarity: false,
-    signed: { base: 30, colors: CIVIDIS },
-    neutral: { base: 30, colors: CIVIDIS },
+    band: { base: 30, colors: CIVIDIS },
   },
 };
 
@@ -174,34 +164,33 @@ export function getPalette(key) {
 // rather than one block per scheme.
 export function paletteBands() {
   const bands = new Map();
-  for (const palette of Object.values(MAP_PALETTES)) {
-    for (const band of [palette.signed, palette.neutral]) {
-      const existing = bands.get(band.base);
-      if (existing && existing.join() !== band.colors.join()) {
-        throw new Error(`two different ramps claim class_idx base ${band.base}`);
-      }
-      bands.set(band.base, band.colors);
+  for (const { band } of Object.values(MAP_PALETTES)) {
+    if (RETIRED_BASES.includes(band.base)) {
+      throw new Error(`class_idx base ${band.base} is retired and cannot be reused`);
     }
+    const existing = bands.get(band.base);
+    if (existing && existing.join() !== band.colors.join()) {
+      throw new Error(`two different ramps claim class_idx base ${band.base}`);
+    }
+    bands.set(band.base, band.colors);
   }
   return [...bands.entries()].sort((a, b) => a[0] - b[0]);
 }
 
 // The bar, low to high left to right, for one scheme and one polarity.
 //
-// A scheme that honours polarity has one band for signed variables, and
-// positive polarity reverses it -- the mapfile does the same reversal in SQL
+// A scheme that honours polarity has one band, and positive and neutral
+// polarity reverse it -- the mapfile does the same reversal in SQL
 // (`base + (8 - class_idx)`), so the bar and the map cannot disagree about
 // which end is which.
 export function legendColorsFor(paletteKey, polarity) {
   const palette = getPalette(paletteKey);
-  if (!palette.honoursPolarity) return palette.signed.colors;
-  if (polarity === "neutral") return palette.neutral.colors;
-  return polarity === "positive" ? palette.signed.colors.slice().reverse() : palette.signed.colors;
+  const reversed = palette.honoursPolarity && (polarity === "positive" || polarity === "neutral");
+  return reversed ? palette.band.colors.slice().reverse() : palette.band.colors;
 }
 
-export function paletteLabelFor(paletteKey, polarity) {
-  const palette = getPalette(paletteKey);
-  return polarity === "neutral" && palette.neutralLabel ? palette.neutralLabel : palette.label;
+export function paletteLabelFor(paletteKey) {
+  return getPalette(paletteKey).label;
 }
 
 export function paletteDescriptionFor(paletteKey, polarity) {

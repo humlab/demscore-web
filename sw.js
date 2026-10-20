@@ -1,3 +1,8 @@
+// v19: neutral variables are drawn in their scheme's own band (low at the
+// first-named colour, as positive polarity) instead of the Green and Purple –
+// Magenta bands, which are retired -- every polarity=neutral tile repainted
+// under an unchanged URL.
+//
 // v17: both neutral ramps reversed to run pale (low) to dark (high) --
 // class_idx 41-47 and 51-57 repainted under unchanged URLs.
 //
@@ -74,7 +79,7 @@
 // are the same cache and can never collide.
 //
 // v18 sheds MapServer errors that v17 stored as tiles (see the fetch handler).
-const WMS_TILE_CACHE = "demscore-wms-tile-cache-v18";
+const WMS_TILE_CACHE = "demscore-wms-tile-cache-v19";
 
 // The fills may be asked for alone or together with the outline layer that rides
 // along in the same GetMap (see MapController.wmsLayerNames), and the two spell

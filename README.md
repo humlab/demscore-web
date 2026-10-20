@@ -28,7 +28,7 @@ directory through nginx.
 
 ## Polarity Configuration
 
-`config/variable_polarity.json` is served by `web-backend` and controls whether higher values map to the favourable end (`positive`), the unfavourable end (`negative`), or a sequential low-to-high scale (`neutral`).
+`config/variable_polarity.json` is served by `web-backend` and controls whether higher values map to the favourable end (`positive`), the unfavourable end (`negative`), or neither (`neutral`, drawn low-to-high in the same scheme, the way round its name reads).
 
 - `defaults.polarity`: global fallback
 - `dataset_defaults`: fallback per dataset
