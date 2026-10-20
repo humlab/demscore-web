@@ -63,7 +63,20 @@ module.exports = (_env, argv) => {
       new CopyWebpackPlugin({
         patterns: [
           { from: "assets", to: "assets" },
-          { from: "sw.js", to: "sw.js" },
+          {
+            from: "sw.js",
+            to: "sw.js",
+            // The deployment's map build id (scripts/build_webapp.sh), which
+            // renames the tile cache whenever the tiles were redrawn -- see
+            // MAP_BUILD_ID in sw.js. Empty outside a deployment build.
+            transform: (content) =>
+              content
+                .toString()
+                .replace(
+                  "__DEMSCORE_MAP_BUILD_ID__",
+                  (process.env.DEMSCORE_MAP_BUILD_ID || "").replace(/[^A-Za-z0-9-]/g, ""),
+                ),
+          },
         ],
       }),
       ...(isProduction

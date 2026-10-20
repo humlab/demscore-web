@@ -82,7 +82,19 @@
 // are the same cache and can never collide.
 //
 // v18 sheds MapServer errors that v17 stored as tiles (see the fetch handler).
-const WMS_TILE_CACHE = "demscore-wms-tile-cache-v20";
+//
+// The version above is bumped by hand, for a change in this repository that
+// repaints tiles. A data import or a rebuilt hex mesh repaints them too, with
+// no code changing at all, so the deployment's build stamps MAP_BUILD_ID with
+// the setup run that drew them (webpack.config.cjs, from
+// scripts/build_webapp.sh in the deployment repository) and the name changes on
+// its own. Unstamped -- `npm run dev`, or a deployment that has not run setup --
+// it is the bare version.
+const MAP_BUILD_ID = "__DEMSCORE_MAP_BUILD_ID__";
+const WMS_TILE_CACHE =
+  MAP_BUILD_ID && !MAP_BUILD_ID.startsWith("__")
+    ? `demscore-wms-tile-cache-v20-${MAP_BUILD_ID}`
+    : "demscore-wms-tile-cache-v20";
 
 // The fills may be asked for alone or together with the outline layer that rides
 // along in the same GetMap (see MapController.wmsLayerNames), and the two spell
