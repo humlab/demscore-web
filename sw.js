@@ -1,3 +1,6 @@
+// v20: the area outline stops stroking a border between two countries of the
+// same class -- every outlined tile redrawn under an unchanged URL.
+//
 // v19: neutral variables are drawn in their scheme's own band (low at the
 // first-named colour, as positive polarity) instead of the Green and Purple –
 // Magenta bands, which are retired -- every polarity=neutral tile repainted
@@ -79,7 +82,7 @@
 // are the same cache and can never collide.
 //
 // v18 sheds MapServer errors that v17 stored as tiles (see the fetch handler).
-const WMS_TILE_CACHE = "demscore-wms-tile-cache-v19";
+const WMS_TILE_CACHE = "demscore-wms-tile-cache-v20";
 
 // The fills may be asked for alone or together with the outline layer that rides
 // along in the same GetMap (see MapController.wmsLayerNames), and the two spell
