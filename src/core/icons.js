@@ -12,6 +12,7 @@ import Info from "lucide/dist/esm/icons/info.mjs";
 import Map from "lucide/dist/esm/icons/map.mjs";
 import Maximize from "lucide/dist/esm/icons/maximize.mjs";
 import Minimize from "lucide/dist/esm/icons/minimize.mjs";
+import Palette from "lucide/dist/esm/icons/palette.mjs";
 import Pause from "lucide/dist/esm/icons/pause.mjs";
 import Play from "lucide/dist/esm/icons/play.mjs";
 import Table from "lucide/dist/esm/icons/table.mjs";
@@ -31,6 +32,7 @@ const ICONS = {
   map: Map,
   maximize: Maximize,
   minimize: Minimize,
+  palette: Palette,
   pause: Pause,
   play: Play,
   table: Table,

@@ -58,10 +58,16 @@ The app was refactored into a small class hierarchy with one top-level coordinat
     Red – Blue (`default`) -- the names from the client's mockup. Viridis and Cividis are
     `offered: false` -- withdrawn at the client's request, still generated and still
     served, so their bases stay claimed. `PALETTE_KEYS` is the offered list, default first
-  - they are picked from a **dropdown** in the dashboard (`#mapPaletteButton` and the
-    `#mapPaletteListbox` it opens upwards), each option its name over its ramp. A native
+  - they are picked from a **dropdown built into the legend** (`#mapPaletteButton`, an
+    icon at the end of the ramp, and the `#mapPaletteListbox` it opens upwards), each
+    option its name over its ramp. A click on the ramp or its end labels opens the same
+    list: the ramp is what the scheme chose, so it is where a reader looks to change it.
+    The button is the keyboard's way in, because each swatch is already a tab stop of its
+    own for its value card, and a button cannot hold focusable children. A native
     `<select>` cannot draw a ramp, so it is the select-only listbox pattern written out:
-    the listbox takes focus and points at its options with `aria-activedescendant`
+    the listbox takes focus and points at its options with `aria-activedescendant`. It
+    used to be a panel of its own beside the legend ("COLOURS Brown – Blue"), which made
+    the key and the control that chose its colours read as two unrelated things
   - **the reader's default is not the server's.** `SERVER_DEFAULT_PALETTE_KEY` (`default`,
     Blue-Red) is what MapServer paints when a request names no `palette`, and requests for
     it still omit the parameter so the long-lived cache stays warm. `DEFAULT_PALETTE_KEY`
@@ -211,7 +217,8 @@ The app was refactored into a small class hierarchy with one top-level coordinat
     back, and on touch a tap or a drag off the edge pins it back. Focus moving into a
     collapsed panel peeks it, so Tab never lands on something invisible
   - the dashboard **folds to its legend** rather than leaving: the legend is the key to
-    the map. Folded, the legend and the unfold button are a card of their own in the
+    the map, and the Colours button stays with it, since it is part of the legend.
+    Folded, the legend and the unfold button are a card of their own in the
     map's bottom-left corner -- clear of the credit line, which runs in from the right.
     It does not peek on hover: the folded legend is not where it sits in the full row,
     so a peek would lift it out from under the pointer
@@ -672,8 +679,9 @@ Common tasks and where to work:
     nothing else on a phone says what the grey means
   - **the legend is in two places, because it says two kinds of thing.** The *scale* —
     `.legend-scale`, the ramp with its two end labels and the no-data patch beside it — is
-    a key to the picture and is built into `.map-legend-slot`, the dashboard's middle
-    section, with the Colours dropdown that chose those colours after it. The *words* — `.legend-title` and
+    a key to the picture and is written out in `installMapChoiceDashboard()` as the
+    dashboard's middle section, with the Colours button at its end
+    (`initializeLegend()` binds it). The *words* — `.legend-title` and
     `.legend-note` — are written into `#mapLegendCopy`, the second line of the variable
     caption in the timeline overlay, because what they qualify is the variable and not the bar. Both were
     one 154px navy dock across the foot of the pane; the dock is gone, `#map` is one grid
@@ -688,8 +696,8 @@ Common tasks and where to work:
     sentence and a half for some indicators, and the overlay it sits in is standing on the
     map — a line that wrapped would move `--timeline-inset` and with it the top of the
     table view. It is in `#mapSummary` in full for anyone not hovering
-  - **the dashboard is one row**: View, the legend, the Colours dropdown, the outline
-    switch, Save and the fold button, as the client's mockup has it (Save was added after). It used to be two (a label
+  - **the dashboard is one row**: View, the legend (with the Colours dropdown at its
+    end), the outline switch, Save and the fold button, as the client's mockup has it (Save was added after). It used to be two (a label
     over each section's control, and a strip of swatch buttons for the schemes), and every
     pixel of its height comes out of the map, so nothing goes into it that would make it
     two rows again. The legend is the part that gives when the row is short
@@ -703,8 +711,8 @@ Common tasks and where to work:
     the top
   - **a switch without its label is hidden, not shown bare.** The outline switch keeps
     "Outline equal values" at every width where it fits (measured: all of the desktop
-    band), and below 520px, where it does not, the switch goes and the Colours button
-    takes its column. The "Colours" caption on that button stays down to 360px
+    band), and below 520px, where it does not, the switch goes and its column is left
+    empty. The Colours button stays at the legend's end at every width, folded too
 
 - Change autoplay/timeline behaviour:
   - `DemscoreApp` methods: `scheduleAutoPlayTick`, `setYear`, `renderTimelineScale`

@@ -378,7 +378,7 @@ export class MapController extends BaseController {
       this.onOpenAttribution(button);
     });
 
-    // The dashboard first: the legend bar is built into its Colours panel now,
+    // The dashboard first: the legend is written out as part of it now,
     // so the panel has to exist before there is anywhere to put it.
     this.installDisplayOptions();
     this.initializeLegend();
@@ -985,8 +985,8 @@ export class MapController extends BaseController {
   }
 
   // The map dashboard: one row along the foot of the map -- the View switch, the
-  // legend, the colour-scheme dropdown, the outline switch, Export (the Download
-  // dialog) and the button that folds it down to its legend. It was two rows (labelled sections over their
+  // legend with the colour-scheme dropdown built into it, the outline switch,
+  // Export (the Download dialog) and the button that folds it down to its legend. It was two rows (labelled sections over their
   // controls, and a strip of swatch buttons for the schemes), which made it the
   // tallest thing on the map after the timeline; the client's mockup put it on
   // one row with the schemes behind a dropdown.
@@ -1015,32 +1015,41 @@ export class MapController extends BaseController {
         </div>
       </div>
       <span class="map-choice-divider" aria-hidden="true"></span>
-      <!-- initializeLegend() fills this. It is the key to the map, so it is what
-           is left when the dashboard is folded. -->
+      <!-- The legend, and the colour-scheme picker as part of it: the ramp is
+           what the scheme chose, so the ramp is where it is changed. It is the
+           key to the map, so it is what is left when the dashboard is folded --
+           picker included. initializeLegend() binds the scale.
+
+           The picker is a button that opens a listbox of the schemes, each
+           shown as its name over its ramp -- the "select-only" pattern, written
+           out because a native <select> cannot draw a ramp in an option. The
+           listbox takes focus when it opens and points at its options with
+           aria-activedescendant. A click on the ramp or its end labels opens
+           it too; the button is the keyboard's way in, since each swatch is
+           already a tab stop of its own for its value card. -->
       <div class="map-choice-section map-legend-panel">
-        <div class="map-legend-slot"></div>
-      </div>
-      <!-- A button that opens a listbox of the schemes, each shown as its name
-           over its ramp -- the "select-only" pattern, written out because a
-           native <select> cannot draw a ramp in an option. The listbox takes
-           focus when it opens and points at its options with
-           aria-activedescendant. -->
-      <div class="map-choice-section map-palette-panel">
-        <button
-          id="mapPaletteButton"
-          class="map-palette-button"
-          type="button"
-          aria-haspopup="listbox"
-          aria-expanded="false"
-          aria-controls="mapPaletteListbox"
-          aria-labelledby="mapPaletteLabel mapPaletteCurrent"
-        >
-          <span class="map-palette-button-text"
-            ><span id="mapPaletteLabel" class="map-palette-button-label">Colours</span
-            ><span id="mapPaletteCurrent" class="map-palette-button-value"></span
-          ></span>
-          <i class="map-palette-button-chevron" data-lucide="chevron-up" aria-hidden="true"></i>
-        </button>
+        <div class="legend-scale" role="group" aria-label="Map legend">
+          <div class="legend-bar"></div>
+          <div class="legend-labels"><span></span><span></span></div>
+          <p class="legend-nodata">
+            <span class="legend-nodata-swatch" aria-hidden="true"></span>
+            <span class="legend-nodata-label">No data</span>
+          </p>
+          <button
+            id="mapPaletteButton"
+            class="map-palette-button"
+            type="button"
+            aria-haspopup="listbox"
+            aria-expanded="false"
+            aria-controls="mapPaletteListbox"
+            aria-labelledby="mapPaletteLabel mapPaletteCurrent"
+          >
+            <span id="mapPaletteLabel" class="visually-hidden">Colours</span>
+            <span id="mapPaletteCurrent" class="visually-hidden"></span>
+            <i class="map-palette-button-icon" data-lucide="palette" aria-hidden="true"></i>
+            <i class="map-palette-button-chevron" data-lucide="chevron-up" aria-hidden="true"></i>
+          </button>
+        </div>
         <div
           id="mapPaletteListbox"
           class="map-palette-popup"
@@ -1112,16 +1121,29 @@ export class MapController extends BaseController {
     const viewSwitch = container.querySelector(".map-view-switch");
     viewSwitch.addEventListener("keydown", (event) => this.onViewKeydown(event));
 
-    this.palettePanel = container.querySelector(".map-palette-panel");
+    // The whole legend panel, not just the button: a click on the ramp opens the
+    // list as well, and it must count as inside for the outside-click and
+    // focusout checks below, or pressing the ramp to close the list would shut
+    // it on pointerdown and reopen it on click.
+    this.palettePanel = container.querySelector(".map-legend-panel");
     this.paletteButton = container.querySelector("#mapPaletteButton");
     this.paletteValueEl = container.querySelector("#mapPaletteCurrent");
     this.palettePopup = container.querySelector("#mapPaletteListbox");
     this.paletteOptions = Array.from(container.querySelectorAll(".map-palette-option"));
     this.paletteActiveIndex = 0;
-    this.paletteButton.addEventListener("click", () => {
+    const togglePalettePopup = () => {
       if (this.palettePopup.hidden) this.openPalettePopup();
       else this.closePalettePopup(true);
-    });
+    };
+    this.paletteButton.addEventListener("click", togglePalettePopup);
+    // The ramp and its end labels, not the no-data patch: that grey is the same
+    // in every scheme, so it is not what the list changes.
+    for (const el of container.querySelectorAll(".legend-bar, .legend-labels")) {
+      el.addEventListener("click", () => {
+        this.hideLegendTip();
+        togglePalettePopup();
+      });
+    }
     this.paletteButton.addEventListener("keydown", (event) => {
       if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
       event.preventDefault();
@@ -1325,6 +1347,9 @@ export class MapController extends BaseController {
       option.title = paletteDescriptionFor(key, polarity);
     }
     if (this.paletteValueEl) this.paletteValueEl.textContent = paletteLabelFor(this.paletteKey);
+    // The button shows no words, so the pointer gets them here; the keyboard
+    // and screen readers get them from the hidden spans that name it.
+    if (this.paletteButton) this.paletteButton.title = `Colours: ${paletteLabelFor(this.paletteKey)}`;
   }
 
   syncOutlineToggle() {
@@ -1594,27 +1619,17 @@ export class MapController extends BaseController {
   }
 
   // The legend -- the ramp, the two ends of it, and the colour that means "no
-  // value" -- is a key to the picture and sits in the map dashboard's Colours
-  // panel, immediately under the picker that chose those colours.
+  // value" -- is a key to the picture and sits in the map dashboard, with the
+  // colour-scheme picker built into it. Its markup is written out with the rest
+  // of the dashboard in installMapChoiceDashboard(); this binds it.
   //
   // It used to be one dock across the foot of the pane, 154px of the window
   // spent on a block that was mostly air, and a whole map away from either of
-  // the things it belonged to.
+  // the things it belonged to. The scale is a group with a name: seven swatches
+  // and a no-data patch are one key, and a reader landing on the first swatch
+  // should hear what it is part of.
   initializeLegend() {
-    const div = document.createElement("div");
-    div.className = "legend-scale";
-    // A group with a name: seven swatches and a no-data patch are one key, and
-    // a reader landing on the first swatch should hear what it is part of. The
-    // dock used to carry this.
-    div.setAttribute("role", "group");
-    div.setAttribute("aria-label", "Map legend");
-    div.innerHTML = `
-      <div class="legend-bar"></div>
-      <div class="legend-labels"><span></span><span></span></div>
-      <p class="legend-nodata">
-        <span class="legend-nodata-swatch" aria-hidden="true"></span>
-        <span class="legend-nodata-label">No data</span>
-      </p>`;
+    const div = this.mapChoiceDashboardEl.querySelector(".legend-scale");
 
     this.legendBarEl = div.querySelector(".legend-bar");
     this.legendLowEl = div.querySelector(".legend-labels span:first-child");
@@ -1635,13 +1650,14 @@ export class MapController extends BaseController {
     this.legendNoDataEl.appendChild(noDataText);
     this.legend = div;
     this.legend.style.setProperty("--no-data-color", NO_DATA_COLOR);
-    this.mapChoiceDashboardEl.querySelector(".map-legend-slot").append(div);
 
     // The swatches are built once and only recoloured afterwards: rebuilding the
     // bar per refresh would drop the focus and the hover the tooltip hangs off.
     //
-    // `role="img"` with a tab stop rather than a button: there is nothing to
-    // activate, the card is a reading of the swatch and not an action on it.
+    // `role="img"` with a tab stop rather than a button: the card is a reading
+    // of the swatch and not an action on it. A click on the ramp does open the
+    // scheme list, but that is the ramp's, not one swatch's, and the keyboard
+    // reaches it through the button at the end of the legend.
     // What that costs is that the card cannot be the swatch's only voice — a
     // reader arriving on one hears its `aria-label` and nothing else — so the
     // label carries the class number, the value span and the country count in
@@ -1657,7 +1673,7 @@ export class MapController extends BaseController {
 
   bindLegendTooltip() {
     this.legendBarEl.addEventListener("pointerover", (event) => {
-      // Touch and pen have no hover to rest on, and the bar is not a control.
+      // Touch and pen have no hover to rest on; a tap opens the scheme list.
       if (event.pointerType && event.pointerType !== "mouse") return;
       const swatch = event.target.closest(".legend-swatch");
       if (!swatch) return;

@@ -3200,11 +3200,12 @@ textarea {
    rather than white on navy.
 
    The bar and its two end labels take the left column; "no data" sits beside
-   the bar at the right, because it is off the end of the ramp rather than
-   part of it. */
+   the bar, because it is off the end of the ramp rather than part of it; and
+   the colour-scheme button closes the row, the legend's own dropdown handle.
+   The ramp and its labels open the same list when clicked. */
 .legend-scale {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   column-gap: 10px;
   row-gap: 4px;
@@ -3219,12 +3220,26 @@ textarea {
   border: 1px solid rgba(71, 85, 105, 0.38);
   border-radius: 2px;
   overflow: hidden;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
 }
 
 .legend-swatch {
   flex: 1;
   height: 100%;
-  cursor: help;
+}
+
+/* Pointing at the ramp lights the button at its end, and an open list keeps
+   the ramp ringed, so the two read as one control: the ramp is what the list
+   changes. */
+.legend-bar:hover,
+.legend-scale:has(.map-palette-button[aria-expanded="true"]) .legend-bar {
+  box-shadow: 0 0 0 2px rgba(124, 168, 221, 0.6);
+}
+
+.legend-scale:has(.legend-bar:hover, .legend-labels:hover) .map-palette-button {
+  border-color: #94a3b8;
+  background: #f8fafc;
 }
 
 /* The bar is one solid ramp, so the focus ring has to sit inside the swatch to
@@ -3331,6 +3346,7 @@ textarea {
   color: #475569;
   font-size: 0.66rem;
   line-height: 1.15;
+  cursor: pointer;
 }
 
 /* One line each in the one-row dashboard, clipped, with the full text in
@@ -3560,15 +3576,15 @@ textarea {
 }
 
 /* The legend is the one part that gives when the row is short of room: the
-   bar narrows and its end labels clip, everything else keeps its size. */
+   bar narrows and its end labels clip, everything else keeps its size. The
+   minimum is the bar's 180px plus the colour-scheme button at its end. */
 .map-legend-panel {
-  flex: 1 1 300px;
-  min-width: 180px;
+  flex: 1 1 340px;
+  min-width: 230px;
 }
 
-.map-legend-slot {
+.map-legend-panel > .legend-scale {
   width: 100%;
-  min-width: 0;
 }
 
 .map-choice-divider {
@@ -3633,22 +3649,26 @@ textarea {
   stroke-width: 2.2;
 }
 
-/* ---- Colours: a button and the listbox it opens ---- */
+/* ---- Colours: the legend's dropdown handle and the listbox it opens ----
+   An icon and a chevron, no words: it sits at the end of the ramp it changes,
+   which says what it is for better than a caption did, and the scheme's name
+   is in its accessible name and its `title`. It used to be a panel of its own
+   beside the legend reading "COLOURS Brown – Blue", which made the key to the
+   map and the control that chose its colours look like two unrelated things. */
 .map-palette-button {
   display: inline-flex;
+  grid-column: 3;
+  grid-row: 1 / span 2;
   align-items: center;
-  gap: 8px;
-  height: 34px;
-  padding: 0 10px 0 12px;
+  gap: 2px;
+  height: 30px;
+  padding: 0 5px 0 7px;
   border: 1px solid rgba(148, 163, 184, 0.65);
   border-radius: 8px;
   background: #ffffff;
   color: #1e293b;
   font: inherit;
-  font-size: 0.8rem;
-  font-weight: 700;
   line-height: 1;
-  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -3657,28 +3677,18 @@ textarea {
   background: #f8fafc;
 }
 
-/* The caption and the scheme's name are one line of text rather than two
-   flex items: centring two boxes of different font sizes centres the boxes,
-   not the letters, and the small capitals sat visibly off the name's line.
-   Inline, they share a baseline, and only the line is centred in the button. */
-.map-palette-button-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.map-palette-button-label {
-  margin-right: 8px;
-  color: #64748b;
-  font-size: 0.62rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
 .map-palette-button svg {
-  width: 14px;
-  height: 14px;
-  stroke-width: 2.4;
+  display: block;
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.2;
+}
+
+.map-palette-button svg.map-palette-button-chevron {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.6;
+  color: #64748b;
   transition: transform 0.2s ease;
 }
 
@@ -3721,14 +3731,16 @@ textarea {
 
 /* Up while closed, because the list opens upwards off the foot of the map;
    down while open, towards where it will close to. */
-.map-palette-button[aria-expanded="true"] svg {
+.map-palette-button[aria-expanded="true"] svg.map-palette-button-chevron {
   transform: rotate(180deg);
 }
 
+/* Anchored to the legend panel's right edge, so it rises over the button that
+   opened it and the end of the ramp it recolours. */
 .map-palette-popup {
   position: absolute;
   bottom: calc(100% + 12px);
-  left: 0;
+  right: 0;
   z-index: 10;
   box-sizing: border-box;
   min-width: 230px;
@@ -3957,6 +3969,7 @@ textarea {
    fill, so they fill in one step rather than sliding. */
 @media (prefers-reduced-motion: reduce) {
   .map-view-choice,
+  .legend-bar,
   .map-palette-button svg,
   .map-outline-track,
   .map-outline-thumb {
@@ -4018,8 +4031,8 @@ textarea {
 
 /* Between the phone layout and a pane wide enough for the dashboard's natural
    widths there is a band -- a 900-1200px window still has the sidebar, so the
-   pane is 560-840px -- where the three panels and the legend under the middle
-   one do not fit a single row at full size. `#map` is `overflow: hidden`, so
+   pane is 560-840px -- where the dashboard's sections do not fit a single row
+   at full size. `#map` is `overflow: hidden`, so
    what does not fit is not clipped politely: it disappears, and the legend with
    it. Everything gives a little rather than one thing giving way. */
 @media (min-width: 901px) and (max-width: 1200px) {
@@ -4286,14 +4299,15 @@ textarea {
   }
 
   /* Two rows here: the legend across the top, where it has the width to be
-     read, and the three controls under it. The fold button is held back on
-     the phone (see "panels put away"). */
+     read, with the colour-scheme button at its end as everywhere else, and the
+     other controls under it. The fold button is held back on the phone (see
+     "panels put away"). */
   .map-choice-dashboard {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     grid-template-areas:
-      "legend legend legend legend"
-      "view palette outline export";
+      "legend legend legend"
+      "view outline export";
     align-items: center;
     gap: 6px 8px;
     width: min(620px, calc(100% - 20px));
@@ -4315,23 +4329,9 @@ textarea {
     grid-area: view;
   }
 
-  .map-palette-panel {
-    grid-area: palette;
-  }
-
-  .map-palette-button {
-    width: 100%;
-    min-width: 0;
-    height: 32px;
-  }
-
-  .map-palette-button-text {
-    flex: 1 1 auto;
-    text-align: left;
-  }
-
   .map-outline-panel {
     grid-area: outline;
+    justify-self: center;
   }
 
   .map-export-panel {
@@ -4358,13 +4358,12 @@ textarea {
   /* Too narrow for the outline switch's words, and a bare switch says
      nothing about what it switches -- so it goes, rather than staying as a
      mystery toggle. It is an extra, not part of reading the map; outlines stay
-     as they were set (on by default). The Colours button takes its column. */
+     as they were set (on by default). Its column is left empty. */
   @media (max-width: 520px) {
     .map-choice-dashboard {
-      grid-template-columns: auto minmax(0, 1fr) auto;
       grid-template-areas:
         "legend legend legend"
-        "view palette export";
+        "view . export";
     }
 
     .map-outline-panel {
@@ -4376,19 +4375,6 @@ textarea {
     }
 
     .map-view-choice span {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0 0 0 0);
-      white-space: nowrap;
-    }
-  }
-
-  /* Only on the narrowest phones does the "Colours" caption give way, and
-     then the scheme's name is still on the button. */
-  @media (max-width: 360px) {
-    .map-palette-button-label {
       position: absolute;
       width: 1px;
       height: 1px;
