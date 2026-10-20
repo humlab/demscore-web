@@ -1256,7 +1256,8 @@ export class DemscoreApp extends BaseController {
   buildPreloadSegments(yearMin, yearMax, availableYearSet) {
     const yearCount = Math.max(1, yearMax - yearMin + 1);
     const span = Math.max(1, yearCount - 1);
-    const trackWidth = this.timelinePreloadTrack.clientWidth || this.timelineWrap.clientWidth || 0;
+    const track = this.measurePreloadTrack();
+    const trackWidth = track.width;
     // Each box is centred on one slice of the year axis, so consecutive boxes sit
     // exactly one slice apart: (yearCount / segments) years through the same
     // year -> pixel scale the ticks use. Sizing them off trackWidth / (segments - 1)
@@ -1272,7 +1273,7 @@ export class DemscoreApp extends BaseController {
     const boxWidth = spacing > 0
       ? Math.min(this.PRELOAD_SEGMENT_MAX_PX, spacing - gap)
       : this.PRELOAD_SEGMENT_MAX_PX;
-    const layoutBox = this.buildPreloadSegmentLayout(trackWidth, yearCount, spacing, gap);
+    const layoutBox = this.buildPreloadSegmentLayout(track, spacing, gap);
 
     const segments = [];
     for (let index = 0; index < segmentCount; index += 1) {
@@ -1301,6 +1302,35 @@ export class DemscoreApp extends BaseController {
     return { segments, boxWidth };
   }
 
+  // The track's width in its own CSS pixels, how many device pixels one of
+  // those is, and where its left edge falls on the device grid.
+  //
+  // The timeline card is drawn under `zoom: var(--ui-scale)`, so inside it one
+  // CSS pixel is `devicePixelRatio * --ui-scale` device pixels, not
+  // `devicePixelRatio`. Snapping to the latter put every edge on a grid 0.74 to
+  // 0.92 the size of the real one, which is the banding the snapping exists to
+  // remove: runs of marks with their gaps smeared shut, then a run with clean
+  // gaps, shifting as the window was resized. The width is read off the bounding
+  // box rather than clientWidth, which rounds it to a whole pixel and so drifts
+  // a long series of marks off its ticks by the time it reaches the far end.
+  measurePreloadTrack() {
+    const track = this.timelinePreloadTrack;
+    let zoom = track.currentCSSZoom;
+    if (!(zoom > 0)) {
+      zoom = 1;
+      for (let node = track; node; node = node.parentElement) {
+        zoom *= Number.parseFloat(getComputedStyle(node).zoom) || 1;
+      }
+    }
+    const rect = track.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    return {
+      width: rect.width > 0 ? rect.width / zoom : this.timelineWrap.clientWidth || 0,
+      devicePerPx: dpr * zoom,
+      originDevice: rect.left * dpr,
+    };
+  }
+
   // Where each mark sits, in whole device pixels.
   //
   // The marks used to be placed at a percentage and centred with a transform, so
@@ -1312,17 +1342,22 @@ export class DemscoreApp extends BaseController {
   //
   // So every slot boundary is rounded to a device pixel first and each mark
   // fills its slot less the gap. The gap is one whole number of device pixels
-  // everywhere, which is the regularity the eye reads; what absorbs the rounding
-  // is the marks' width, which then differs by at most one device pixel between
-  // neighbours. Where the slot is wider than a mark may be, the mark keeps its
-  // fixed width and is centred in it instead. Returns null before the track has
-  // a width, and the marks fall back to the stylesheet's percentage layout.
-  buildPreloadSegmentLayout(trackWidth, yearCount, spacing, gap) {
-    if (!(trackWidth > 0) || !(spacing > 0)) return null;
-    const dpr = window.devicePixelRatio || 1;
-    const toDevice = (px) => Math.round(px * dpr);
-    const gapDevice = toDevice(gap);
-    const maxDevice = toDevice(this.PRELOAD_SEGMENT_MAX_PX);
+  // everywhere, never less than one, which is the regularity the eye reads; what
+  // absorbs the rounding is the marks' width, which then differs by at most one
+  // device pixel between neighbours. Where the slot is wider than a mark may be,
+  // the mark keeps its fixed width and is centred in it instead.
+  //
+  // The rounding is done from the viewport's edge, not the track's, and only then
+  // made relative to the track: the track itself rarely starts on a device
+  // pixel, and edges whole relative to it would all be off the grid by the same
+  // fraction. Returns null before the track has a width, and the marks fall back
+  // to the stylesheet's percentage layout.
+  buildPreloadSegmentLayout({ devicePerPx, originDevice }, spacing, gap) {
+    if (!(spacing > 0)) return null;
+    const toDevice = (px) => Math.round(originDevice + px * devicePerPx);
+    const toLocal = (device) => (device - originDevice) / devicePerPx;
+    const gapDevice = gap > 0 ? Math.max(1, Math.round(gap * devicePerPx)) : 0;
+    const maxDevice = Math.round(this.PRELOAD_SEGMENT_MAX_PX * devicePerPx);
     const leadDevice = Math.floor(gapDevice / 2);
     // Mark i is centred on i * spacing, so its slot runs half a spacing either
     // side of that -- the first and last marks hang over the track's ends, as
@@ -1338,7 +1373,7 @@ export class DemscoreApp extends BaseController {
         left = toDevice(index * spacing) - Math.floor(maxDevice / 2);
         width = maxDevice;
       }
-      return { left: left / dpr, width: width / dpr };
+      return { left: toLocal(left), width: width / devicePerPx };
     };
   }
 
