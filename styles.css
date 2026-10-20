@@ -2945,8 +2945,7 @@ textarea {
 }
 
 /* A fixed column clips instead of growing, so every cell needs somewhere for
-   the overflow to go. A country name or a boundary label long enough to reach
-   this is rare; the CSV and the row's own `title` carry it in full. */
+   the overflow to go. A country name long enough to reach this is rare; the CSV and the row's own `title` carry it in full. */
 .table-view-table th,
 .table-view-table td {
   overflow: hidden;
@@ -4006,23 +4005,6 @@ textarea {
   outline-offset: 2px;
 }
 
-/* The desktop table's columns add up to 37rem of fixed width, and a window
-   between 900 and 1100px still has the sidebar -- so the pane is 560-700px and
-   Country, the column that takes whatever the others leave, is left with
-   nothing. Boundary is the one to give: it is 15rem of the 37, it is per-row
-   provenance rather than the reading the view is for, and the note under the
-   table still names every source the year rests on. The same trade the phone
-   makes, one breakpoint earlier. */
-@media (min-width: 901px) and (max-width: 1100px) {
-  .table-view-table :is(th, td)[data-column="boundary"] {
-    display: none;
-  }
-
-  .table-view-table col[data-column="boundary"] {
-    width: 0;
-  }
-}
-
 /* Between the phone layout and a pane wide enough for the dashboard's natural
    widths there is a band -- a 900-1200px window still has the sidebar, so the
    pane is 560-840px -- where the three panels and the legend under the middle
@@ -4248,20 +4230,16 @@ textarea {
   }
 
   /* Six columns do not fit a phone. ISO3 is the one the country name already
-     says, and the boundary source is the one the note under the table still
-     names for the view as a whole -- the per-row reading of it stays on the
-     desktop and in the CSV. The value, its class and the position in the sort
-     are what the view is for, so those stay. */
-  .table-view-table :is(th, td)[data-column="iso3"],
-  .table-view-table :is(th, td)[data-column="boundary"] {
+     says; the value, its class and the position in the sort are what the view
+     is for, so those stay. */
+  .table-view-table :is(th, td)[data-column="iso3"] {
     display: none;
   }
 
-  /* ...and their <col>s with them. Under `table-layout: fixed` a <col> reserves
-     its width whether or not any cell is drawn in it, so hiding the cells alone
-     leaves two empty gutters where the columns were. */
-  .table-view-table col[data-column="iso3"],
-  .table-view-table col[data-column="boundary"] {
+  /* ...and its <col> with it. Under `table-layout: fixed` a <col> reserves its
+     width whether or not any cell is drawn in it, so hiding the cells alone
+     leaves an empty gutter where the column was. */
+  .table-view-table col[data-column="iso3"] {
     width: 0;
   }
 

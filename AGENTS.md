@@ -89,8 +89,8 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - the **table view**: the second reading of the year the map is drawing, from the
     same `demscore.country_scores()` call, so the two can never disagree about what
     a year holds
-  - one row per country, columns `±` / `#` / Country / ISO3 / Value / Class /
-    Boundary, sorted on any of them but the first two — each of those *is* a
+  - one row per country, columns `±` / `#` / Country / ISO3 / Value / Class,
+    sorted on any of them but the first two — each of those *is* a
     reading of the sort, so sorting on either is a question about its own answer
   - **`±` is movement, not value.** Whether the row is higher or lower in the
     table than it was in the previous year the series has, as a coloured
@@ -1182,8 +1182,7 @@ Then do a manual smoke test in browser:
   shown
 - table view columns: drag the window across the whole range — Country must have
   real width at every one of them and the table must never push the pane
-  sideways. The bands are 900px (ISO3 and Boundary go) and 1100px (Boundary
-  goes); those two edges are where it fails first
+  sideways. The band is 900px (ISO3 goes); that edge is where it fails first
 - table view `±`: scrub a year and check a row that moved reports the direction it
   moved *in the current sort* — re-sort by Country, where almost nothing moves,
   and the column should go almost all dots. Sort by Value descending and it

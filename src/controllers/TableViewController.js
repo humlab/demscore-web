@@ -79,11 +79,6 @@ const ROW_ENTER_MS = 260;
 
 const COLLATOR = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
 
-// The upper end of the WMS year clamp, which the resolution policy also uses to
-// close a period that has not ended. A row carrying it is current, not a claim
-// about the twenty-second century.
-const OPEN_ENDED_YEAR = 2100;
-
 // The columns, as a described list rather than as markup, so the header, the
 // body, the sort and the CSV are all built from one statement of what a column
 // is. `rank` is the row's position in the current sort and is therefore the one
@@ -93,8 +88,7 @@ const OPEN_ENDED_YEAR = 2100;
 // Country has none: under `table-layout: fixed` the column without a width takes
 // whatever the others leave, which is what lets the longest names have the room.
 // The rest are set wide enough for their worst case — "244" in the rank, a
-// four-decimal value, a boundary label with a year span — because a fixed column
-// clips rather than grows.
+// four-decimal value — because a fixed column clips rather than grows.
 const COLUMNS = [
   // First, and beside the position it is about. It is not sortable for the same
   // reason `rank` is not: it *is* a reading of the sort, so sorting on it would
@@ -120,7 +114,6 @@ const COLUMNS = [
     // Said once, here, rather than in a summary line that redraws every frame.
     note: "Class 1 is the lowest seventh of the values, class 7 the highest.",
   },
-  { key: "boundary", label: "Boundary", numeric: false, width: "15rem", clips: true },
 ];
 
 export class TableViewController extends BaseController {
@@ -621,9 +614,6 @@ export class TableViewController extends BaseController {
         countriesWithData: Number.isFinite(payload?.countriesWithData) ? payload.countriesWithData : 0,
         rows: (Array.isArray(payload?.rows) ? payload.rows.slice(0, MAX_ROWS) : []).map((row) => ({
           ...row,
-          // Resolved once here rather than per cell: the label is a lookup into
-          // the attribution register and the table is redrawn every frame.
-          boundary: this.describeBoundary(row),
           // What a `<tr>` is kept under between years. The country name is not
           // enough on its own: V-Dem codes a pre-partition Vietnam and a
           // northern one over the same nine years, and the historical registry
@@ -1354,22 +1344,6 @@ export class TableViewController extends BaseController {
   }
 
   // ---- provenance ---------------------------------------------------------
-
-  // What a row's hexagons were cut from, as a reader would say it. A present-day
-  // country gets the source alone; a historical coding unit gets the years the
-  // outline is claimed for, because that is the part the picture cannot carry.
-  describeBoundary(row) {
-    const label = boundaryLabelFor(this.attributionMeta, row.geometrySource);
-    if (!label) return "";
-    if (!row.historical) return label;
-    const from = row.validFromYear;
-    const to = row.validToYear;
-    if (!Number.isFinite(from)) return label;
-    // The registry closes an open-ended period at the year clamp rather than
-    // leaving it null, so 2100 is a sentinel and not a claim about 2100.
-    if (!Number.isFinite(to) || to >= OPEN_ENDED_YEAR) return `${label} (from ${from})`;
-    return `${label} (${from}–${to})`;
-  }
 
   renderNote() {
     const counts = new Map();
