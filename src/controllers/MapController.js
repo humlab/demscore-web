@@ -1035,8 +1035,10 @@ export class MapController extends BaseController {
           aria-controls="mapPaletteListbox"
           aria-labelledby="mapPaletteLabel mapPaletteCurrent"
         >
-          <span id="mapPaletteLabel" class="map-palette-button-label">Colours</span>
-          <span id="mapPaletteCurrent" class="map-palette-button-value"></span>
+          <span class="map-palette-button-text"
+            ><span id="mapPaletteLabel" class="map-palette-button-label">Colours</span
+            ><span id="mapPaletteCurrent" class="map-palette-button-value"></span
+          ></span>
           <i class="map-palette-button-chevron" data-lucide="chevron-up" aria-hidden="true"></i>
         </button>
         <div

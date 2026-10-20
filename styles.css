@@ -3657,7 +3657,18 @@ textarea {
   background: #f8fafc;
 }
 
+/* The caption and the scheme's name are one line of text rather than two
+   flex items: centring two boxes of different font sizes centres the boxes,
+   not the letters, and the small capitals sat visibly off the name's line.
+   Inline, they share a baseline, and only the line is centred in the button. */
+.map-palette-button-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .map-palette-button-label {
+  margin-right: 8px;
   color: #64748b;
   font-size: 0.62rem;
   letter-spacing: 0.14em;
@@ -4314,10 +4325,9 @@ textarea {
     height: 32px;
   }
 
-  .map-palette-button-value {
+  .map-palette-button-text {
     flex: 1 1 auto;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    text-align: left;
   }
 
   .map-outline-panel {
