@@ -1,5 +1,14 @@
-// Must match WMS_TILE_CACHE in sw.js, which is what evicts the older versions.
-const PRELOAD_CACHE_NAME = "demscore-wms-tile-cache-v8";
+// The page keeps no tile cache of its own. The service worker's cache is the one
+// that serves tiles, and its name is bumped by hand in sw.js and stamped with the
+// map build id at build time, neither of which reaches this bundle -- a copy of
+// the name here once stayed at v8 for twelve bumps, so the marks counted a cache
+// nothing was served from. Hence caches.match(), which looks in every cache the
+// origin has, and sw.js's activate leaves only the current one standing.
+//
+// The cache this page used to fill under that stale name. Deleted on start so
+// its entries do not pass for hits before the next service worker update would
+// have removed them.
+const LEGACY_PAGE_CACHE_NAME = "demscore-wms-tile-cache-v8";
 const MAX_CONCURRENT_YEARS = 3;
 const MAX_CONCURRENT_REQUESTS = 4;
 // How many targets keep their marks. The tiles themselves are kept by the
@@ -47,7 +56,6 @@ export class LayerPreloadController {
     this.waitForNetworkTurn =
       typeof waitForNetworkTurn === "function" ? waitForNetworkTurn : () => Promise.resolve(null);
 
-    this.cache = null;
     this.abortController = null;
     this.runId = 0;
     this.statusByYear = new Map();
@@ -81,11 +89,21 @@ export class LayerPreloadController {
 
     if ("caches" in window) {
       try {
-        this.cache = await caches.open(PRELOAD_CACHE_NAME);
+        await caches.delete(LEGACY_PAGE_CACHE_NAME);
       } catch (error) {
-        console.warn("Could not open WMS tile cache", error);
+        console.warn("Could not delete the old page-side WMS tile cache", error);
       }
     }
+  }
+
+  // Whether a tile this page fetches ends up somewhere it can be looked up again.
+  // Only the service worker stores tiles, so a page it does not control -- the
+  // first visit, before activate claims it, or a browser that refused the
+  // registration -- has no tile cache, and the marks must not pretend otherwise.
+  // Asked each time rather than once, because the first visit gains its
+  // controller partway through.
+  hasTileCache() {
+    return "caches" in window && Boolean(navigator.serviceWorker?.controller);
   }
 
   async disableBrowserCache() {
@@ -173,7 +191,7 @@ export class LayerPreloadController {
     this.targetSignature = signature;
     // Without a tile cache nothing survives a restart, so there is nothing to
     // put back: every tile is fetched again and every year genuinely starts over.
-    const remembered = this.cache ? this.marksByTarget.get(signature) : null;
+    const remembered = this.hasTileCache() ? this.marksByTarget.get(signature) : null;
 
     this.abortController = new AbortController();
     const runId = ++this.runId;
@@ -202,7 +220,7 @@ export class LayerPreloadController {
   // Puts what the run has established so far away under the target it was for,
   // as the newest entry, and drops the oldest once there are too many.
   rememberMarks() {
-    if (!this.cache || !this.targetSignature || this.statusByYear.size === 0) return;
+    if (!this.hasTileCache() || !this.targetSignature || this.statusByYear.size === 0) return;
 
     this.marksByTarget.delete(this.targetSignature);
     this.marksByTarget.set(this.targetSignature, {
@@ -312,8 +330,8 @@ export class LayerPreloadController {
 
   // Resolves to whether the tile was already in the cache.
   async preloadTileUrl(url, signal) {
-    if (this.cache) {
-      const cached = await this.cache.match(url, { ignoreVary: true });
+    if (this.hasTileCache()) {
+      const cached = await caches.match(url, { ignoreVary: true });
       if (cached) return true;
     }
 
@@ -326,6 +344,9 @@ export class LayerPreloadController {
     const releaseTurn = await this.waitForNetworkTurn();
 
     try {
+      // The service worker answers this and stores the tile itself, and only
+      // when it is an image: MapServer reports a failed GetMap as a 200 with an
+      // XML body, which a page-side put once stored and then counted as cached.
       const response = await fetch(url, {
         cache: "force-cache",
         signal,
@@ -333,10 +354,6 @@ export class LayerPreloadController {
 
       if (!response.ok) {
         throw new Error(`WMS preload failed: ${response.status}`);
-      }
-
-      if (this.cache) {
-        await this.cache.put(url, response.clone());
       }
 
       return false;

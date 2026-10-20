@@ -773,6 +773,14 @@ Common tasks and where to work:
   - the axis *is* the preload track: `#timelinePreloadTrack` is a row of
     `.timeline-preload-segment` marks that fill in teal as `LayerPreloadController`
     caches tiles (there is no separate `.timeline-line`)
+  - **the marks read the service worker's cache and nothing else.** The controller
+    looks tiles up with `caches.match()` and never names or fills a cache of its own;
+    the read-ahead's `fetch` goes through `sw.js`, which stores what it fetched. A
+    page-side copy of the cache name once stayed at v8 while `sw.js` went to v20, so
+    the marks counted tiles the map was never served from, and every tile the map
+    loaded itself was read ahead again as a miss. With no service worker controlling
+    the page (`hasTileCache()`) there is no cache: nothing counts as a hit and no
+    marks are remembered across a restart
   - **one mark says two things.** Its *height* is how much data the selected variable
     has for the years it covers; its *fill* is how much of those years is in the tile
     cache, rising from the floor rather than sweeping across, so the two readings
