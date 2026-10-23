@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-13T08:15:26Z",
+ "generatedAt": "2026-10-22T12:02:31Z",
  "weightHexSizeM": 100000,
  "shortLine": "Boundaries: Natural Earth · CShapes 2.0 & CShapes-Europe (CC BY-NC-SA 4.0) · historical-basemaps (GPL-3.0). Modified.",
  "boundary": [
@@ -188,26 +188,123 @@
   }
  },
  "indicatorDatasets": {
-  "v_dem": {
-   "title": "Varieties of Democracy (V-Dem)",
-   "url": "https://v-dem.net/",
-   "citation": "Coppedge, Michael, John Gerring, Carl Henrik Knutsen, Staffan I. Lindberg, Jan Teorell, David Altman, Fabio Angiolillo, Michael Bernhard, Agnes Cornell, M. Steven Fish, Linnea Fox, Lisa Gastaldi, Haakon Gjerløw, Adam Glynn, Ana Good God, Sandra Grahn, Allen Hicken, Katrin Kinzelbach, Kyle L. Marquardt, Kelly McMann, Valeriya Mechkova, Anja Neundorf, Pamela Paxton, Daniel Pemstein, Johannes von Römer, Brigitte Seim, Rachel Sigman, Svend-Erik Skaaning, Jeffrey Staton, Aksel Sundström, Marcus Tannenberg, Eitan Tzelgov, Yi-ting Wang, Felix Wiebrecht, Tore Wig, and Daniel Ziblatt. 2026. \"V-Dem Codebook v16\". Varieties of Democracy (V-Dem) Project.",
-   "alsoCite": "Pemstein, Daniel, Kyle L. Marquardt, Eitan Tzelgov, Yi-ting Wang, Juraj Medzihorsky, Joshua Krusell, Farhad Miri, and Johannes von Römer. 2025. \"The V-Dem Measurement Model: Latent Variable Analysis for Cross-National and Cross-Temporal Expert-Coded Data\". V-Dem Working Paper No. 21."
-  },
   "qog": {
    "title": "Quality of Government (QoG)",
    "url": "https://www.gu.se/en/quality-government",
-   "citation": "Teorell, J., Sundström, A., Holmberg, S., Rothstein, B., Alvarado Pachon, N., Phiri, V. S., Chen, C. and Liu, Z. (2026b). The Quality of Government Standard Dataset, version Jan26. University of Gothenburg: The Quality of Government Institute.",
-   "alsoCite": null
+   "citations": [
+    {
+     "text": "Teorell, J., Sundström, A., Holmberg, S., Rothstein, B., Alvarado Pachon, N., Phiri, V. S., Chen, C. & Liu, Z. (2026b), The Quality of Government Standard Dataset, version Jan26.",
+     "url": "https://www.gu.se/en/quality-government"
+    }
+   ],
+   "sourceCitations": [
+    {
+     "text": "Bayer, Markus and Rohleder, Paul (2022), Global Militarization Index 2022, Bonn International Center for Conversion BICC.",
+     "url": "https://gmi.bicc.de/"
+    },
+    {
+     "text": "Donner, S., Hartmann, H. & Steinkamp, S. (2024), Transformation Index BTI 2024: Governance in International Comparison, Bertelsmann Stiftung.",
+     "url": "http://www.bti-project.org"
+    },
+    {
+     "text": "Freedom House (2024), ‘Freedom in the world 2024’.",
+     "url": "https://freedomhouse.org/report/freedom-world"
+    },
+    {
+     "text": "Garriga, A. C. (2025), ‘Revisiting central bank independence in the world: An extended dataset’, International Studies Quarterly.",
+     "url": "http://dx.doi.org/10.2139/ssrn.4816563"
+    },
+    {
+     "text": "Kaufmann, D. & Kraay, A. (n.d.), ‘Worldwide governance indicators, 2024 update’. Accessed on 2024-11-19.",
+     "url": "www.govindicators.org"
+    },
+    {
+     "text": "The PRS Group et al. (2025), ‘International country risk guide’.",
+     "url": null
+    },
+    {
+     "text": "Transparency International (2024), ‘Corruption perception index 2023’. Licensed under CC-BY-ND 4.0.",
+     "url": "http://www.transparency.org/cpi"
+    },
+    {
+     "text": "World Bank (2024), ‘World development indicators’.",
+     "url": "https://databank.worldbank.org/source/world-development-indicators"
+    },
+    {
+     "text": "World Economic Forum (2024), ‘The global gender gap report 2024’. All Rights Reserved.",
+     "url": "https://www.weforum.org/publications/global-gender-gap-report-2024/"
+    }
+   ],
+   "licenses": [
+    {
+     "sources": [
+      "QoG Standard Dataset Time-Series"
+     ],
+     "text": "The QoG datasets are open and available, free of charge and without a need to register your data. You can use them for your analysis, graphs, teaching, and other academic-related and non-commercial purposes. We ask our users to cite always the original source(s) of the data and our datasets.\n\nWe do not allow other uses of these data including but not limited to redistribution, commercialization and other for-profit usage. If a user is interested in such use or has doubts about the license, they will have to refer to the original source and check with them if this is allowed and what requirements they need to fulfill.\n\nBe mindful that the original data sources are the only owners of their data and they can adjust their license without previous warning."
+    }
+   ]
   },
   "repdem": {
-   "title": "Representative Democracy Data Archive (REPDEM)",
-   "url": "https://repdem.org/",
-   "citation": "Hellström, Johan, Torbjörn Bergman, Jonas Lindahl, and Elsa Karlsson Gustafsson (2026). The Representative Democracy Data Archive (REPDEM) – Basic dataset, Version 2026.02.",
-   "alsoCite": null
+   "title": "Representative Democracy (REPDEM)",
+   "url": "http://repdem.org",
+   "citations": [
+    {
+     "text": "Hellström, J., Bergman, T., Lindahl, J. & Gustafsson, E. K. (2026), ‘The representative democracy data archive (repdem) – basic dataset, version 2026.02’. Available on https://repdem.org.",
+     "url": null
+    }
+   ],
+   "sourceCitations": [],
+   "licenses": [
+    {
+     "sources": [
+      "REPDEM Basic"
+     ],
+     "text": "REPDEM presents the comparative data collection efforts undertaken by various research and data infrastructure projects on political institutions, political parties, cabinets and governments in Europe. Repdem offers a range of datasets available for free (without even a demand for registration)."
+    }
+   ]
+  },
+  "v_dem": {
+   "title": "Varieties of Democracy (V-Dem)",
+   "url": "https://www.v-dem.net/",
+   "citations": [
+    {
+     "text": "Coppedge, M., Gerring, J., Knutsen, C. H., Lindberg, S. I., Teorell, J., Altman, D., Angiolillo, F., Bernhard, M., Cornell, A., Fish, M. S., Fox, L., Gastaldi, L., Gjerløw, H., Glynn, A., Good God, A., Hicken, A., Kinzelbach, K., Marquardt, K. L., McMann, K., Mechkova, V., Neundorf, A., Paxton, P., Pemstein, D., Pernes, J., von Römer, Johannes Seim, B., Sigman, R., Skaaning, S.-E., Staton, J., Sundström, A., Tannenberg, M., Tzelgov, E., Wang, Y.-t., Wig, T., Wilson, S. & Ziblatt, D. (2026), ‘V-Dem Codebook v16’.",
+     "url": null
+    },
+    {
+     "text": "Coppedge, M., Gerring, J., Knutsen, C. H., Lindberg, S. I., Teorell, J., Altman, D., Angiolillo, F., Bernhard, M., Cornell, A., Fish, M. S., Fox, L., Gastaldi, L., Gjerløw, H., Glynn, A., Good God, A., Grahn, S., Hicken, A., Kinzelbach, K., Krusell, J., Marquardt, K. L., McMann, K., Mechkova, V., Medzihorsky, J., Natsika, N., Neundorf, A., Paxton, P., Pemstein, D., von Römer, J., Seim, B., Sigman, R., Skaaning, S.-E., Staton, J., Sundström, A., Tannenberg, M., Tzelgov, E., Wang, Y.-t., Wiebrecht, F., Wig, T., Wilson, S. & Ziblatt, D. (2026), ‘V-dem country-year dataset v16’.",
+     "url": null
+    }
+   ],
+   "sourceCitations": [
+    {
+     "text": "Coppedge, M., Lindberg, S., Skaaning, S.-E. & Teorell, J. (2015), ‘Measuring High Level Democratic Principles using the V-Dem Data’, V-Dem Working Paper Series 2015(6).",
+     "url": "https://www.v-dem.net/media/publications/v-dem_working_paper_2015_6.pdf"
+    },
+    {
+     "text": "Pemstein, D., Marquardt, K. L., Tzelgov, E., Wang, Y., Medzihorsky, J., Krusell, J., Miri, F. & von Römer, J. (2026), ‘The V-Dem Measurement Model: Latent Variable Analysis for Cross-National and Cross-Temporal Expert-Coded Data’, V-Dem Working Paper Series 2026(21, 11th edition).",
+     "url": "https://v-dem.net/media/publications/wp21_2026.pdf"
+    },
+    {
+     "text": "Sigman, R. & Lindberg, S. I. (2015), ‘The Index of Egalitarian Democracy and its Components: V-Dem’s Conceptualization and Measurement’, V-Dem Working Paper Series 2015(22).",
+     "url": "http://www.ssrn.com/abstract=2727612"
+    },
+    {
+     "text": "Teorell, J., Coppedge, M., Skaaning, S.-E. & Lindberg, S. I. (2019), ‘Measuring Polyarchy Across the Globe, 1900-2017’, Studies in Comparative International Development 54(1), 71–95.",
+     "url": null
+    }
+   ],
+   "licenses": [
+    {
+     "sources": [
+      "V-Dem Country-Year: V-Dem Full+Others v16"
+     ],
+     "text": "CC-BY-SA 4.0 International https://creativecommons.org/licenses/by-sa/4.0/legalcode"
+    }
+   ]
   }
  },
- "indicatorNote": "All three modules are distributed through Demscore, a Swedish national research infrastructure (Swedish Research Council grant 2021-00162). Each dataset asks to be cited as a condition of use; the codebook PDFs served with this map are the providers' own documents, redistributed unchanged.",
+ "indicatorNote": "Every module is distributed through Demscore, a Swedish national research infrastructure (Swedish Research Council grant 2021-00162). Each dataset asks to be cited as a condition of use; the codebook PDFs served with this map are the providers' own documents, redistributed unchanged.",
  "software": [
   {
    "name": "OpenLayers",

@@ -167,18 +167,26 @@ export class AboutController extends BaseController {
         article.appendChild(row);
       }
 
-      // Behind a disclosure: a V-Dem citation is thirty-six names, and printing
-      // three of those in full is a wall in front of everything after it. It is
-      // one press away and it is complete, which is what the condition asks for.
-      const citations = [entry.citation, entry.alsoCite].filter(Boolean);
+      // Behind disclosures: a V-Dem citation is forty names, and printing them
+      // in full is a wall in front of everything after it. Each is one press
+      // away and complete, which is what the condition asks for. All three are
+      // read out of the module's codebook by the deployment's attribution build:
+      // the works the dataset asks to be cited for, the original sources that
+      // individual indicators on the map ask to be cited too, and the terms the
+      // codebook states for each source dataset.
+      const citations = Array.isArray(entry.citations) ? entry.citations : [];
       if (citations.length > 0) {
+        article.appendChild(this.disclosure("How to cite", citations.map((c) => this.citation(c))));
+      }
+      const sources = Array.isArray(entry.sourceCitations) ? entry.sourceCitations : [];
+      if (sources.length > 0) {
         article.appendChild(
-          this.disclosure("How to cite", citations.map((text) => {
-            const p = this.paragraph(text);
-            p.className = "about-citation";
-            return p;
-          })),
+          this.disclosure(`Original sources (${sources.length})`, sources.map((c) => this.citation(c))),
         );
+      }
+      const terms = Array.isArray(entry.licenses) ? entry.licenses : [];
+      if (terms.length > 0) {
+        article.appendChild(this.disclosure("Terms of use", terms.flatMap((term) => this.terms(term, terms.length > 1))));
       }
 
       section.appendChild(article);
@@ -355,6 +363,30 @@ export class AboutController extends BaseController {
     const element = document.createElement("p");
     element.textContent = text;
     return element;
+  }
+
+  // A bibliography entry as the codebook prints it, with its URL linked after it
+  // when the entry has one.
+  citation({ text, url }) {
+    const p = this.paragraph(text);
+    p.className = "about-citation";
+    if (typeof url === "string" && url.length > 0) {
+      const href = /^https?:\/\//.test(url) ? url : `https://${url}`;
+      p.append(" ", this.maybeLink(url, href));
+    }
+    return p;
+  }
+
+  // A source dataset's terms, paragraph by paragraph. Named only when a module
+  // has more than one set, since one set needs no telling apart.
+  terms({ sources, text }, named) {
+    const paragraphs = String(text ?? "").split(/\n{2,}/).filter(Boolean);
+    if (named && Array.isArray(sources) && sources.length > 0) paragraphs.unshift(`${sources.join(", ")}:`);
+    return paragraphs.map((paragraph) => {
+      const p = this.paragraph(paragraph);
+      p.className = "about-citation";
+      return p;
+    });
   }
 
   strong(text) {

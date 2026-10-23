@@ -127,7 +127,7 @@ module.exports = (_env, argv) => {
       historyApiFallback: true,
       proxy: [
         {
-          context: ["/api", "/healthz", "/mapserver"],
+          context: ["/api", "/healthz", "/mapserver", "/codebooks"],
           target: "http://127.0.0.1:8090",
           changeOrigin: true,
         },

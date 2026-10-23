@@ -8,7 +8,10 @@
     "registry) must appear in `sourceCredits` below, or the build fails. That is the same",
     "shape as check_country_resolution.sh failing on an unmapped country: a boundary source",
     "that reaches the map without reaching the credits is a licence breach, so it is a build",
-    "error rather than a silent omission."
+    "error rather than a silent omission.",
+    "",
+    "The indicator citations are not here: they are read out of each module's codebook",
+    "(the bibliography at its end) by scripts/extract_variable_metadata.py."
   ],
   "licenses": {
     "Public domain": {
@@ -134,27 +137,7 @@
     "statement": "The hexagon meshes and the map tiles rendered from them are adaptations of CC BY-NC-SA 4.0 boundary data, so they are offered onward under the same licence: attribution, non-commercial use, and share-alike. This deployment is itself non-commercial — no advertising, no paid access and no bundling into a commercial service.",
     "note": "A view can mix GPL-3.0 and CC BY-NC-SA 4.0 polygons in one image; at 1830, for instance, the map draws both. The image is treated as a mixed-source map: each source stays credited above, and the GPL-3.0 notice travels here."
   },
-  "indicatorDatasets": {
-    "v_dem": {
-      "title": "Varieties of Democracy (V-Dem)",
-      "url": "https://v-dem.net/",
-      "citation": "Coppedge, Michael, John Gerring, Carl Henrik Knutsen, Staffan I. Lindberg, Jan Teorell, David Altman, Fabio Angiolillo, Michael Bernhard, Agnes Cornell, M. Steven Fish, Linnea Fox, Lisa Gastaldi, Haakon Gjerløw, Adam Glynn, Ana Good God, Sandra Grahn, Allen Hicken, Katrin Kinzelbach, Kyle L. Marquardt, Kelly McMann, Valeriya Mechkova, Anja Neundorf, Pamela Paxton, Daniel Pemstein, Johannes von Römer, Brigitte Seim, Rachel Sigman, Svend-Erik Skaaning, Jeffrey Staton, Aksel Sundström, Marcus Tannenberg, Eitan Tzelgov, Yi-ting Wang, Felix Wiebrecht, Tore Wig, and Daniel Ziblatt. 2026. \"V-Dem Codebook v16\". Varieties of Democracy (V-Dem) Project.",
-      "alsoCite": "Pemstein, Daniel, Kyle L. Marquardt, Eitan Tzelgov, Yi-ting Wang, Juraj Medzihorsky, Joshua Krusell, Farhad Miri, and Johannes von Römer. 2025. \"The V-Dem Measurement Model: Latent Variable Analysis for Cross-National and Cross-Temporal Expert-Coded Data\". V-Dem Working Paper No. 21."
-    },
-    "qog": {
-      "title": "Quality of Government (QoG)",
-      "url": "https://www.gu.se/en/quality-government",
-      "citation": "Teorell, J., Sundström, A., Holmberg, S., Rothstein, B., Alvarado Pachon, N., Phiri, V. S., Chen, C. and Liu, Z. (2026b). The Quality of Government Standard Dataset, version Jan26. University of Gothenburg: The Quality of Government Institute.",
-      "alsoCite": null
-    },
-    "repdem": {
-      "title": "Representative Democracy Data Archive (REPDEM)",
-      "url": "https://repdem.org/",
-      "citation": "Hellström, Johan, Torbjörn Bergman, Jonas Lindahl, and Elsa Karlsson Gustafsson (2026). The Representative Democracy Data Archive (REPDEM) – Basic dataset, Version 2026.02.",
-      "alsoCite": null
-    }
-  },
-  "indicatorNote": "All three modules are distributed through Demscore, a Swedish national research infrastructure (Swedish Research Council grant 2021-00162). Each dataset asks to be cited as a condition of use; the codebook PDFs served with this map are the providers' own documents, redistributed unchanged.",
+  "indicatorNote": "Every module is distributed through Demscore, a Swedish national research infrastructure (Swedish Research Council grant 2021-00162). Each dataset asks to be cited as a condition of use; the codebook PDFs served with this map are the providers' own documents, redistributed unchanged.",
   "software": [
     {
       "name": "OpenLayers",
