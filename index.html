@@ -57,33 +57,41 @@
         </div>
 
         <section id="mobileControls" class="mobile-controls" aria-label="Mobile map controls">
-          <button
-            id="mobileVariablePickerBtn"
-            type="button"
-            class="mobile-picker-trigger"
-            aria-haspopup="dialog"
-            aria-expanded="false"
-            aria-controls="mobileVariablePickerDialog"
-          >
-            <span id="mobileSelectedDataset" class="mobile-selected-dataset"></span>
-            <span class="mobile-selected-copy">
-              <span id="mobileSelectedTitle" class="mobile-selected-title"><span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span></span>
-              <span id="mobileSelectedMeta" class="mobile-selected-meta"></span>
-            </span>
-            <i data-lucide="chevron-down" aria-hidden="true"></i>
-          </button>
-
-          <div class="mobile-action-row" role="group" aria-label="Variable actions">
+          <!-- One card, two buttons: the variable on screen, which opens the
+               picker, and at its end the information about that variable.
+               They cannot be one button nested in another, and set apart as
+               they used to be, an "Info" button on its own row did not say what
+               it was information about. Inside the card it can only be about
+               the variable beside it. Its name says so too, and it is
+               described by the title it sits next to. -->
+          <div class="mobile-variable-card">
+            <button
+              id="mobileVariablePickerBtn"
+              type="button"
+              class="mobile-picker-trigger"
+              aria-haspopup="dialog"
+              aria-expanded="false"
+              aria-controls="mobileVariablePickerDialog"
+            >
+              <span id="mobileSelectedDataset" class="mobile-selected-dataset"></span>
+              <span class="mobile-selected-copy">
+                <span id="mobileSelectedTitle" class="mobile-selected-title"><span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span></span>
+                <span id="mobileSelectedMeta" class="mobile-selected-meta"></span>
+              </span>
+              <i data-lucide="chevron-down" aria-hidden="true"></i>
+            </button>
             <button
               id="mobileVariableInfoBtn"
               type="button"
-              class="mobile-action-button"
+              class="mobile-variable-info"
+              aria-label="About this variable"
+              aria-describedby="mobileSelectedTitle"
+              title="About this variable"
               aria-haspopup="dialog"
               aria-expanded="false"
               aria-controls="variableTooltip"
             >
               <i data-lucide="info" aria-hidden="true"></i>
-              <span>Info</span>
             </button>
           </div>
         </section>
@@ -507,6 +515,13 @@
         placeholder="Search variables"
         aria-label="Search variables"
       />
+      <!-- Two filters, drawn as two different things so they are not read as
+           one row that happens to wrap. Datasets are few and fixed, so they
+           sit across the full width, each drawn as the dataset tag every row
+           in the list carries, which is what ties the filter to the rows it
+           filters. Topics are many, so they are pills in a row that scrolls
+           sideways, with "All" first. -->
+      <div id="mobileDatasetChips" class="mobile-dataset-chips" role="group" aria-label="Filter variables by dataset"></div>
       <div id="mobileTopicChips" class="mobile-topic-chips" role="group" aria-label="Filter variables by topic"></div>
       <!-- A grouped list of buttons, not a listbox. It was marked up as one —
            `role="listbox"` over children with `role="option"` — without any of

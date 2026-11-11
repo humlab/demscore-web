@@ -70,7 +70,12 @@
   --follow-ink-3: #8a6b33;
   --follow-ink-4: #6a5480;
   --follow-ink-5: #2f6d70;
-  --timeline-size: 180px;
+  /* The height of the timeline's slider wrap, which is also the height of the
+     transparent range input stretched over it, so it is the area that takes a
+     drag as a change of year. It is the card's own 72px and no more. It was
+     180px, which put an invisible 100px strip of slider over the map under the
+     card and turned map drags into year changes. */
+  --timeline-size: 72px;
 
   /* The handbook's cover lays a deep navy block against the photograph and
      parts the two with one thin band. The navy is lifted from that artwork
@@ -370,8 +375,8 @@ textarea {
   color: #fff;
 }
 
-/* The phone header -- the variable trigger and its action row. Hidden here and
-   turned on at the 900px breakpoint, so this one declaration is the whole of
+/* The phone header -- the variable card: the picker and its info button.
+   Hidden here and turned on at the 900px breakpoint, so this one declaration is the whole of
    what keeps it off the desktop. */
 .mobile-controls {
   display: none;
@@ -1890,6 +1895,53 @@ textarea {
   font: inherit;
 }
 
+/* The dataset filter: the few datasets share the width equally, so the row
+   never scrolls, and each is drawn as the dataset tag on the rows below (a
+   square tag with its dataset's colour down the left edge) rather than as a
+   pill like the topics, so the two filters do not read as one. Pressed, a tag
+   floods with that colour, as the sidebar's does; `--ds-ink` is the text
+   colour that stays readable on it. */
+.mobile-dataset-chips {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 6px;
+  padding: 0 14px 8px;
+}
+
+.mobile-dataset-chips[hidden] {
+  display: none;
+}
+
+.mobile-dataset-chip {
+  min-width: 0;
+  overflow: hidden;
+  padding: 6px 8px;
+  border: 1px solid var(--panel-border);
+  border-left: 4px solid var(--ds-1);
+  border-radius: var(--radius-control);
+  background: #fff;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-dataset-chip.is-active {
+  border-color: var(--ds-1);
+  background: var(--ds-1);
+  color: var(--ds-ink, #fff);
+}
+
+/* Faded, not disabled, as in the sidebar: pressing it still works and clears
+   the other row (MetadataController.toggleMobileFilter). */
+.mobile-dataset-chip.is-unavailable,
+.mobile-topic-chip.is-unavailable {
+  opacity: 0.42;
+}
+
 .mobile-topic-chips {
   display: flex;
   gap: 5px;
@@ -1916,8 +1968,15 @@ textarea {
   color: #fff;
 }
 
+/* A fixed height, not a ceiling. With a ceiling the dialog shrank to fit
+   whatever the filters left, so two matches made a short sheet sitting low on
+   the screen, and the header and filters moved down under the finger with
+   every chip pressed. At a fixed height the sheet keeps its size and its top
+   edge, a short list sits at the top under the filters, and the space is left
+   below it. On the phone the sheet is anchored at both ends instead (see the
+   900px block) and the list fills what is between. */
 .mobile-picker-list {
-  max-height: min(62vh, 620px);
+  height: min(62vh, 620px);
   overflow: auto;
   padding: 0 10px 12px;
 }
@@ -1946,10 +2005,13 @@ textarea {
   display: block;
   width: 100%;
   padding: 8px 9px 7px;
-  border: 1px solid transparent;
+  /* A light fill and a hairline, so each row reads as a card of its own
+     against the dialog's white rather than as text floating in a column. The
+     fill is neutral, so it never competes with the selected row's navy tint. */
+  border: 1px solid var(--rule);
   border-left: 3px solid var(--accent);
   border-radius: var(--radius-control);
-  background: #fff;
+  background: color-mix(in srgb, var(--rule) 40%, #fff);
   color: var(--text);
   text-align: left;
 }
@@ -1958,12 +2020,17 @@ textarea {
   margin-top: 8px;
 }
 
-/* Selection takes the outline and the fill; the left edge stays the shared
-   navy row accent while the dataset is named by the corner tag. */
+.mobile-picker-option:hover:not(.is-selected) {
+  background: color-mix(in srgb, var(--rule) 70%, #fff);
+}
+
+/* Selection takes the outline and a navy tint, darker than the rows' neutral
+   fill; the left edge stays the shared navy row accent while the dataset is
+   named by the corner tag. */
 .mobile-picker-option.is-selected {
   border-color: var(--accent);
   border-left-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, #fff);
+  background: color-mix(in srgb, var(--accent) 14%, #fff);
 }
 
 .mobile-picker-option-head {
@@ -1992,7 +2059,9 @@ textarea {
   border: 1px solid var(--panel-border);
   border-left: 3px solid var(--ds-1);
   border-radius: var(--radius-control);
-  background: var(--muted-surface);
+  /* White, standing off the row's tinted fill as the grey it was used to stand
+     off a white row. */
+  background: #fff;
   color: var(--text);
   font-size: 0.62rem;
   font-weight: 700;
@@ -2907,6 +2976,9 @@ textarea {
   min-height: 0;
   min-width: 0;
   overflow: auto;
+  /* What the column rules below measure against: the room the table actually
+     has, not the window, which is a different number on every layout. */
+  container: table-view / inline-size;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-control);
   background: #fff;
@@ -3178,6 +3250,80 @@ textarea {
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---- Columns given up when the table is narrow ----
+
+   The order they go in is fixed: ISO3 first (the country name already says
+   it), then Class (the value says it more exactly), then the change arrow and
+   the position. Country and Value are the last two left, because together they
+   answer the question this view is for.
+
+   A dropped column is collapsed, *not* `display: none`. Under `table-layout:
+   fixed`, cells are matched to <col>s by position, so a cell taken out of the
+   row moves every cell after it one <col> to the left. That once put Value in
+   ISO3's zero-width column and Class in Value's, with Class's own column left
+   empty at the right edge of the table. A collapsed cell keeps its place: its
+   <col> gets no width, the cell gets no padding, and `visibility: hidden`
+   removes it, and any sort button in its header, from the tab order and from
+   what a screen reader announces. */
+@container table-view (max-width: 560px) {
+  .table-view-table col[data-column="iso3"] {
+    width: 0;
+  }
+
+  .table-view-table :is(th, td)[data-column="iso3"] {
+    visibility: hidden;
+    padding: 0;
+    border-bottom-width: 0;
+  }
+
+  /* With five columns left, each gives back what it can and Country takes
+     whatever remains. */
+  .table-view-table col[data-column="rank"] {
+    width: 2.6rem;
+  }
+
+  .table-view-table col[data-column="value"] {
+    width: 4.6rem;
+  }
+
+  .table-view-table col[data-column="change"] {
+    width: 1.9rem;
+  }
+
+  .table-view-table col[data-column="classIndex"] {
+    width: 4.2rem;
+  }
+
+  .table-view-table th,
+  .table-view-table td {
+    padding: 6px 8px;
+  }
+}
+
+@container table-view (max-width: 360px) {
+  .table-view-table col[data-column="classIndex"] {
+    width: 0;
+  }
+
+  .table-view-table :is(th, td)[data-column="classIndex"] {
+    visibility: hidden;
+    padding: 0;
+    border-bottom-width: 0;
+  }
+}
+
+@container table-view (max-width: 300px) {
+  .table-view-table :is(col[data-column="change"], col[data-column="rank"]) {
+    width: 0;
+  }
+
+  .table-view-table :is(th, td):is([data-column="change"], [data-column="rank"]) {
+    visibility: hidden;
+    padding: 0;
+    border-bottom-width: 0;
+  }
 }
 
 /* Nothing moves. The reordering is still the news, so the rank column and the
@@ -4104,19 +4250,78 @@ textarea {
     padding-bottom: 10px;
   }
 
-  #controls .mobile-picker-trigger {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 9px;
-    width: 100%;
-    margin: 0;
-    padding: 8px 9px;
+  /* The variable on screen and the information about it, as one card: the
+     picker takes the width, the info button closes the row behind a rule. The
+     card carries the border and the corners, so the two buttons inside it are
+     flat. */
+  .mobile-variable-card {
+    display: flex;
+    align-items: stretch;
+    overflow: hidden;
     border: 1px solid var(--panel-border);
     border-radius: var(--radius-card);
     background: #fff;
+  }
+
+  #controls .mobile-picker-trigger {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    width: auto;
+    margin: 0;
+    padding: 8px 9px;
+    border: 0;
+    border-radius: 0;
+    background: #fff;
     color: var(--text);
     text-align: left;
+  }
+
+  #controls .mobile-picker-trigger:hover,
+  #controls .mobile-variable-info:hover:not(:disabled) {
+    background: var(--surface-hover);
+  }
+
+  /* Inset rings: the card clips anything drawn outside its two buttons. */
+  #controls .mobile-picker-trigger:focus-visible,
+  #controls .mobile-variable-info:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -3px;
+  }
+
+  /* 44px wide, the size of a fingertip, and as tall as the card. */
+  #controls .mobile-variable-info {
+    display: inline-flex;
+    flex: 0 0 44px;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-left: 1px solid var(--rule);
+    border-radius: 0;
+    background: #fff;
+    color: var(--muted);
+  }
+
+  #controls .mobile-variable-info:hover:not(:disabled) {
+    color: var(--text);
+  }
+
+  /* Disabled while the variable's metadata loads, and for a variable the
+     codebooks say nothing about. */
+  #controls .mobile-variable-info:disabled {
+    color: color-mix(in srgb, var(--muted) 45%, #fff);
+    cursor: not-allowed;
+  }
+
+  .mobile-variable-info svg {
+    width: 18px;
+    height: 18px;
   }
 
   .mobile-picker-trigger svg {
@@ -4173,48 +4378,6 @@ textarea {
     line-height: 1.2;
   }
 
-  .mobile-action-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
-  }
-
-  #controls .mobile-action-button {
-    box-sizing: border-box;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    min-height: 34px;
-    width: 100%;
-    margin: 0;
-    padding: 7px 8px;
-    border: 1px solid var(--panel-border);
-    border-radius: var(--radius-control);
-    background: #fff;
-    color: var(--text);
-    font-size: 0.82rem;
-    font-weight: 700;
-    line-height: 1;
-    text-decoration: none;
-  }
-
-  #controls .mobile-action-button:hover {
-    border-color: var(--muted);
-    background: var(--surface-hover);
-  }
-
-  #controls .mobile-action-button:disabled {
-    color: var(--muted);
-    cursor: not-allowed;
-    background: var(--muted-surface);
-  }
-
-  .mobile-action-button svg {
-    width: 15px;
-    height: 15px;
-  }
-
   /* On a phone the info card's footer is the only way to the codebook and the
      download, and a word of text is a small thing to hit: stack the two as
      full-width buttons instead. */
@@ -4253,61 +4416,23 @@ textarea {
     padding-top: calc(var(--timeline-inset, 240px) + 4px);
   }
 
-  /* Six columns do not fit a phone. ISO3 is the one the country name already
-     says; the value, its class and the position in the sort are what the view
-     is for, so those stay. */
-  .table-view-table :is(th, td)[data-column="iso3"] {
-    display: none;
-  }
-
-  /* ...and its <col> with it. Under `table-layout: fixed` a <col> reserves its
-     width whether or not any cell is drawn in it, so hiding the cells alone
-     leaves an empty gutter where the column was. */
-  .table-view-table col[data-column="iso3"] {
-    width: 0;
-  }
-
-  /* Five columns is already more than a phone wants, so the ones that stay give
-     back what they can. Country takes whatever these leave. */
-  .table-view-table col[data-column="rank"] {
-    width: 2.6rem;
-  }
-
-  .table-view-table col[data-column="value"] {
-    width: 4.6rem;
-  }
-
-  .table-view-table col[data-column="change"] {
-    width: 1.9rem;
-  }
-
-  .table-view-table col[data-column="classIndex"] {
-    width: 4.2rem;
-  }
-
-
-
+  /* Which columns the table keeps at this width is decided by the table's own
+     width, under "Columns given up when the table is narrow". */
   .table-view-head {
     flex-direction: column;
     align-items: stretch;
     gap: 8px;
   }
 
-  .table-view-table th,
-  .table-view-table td {
-    padding: 6px 8px;
-  }
-
-  /* Two rows here: the legend across the top, where it has the width to be
-     read, with the colour-scheme button at its end as everywhere else, and the
-     other controls under it. The fold button is held back on the phone (see
-     "panels put away"). */
+  /* One row: the view switch, then the legend, which takes the room that is
+     left and narrows to fit, with the colour-scheme button at its end as
+     everywhere else, then the outline switch where there is room for its words.
+     Export is not offered here (below), and the fold button is held back on the
+     phone (see "panels put away"). */
   .map-choice-dashboard {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-areas:
-      "legend legend legend"
-      "view outline export";
+    grid-template-areas: "view legend outline";
     align-items: center;
     gap: 6px 8px;
     width: min(620px, calc(100% - 20px));
@@ -4334,13 +4459,44 @@ textarea {
     justify-self: center;
   }
 
+  /* Export is not offered on the phone. A frame sized for a screen this small
+     is not much use as a download, and the button's room is what lets the
+     dashboard fit on one row. */
   .map-export-panel {
-    grid-area: export;
+    display: none;
   }
 
-  .map-export-button {
-    height: 32px;
-    padding: 0 10px;
+  /* The legend gives up what it can so that it fits the row beside the view
+     switch: a slimmer ramp and no-data swatch, closer spacing and smaller end
+     labels. The end labels clip, as they already did, with the full text in
+     their `title`. */
+  .legend-scale {
+    column-gap: 6px;
+    row-gap: 3px;
+  }
+
+  .legend-bar {
+    height: 12px;
+  }
+
+  .legend-labels {
+    gap: 6px;
+    font-size: 0.6rem;
+  }
+
+  .legend-nodata {
+    gap: 4px;
+    font-size: 0.6rem;
+  }
+
+  .legend-nodata-swatch {
+    width: 14px;
+    height: 10px;
+  }
+
+  .map-palette-button {
+    height: 28px;
+    padding: 0 3px 0 5px;
   }
 
   .map-view-choice {
@@ -4358,12 +4514,11 @@ textarea {
   /* Too narrow for the outline switch's words, and a bare switch says
      nothing about what it switches -- so it goes, rather than staying as a
      mystery toggle. It is an extra, not part of reading the map; outlines stay
-     as they were set (on by default). Its column is left empty. */
+     as they were set (on by default), and the legend takes its room. */
   @media (max-width: 520px) {
     .map-choice-dashboard {
-      grid-template-areas:
-        "legend legend legend"
-        "view . export";
+      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-areas: "view legend";
     }
 
     .map-outline-panel {
@@ -4400,14 +4555,46 @@ textarea {
     bottom: var(--dashboard-inset, 60px);
   }
 
+  /* Dropped down from the selector card rather than raised from the foot of
+     the screen: its top edge just under the card, its sides on the card's,
+     its foot near the bottom of the screen. The `--picker-*` values are
+     measured from the card by MetadataController.placeMobilePicker() when it
+     opens; the fallbacks are where the card sits on a phone. The list takes
+     whatever height is left (below), so the sheet is the same size however
+     few variables match. */
   .mobile-picker-dialog {
-    inset: auto 0 0;
-    width: 100%;
+    position: fixed;
+    inset: calc(var(--picker-top, 100px) + 6px) var(--picker-right, 12px)
+      calc(12px + env(safe-area-inset-bottom, 0px)) var(--picker-left, 12px);
+    box-sizing: border-box;
+    width: auto;
     max-width: none;
-    max-height: calc(100dvh - 18px);
-    margin: auto 0 0;
-    border-width: 1px 0 0;
-    border-radius: 10px 10px 0 0;
+    height: auto;
+    max-height: none;
+    margin: 0;
+    border-width: 1px;
+    border-radius: var(--radius-card);
+    box-shadow: 0 14px 36px rgba(23, 56, 75, 0.28);
+  }
+
+  /* The list is the only thing that scrolls. A modal dialog is `overflow:
+     auto` by default, and it counted the list's own overflow as its own, so
+     the whole sheet (search and filters too) could be dragged as well as the
+     list inside it. `clip` rather than `hidden`, because a `hidden` box can
+     still be scrolled by moving focus within it; `hidden` stays as the
+     fallback for browsers without `clip`. */
+  .mobile-picker-dialog[open] {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    overflow: clip;
+  }
+
+  /* Only the list gives up height. The topic row scrolls sideways, and a
+     scroller's minimum height is zero, so left to the default it would be the
+     first thing squeezed out. */
+  .mobile-picker-dialog > :not(.mobile-picker-list) {
+    flex-shrink: 0;
   }
 
   .about-dialog {
@@ -4420,8 +4607,13 @@ textarea {
     border-radius: 10px 10px 0 0;
   }
 
+  /* `contain`: a swipe that reaches the end of the list stops there instead
+     of carrying on into the page behind the dialog. */
   .mobile-picker-list {
-    max-height: min(58vh, 560px);
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    overscroll-behavior: contain;
   }
 
   #timeline-overlay {
@@ -4444,7 +4636,12 @@ textarea {
     --axis-y: 26px;
     --track-height: 10px;
     flex-basis: 100%;
-    height: 164px;
+    /* Down to the foot of the tick labels (54px) and no further. The range
+       input covers this whole box, so any extra height is an invisible strip
+       over the map that catches a touch meant for panning or for the zoom
+       buttons and turns it into a change of year. It was 164px, and the strip
+       reached down past the minus button. */
+    height: 60px;
     margin: 0 16px;
   }
 
@@ -4864,6 +5061,17 @@ textarea {
 @media (min-width: 901px) and (max-width: 1200px), (max-width: 900px) {
   .map-only-control {
     bottom: calc(var(--dashboard-inset, 60px) + 40px);
+  }
+}
+
+/* Not offered on the phone, where the panels already leave the map most of
+   the screen. Hidden only while map-only is off: a reader who turned it on in
+   a wider window and then narrowed it, or turned a tablet, still needs the
+   button to get the panels back, because map-only is the one state that hides
+   everything else. */
+@media (max-width: 900px) {
+  #app:not(.is-map-only) .map-only-control {
+    display: none;
   }
 }
 
