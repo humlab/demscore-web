@@ -258,6 +258,7 @@ export class MetadataController extends BaseController {
     this.mobileVariablePickerDialog = this.getEl("mobileVariablePickerDialog");
     this.mobileVariablePickerCloseBtn = this.getEl("mobileVariablePickerCloseBtn");
     this.mobileVariableSearch = this.getEl("mobileVariableSearch");
+    this.mobileDatasetChips = this.getEl("mobileDatasetChips");
     this.mobileTopicChips = this.getEl("mobileTopicChips");
     this.mobileVariablePickerList = this.getEl("mobileVariablePickerList");
     this.variableTooltip = this.getEl("variableTooltip");
@@ -271,13 +272,18 @@ export class MetadataController extends BaseController {
     // Which button opened the persistent card, so its `aria-expanded` can be
     // put back and the focus returned to it when the card closes.
     this.tooltipTrigger = null;
+    // The phone picker's own filters, apart from the sidebar's: the two are
+    // never on screen together, and a filter set in one turning up in the
+    // other would be a list missing rows for no visible reason.
     this.mobilePickerTopics = new Set();
+    this.mobilePickerDatasets = new Set();
     this.mobilePickerQuery = "";
   }
 
   async initialize() {
     this.renderDatasetChips();
     this.renderTopicChips();
+    this.renderMobileDatasetChips();
     this.renderMobileTopicChips();
     this.applyDatasetChrome(this.state.dataset);
     // One list now holds every dataset's rows, and a row is titled by its
@@ -369,6 +375,27 @@ export class MetadataController extends BaseController {
     this.syncFilterChipState();
   }
 
+  // The phone picker's dataset filter: one tag per dataset, across the width,
+  // in the shape and colours of the tag on every row in the list. None pressed
+  // means every dataset, as in the sidebar.
+  renderMobileDatasetChips() {
+    this.mobileDatasetChips.innerHTML = "";
+    for (const [key, ds] of Object.entries(this.meta.datasets)) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "mobile-dataset-chip";
+      chip.dataset.dataset = key;
+      chip.setAttribute("aria-pressed", "false");
+      chip.setAttribute("aria-label", `${this.getDatasetTitle(ds, key)} (${this.getDatasetLabel(ds, key)})`);
+      chip.title = this.getDatasetTitle(ds, key);
+      this.applyDatasetPalette(chip, key);
+      chip.textContent = this.getDatasetLabel(ds, key);
+      this.mobileDatasetChips.appendChild(chip);
+    }
+    this.mobileDatasetChips.hidden = this.mobileDatasetChips.children.length < 2;
+    this.syncMobileFilterChipState();
+  }
+
   renderMobileTopicChips() {
     this.mobileTopicChips.innerHTML = "";
 
@@ -394,17 +421,69 @@ export class MetadataController extends BaseController {
     }
 
     this.mobileTopicChips.hidden = this.topicsConfig.order.length === 0;
-    this.syncMobileTopicChipState();
+    this.syncMobileFilterChipState();
   }
 
-  syncMobileTopicChipState() {
+  // Pressed and faded state for both of the picker's filter rows. Faded is the
+  // sidebar's rule (syncFilterChipState): a chip with nothing under it, given
+  // what is pressed in the other row, still works, and clears that row.
+  syncMobileFilterChipState() {
+    for (const chip of this.mobileDatasetChips.querySelectorAll(".mobile-dataset-chip")) {
+      const key = chip.dataset.dataset;
+      const on = this.mobilePickerDatasets.has(key);
+      chip.classList.toggle("is-active", on);
+      chip.setAttribute("aria-pressed", on ? "true" : "false");
+      this.markFilterChipAvailability(
+        chip,
+        this.isMobileFilterAvailable(this.mobilePickerDatasets, key),
+        this.getDatasetTitle(this.meta.datasets[key], key),
+        "No variables under the selected topics. Selecting it clears the topic filter.",
+      );
+    }
     const allActive = this.mobilePickerTopics.size === 0;
     for (const chip of this.mobileTopicChips.querySelectorAll(".mobile-topic-chip")) {
       const topic = chip.dataset.topic || "";
       const on = topic ? this.mobilePickerTopics.has(topic) : allActive;
       chip.classList.toggle("is-active", on);
       chip.setAttribute("aria-pressed", on ? "true" : "false");
+      if (!topic) continue;
+      this.markFilterChipAvailability(
+        chip,
+        this.isMobileFilterAvailable(this.mobilePickerTopics, topic),
+        this.topicsConfig.topics.get(topic)?.description || "",
+        "Not covered by the selected datasets. Selecting it clears the dataset filter.",
+      );
     }
+  }
+
+  // isFilterAvailable() for the picker's own two sets.
+  isMobileFilterAvailable(set, value) {
+    const rows = this.getAllVariableRows();
+    if (rows.length === 0) return true;
+    if (set === this.mobilePickerTopics) {
+      return rows.some(
+        (row) =>
+          row.topics.includes(value) &&
+          (this.mobilePickerDatasets.size === 0 || this.mobilePickerDatasets.has(row.datasetKey)),
+      );
+    }
+    return rows.some(
+      (row) =>
+        row.datasetKey === value &&
+        (this.mobilePickerTopics.size === 0 || row.topics.some((id) => this.mobilePickerTopics.has(id))),
+    );
+  }
+
+  // toggleFilter() for the picker: pressing a faded chip clears the other row,
+  // since keeping both would leave the list empty.
+  toggleMobileFilter(set, value, otherSet) {
+    if (set.has(value)) {
+      set.delete(value);
+    } else {
+      if (!this.isMobileFilterAvailable(set, value)) otherSet.clear();
+      set.add(value);
+    }
+    this.refreshMobilePicker();
   }
 
   // Pressed state, and greyed-out state. A greyed-out chip says why in its
@@ -515,14 +594,37 @@ export class MetadataController extends BaseController {
     });
 
     this.mobileVariablePickerBtn.addEventListener("click", () => {
+      this.placeMobilePicker();
       this.openDialog(this.mobileVariablePickerDialog);
       this.mobileVariablePickerBtn.setAttribute("aria-expanded", "true");
       this.refreshMobilePicker();
-      window.setTimeout(() => this.mobileVariableSearch.focus(), 0);
+      // Not into the search box. Focusing a text field opens the on-screen
+      // keyboard, which covered half the list before anybody had asked to
+      // type; the keyboard should open when the reader touches the field. The
+      // focus goes to the variable already on the map instead, scrolled into
+      // view, so the picker opens where the reader is, and a keyboard or
+      // screen-reader user starts on that variable. A button takes focus
+      // without raising the keyboard.
+      window.setTimeout(() => {
+        const current = this.mobileVariablePickerList.querySelector(".mobile-picker-option.is-selected");
+        if (!current) return;
+        current.focus({ preventScroll: true });
+        // The list is scrolled by hand rather than with scrollIntoView, which
+        // scrolls every ancestor too and took the dialog's own header, the
+        // close button with it, off the top of the sheet.
+        const list = this.mobileVariablePickerList;
+        const offset = current.getBoundingClientRect().top - list.getBoundingClientRect().top;
+        list.scrollTop += offset - (list.clientHeight - current.offsetHeight) / 2;
+      }, 0);
     });
 
     this.mobileVariablePickerCloseBtn.addEventListener("click", () => {
       this.closeDialog(this.mobileVariablePickerDialog);
+    });
+
+    // A turned phone moves the selector card, and the open picker with it.
+    window.addEventListener("resize", () => {
+      if (this.mobileVariablePickerDialog.open) this.placeMobilePicker();
     });
 
     // One place for everything that shuts the dialog: the close button, Escape
@@ -546,13 +648,16 @@ export class MetadataController extends BaseController {
       const topic = chip.dataset.topic || "";
       if (!topic) {
         this.mobilePickerTopics.clear();
-      } else if (this.mobilePickerTopics.has(topic)) {
-        this.mobilePickerTopics.delete(topic);
-      } else {
-        this.mobilePickerTopics.add(topic);
+        this.refreshMobilePicker();
+        return;
       }
-      this.syncMobileTopicChipState();
-      this.refreshMobilePicker();
+      this.toggleMobileFilter(this.mobilePickerTopics, topic, this.mobilePickerDatasets);
+    });
+
+    this.mobileDatasetChips.addEventListener("click", (event) => {
+      const chip = event.target.closest(".mobile-dataset-chip");
+      if (!chip || !this.mobileDatasetChips.contains(chip)) return;
+      this.toggleMobileFilter(this.mobilePickerDatasets, chip.dataset.dataset, this.mobilePickerTopics);
     });
 
     this.mobileVariablePickerList.addEventListener("click", (event) => {
@@ -566,6 +671,20 @@ export class MetadataController extends BaseController {
     });
 
     this.bindVariableTooltip();
+  }
+
+  // The picker drops down from the selector card it was opened from: its top
+  // edge just under the card, its sides on the card's. Measured each time it
+  // opens, because the card moves with the header above it. The stylesheet
+  // reads these and runs the sheet down to the foot of the screen.
+  placeMobilePicker() {
+    const card = this.mobileVariablePickerBtn.closest(".mobile-variable-card") || this.mobileVariablePickerBtn;
+    const rect = card.getBoundingClientRect();
+    if (!rect.width) return;
+    const dialog = this.mobileVariablePickerDialog;
+    dialog.style.setProperty("--picker-top", `${Math.round(rect.bottom)}px`);
+    dialog.style.setProperty("--picker-left", `${Math.round(rect.left)}px`);
+    dialog.style.setProperty("--picker-right", `${Math.round(window.innerWidth - rect.right)}px`);
   }
 
   openDialog(dialog) {
@@ -1720,6 +1839,7 @@ export class MetadataController extends BaseController {
 
   getMobilePickerRows() {
     return this.getAllVariableRows().filter((row) => {
+      if (this.mobilePickerDatasets.size > 0 && !this.mobilePickerDatasets.has(row.datasetKey)) return false;
       if (this.mobilePickerTopics.size > 0 && !row.topics.some((id) => this.mobilePickerTopics.has(id))) {
         return false;
       }
@@ -1794,13 +1914,19 @@ export class MetadataController extends BaseController {
   }
 
   refreshMobilePicker() {
+    // Every redraw of the list is also when the chips' faded state can have
+    // changed: a filter was pressed, or the metadata it is judged by came in.
+    this.syncMobileFilterChipState();
     const rows = this.getMobilePickerRows();
     this.mobileVariablePickerList.innerHTML = "";
 
     if (rows.length === 0) {
       const empty = document.createElement("p");
       empty.className = "mobile-picker-empty";
-      empty.textContent = "No variables match this search.";
+      empty.textContent =
+        this.mobilePickerQuery !== ""
+          ? "No variables match this search."
+          : "No variables match these filters.";
       this.mobileVariablePickerList.appendChild(empty);
       return;
     }

@@ -631,7 +631,7 @@ Common tasks and where to work:
   - the card is `pointer-events: none` on purpose — it must never steal the hover from the row
   - the *persistent* form of the same card is `openVariableInfoPopover()`, opened by a click
     rather than a hover and dismissed by Escape or a click outside. Its triggers are the row
-    info buttons (touch only), the phone action button, and the info button in the timeline
+    info buttons (touch only), the info button at the end of the phone's variable card (`#mobileVariableInfoBtn`), and the info button in the timeline
     caption; all three are listed in the `pointerdown` allowlist in `bindVariableTooltip()`,
     and a fourth has to be listed there too
 
@@ -708,12 +708,14 @@ Common tasks and where to work:
     the sidebar, which leaves the pane 560–840px — hence the
     `(min-width: 901px) and (max-width: 1200px)` block, where the padding tightens and
     the legend narrows. `#map { overflow: hidden }` does not clip politely: what does not
-    fit disappears, and the legend with it. On the phone it is two rows, the legend across
-    the top
+    fit disappears, and the legend with it. On the phone it is one row too: View, the
+    legend (a slimmer ramp, closer spacing and smaller labels than on the desktop) and,
+    above 520px, the outline switch. Export is not offered there; its room is what lets
+    the row fit
   - **a switch without its label is hidden, not shown bare.** The outline switch keeps
     "Outline equal values" at every width where it fits (measured: all of the desktop
-    band), and below 520px, where it does not, the switch goes and its column is left
-    empty. The Colours button stays at the legend's end at every width, folded too
+    band), and below 520px, where it does not, the switch goes and the legend takes its
+    room. The Colours button stays at the legend's end at every width, folded too
 
 - Change autoplay/timeline behaviour:
   - `DemscoreApp` methods: `scheduleAutoPlayTick`, `setYear`, `renderTimelineScale`
@@ -1100,6 +1102,13 @@ Common tasks and where to work:
     promises. Restoring the listbox would mean arrow keys, Home/End, typeahead and
     `aria-activedescendant`; nothing here wants to mimic a native select, so it says what it
     is and marks the current one with `aria-current`
+  - opening the phone picker focuses the current variable, never the search field: focusing
+    a text field raises the on-screen keyboard over half the list. The list is scrolled to it
+    by hand, because `scrollIntoView` also scrolls the dialog and took its header off screen
+  - the phone picker has its own dataset and topic filters (`mobilePickerDatasets`,
+    `mobilePickerTopics`), apart from the sidebar's. Datasets are a full-width row drawn as
+    the rows' dataset tags, topics a scrolling row of pills; both fade a chip with nothing
+    under it and clear the other row when it is pressed, as the sidebar's do
 
 - Change the coverage strip's text:
   - `MetadataController.describeCoverage()`. `renderCoverageStrip()` draws the strip and
@@ -1266,7 +1275,8 @@ Then do a manual smoke test in browser:
 - panels: the side panel's and the timeline's hide buttons put them away and their strips
   peek them back on hover; Tab into either shows it. The dashboard's folds it to the legend
   in the bottom-left corner, clear of the credit line at every width. Map-only (bottom
-  right) leaves the map, its own button and the credit line, and Escape ends it
+  right) leaves the map, its own button and the credit line, and Escape ends it. It is
+  not offered at 900px and below, except to leave it once it is on
 - the dashboard is one row at every desktop width and stays inside `#map`; at 900-1200px
   the credit line and the map-only button lift above the dashboard. The outline switch
   always has its label where it is shown, and is not shown below 520px. The Colours list opens upwards and closes on Escape, a pick, a click
