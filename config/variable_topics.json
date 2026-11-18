@@ -19,7 +19,8 @@
     "economy",
     "education",
     "gender",
-    "state_capacity"
+    "state_capacity",
+    "conflict"
   ],
   "topics": {
     "democracy": {
@@ -65,6 +66,10 @@
     "state_capacity": {
       "label": "State Capacity",
       "description": "Administrative effectiveness, monetary independence and militarization."
+    },
+    "conflict": {
+      "label": "Conflict and Violence",
+      "description": "Deaths in organised violence and the number of active armed conflicts."
     }
   },
   "assignments": {
@@ -82,6 +87,19 @@
       "qog_std_ts_wdi_gersm": ["education"],
       "qog_std_ts_wdi_gersf": ["education", "gender"],
       "qog_std_ts_gggi_ggi": ["gender"]
+    },
+    "ucdp": {
+      "cumulative_total_deaths_in_orgvio_best": ["conflict"],
+      "ns_dyad_count": ["conflict"],
+      "ns_total_deaths_best": ["conflict"],
+      "os_any_govt_killings_best": ["conflict"],
+      "os_govt_killings_best": ["conflict"],
+      "os_nsgroup_killings_best": ["conflict"],
+      "os_total_deaths_best": ["conflict"],
+      "sb_dyad_count": ["conflict"],
+      "sb_interstate_deaths_best": ["conflict"],
+      "sb_intrastate_deaths_best": ["conflict"],
+      "sb_total_deaths_best": ["conflict"]
     },
     "repdem": {
       "repdem_basic_cab_duration_days": ["cabinets"],

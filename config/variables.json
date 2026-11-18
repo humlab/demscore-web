@@ -67,6 +67,36 @@
         "parl_polar_ches"
       ]
     },
+    "ucdp": {
+      "label": "UCDP",
+      "title": "Uppsala Conflict Data Program",
+      "description": "UCDP counts organised violence country by country and year by year: deaths in state-based, non-state and one-sided violence, and the number of active conflicts, counted on the territory where the violence happened.",
+      "color": "#C67858",
+      "download": "https://www.demscore.se/data_analysis/menu_by_id?download_id=221dd071-7ac6-42c6-9c1a-3cd31953377e",
+      "defaultVariable": "cumulative_total_deaths_in_orgvio_best",
+      "yearMin": 1989,
+      "yearMax": 2025,
+      "palette": [
+        "#C67858",
+        "#D5967C",
+        "#E4B4A2",
+        "#F1D1C5",
+        "#FFEEE9"
+      ],
+      "variables": [
+        "cumulative_total_deaths_in_orgvio_best",
+        "ns_dyad_count",
+        "ns_total_deaths_best",
+        "os_any_govt_killings_best",
+        "os_govt_killings_best",
+        "os_nsgroup_killings_best",
+        "os_total_deaths_best",
+        "sb_dyad_count",
+        "sb_interstate_deaths_best",
+        "sb_intrastate_deaths_best",
+        "sb_total_deaths_best"
+      ]
+    },
     "v_dem": {
       "label": "V-Dem",
       "title": "Varieties of Democracy",

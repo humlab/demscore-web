@@ -673,6 +673,9 @@ Common tasks and where to work:
     and the coastline disagree. The swatch is painted from `--no-data-color`, which
     `initializeLegend()` writes from the same `NO_DATA_COLOR` in `core/palettes.js` the
     mapfile class is generated from, so the two cannot drift
+  - for a variable whose 0 means nothing happened (UCDP's counts), the bluest class is
+    exactly 0 and its hover reads "0"; `demscore.country_scores()` ranks the non-zero values
+    into the other six. Nothing in the client knows about it
   - the land basemap is **off**: the grey hexagons answer what it was there for. It is
     kept as a developer switch ("Landmasses", behind Shift+D) rather than deleted
   - it is the one thing in the scale that survives the phone breakpoint, where

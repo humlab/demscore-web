@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-10-23T13:33:58Z",
+ "generatedAt": "2026-11-17T15:28:03Z",
  "weightHexSizeM": 100000,
  "shortLine": "Boundaries: Natural Earth · CShapes 2.0 & CShapes-Europe (CC BY-NC-SA 4.0) · historical-basemaps (GPL-3.0). Modified.",
  "boundary": [
@@ -50,8 +50,8 @@
     {
      "sourceDataset": "cshapes_2.0",
      "label": "CShapes 2.0",
-     "countries": 18,
-     "hexes": 1754
+     "countries": 25,
+     "hexes": 1984
     },
     {
      "sourceDataset": "cshapes_2.0_extended",
@@ -62,12 +62,12 @@
     {
      "sourceDataset": "cshapes_2.0_derived",
      "label": "CShapes 2.0 (derived)",
-     "countries": 1,
-     "hexes": 0
+     "countries": 2,
+     "hexes": 2
     }
    ],
-   "countries": 24,
-   "hexes": 1758,
+   "countries": 32,
+   "hexes": 1990,
    "presentDay": 0,
    "yearFrom": 1856,
    "yearTo": 2100,
@@ -260,6 +260,29 @@
       "REPDEM Basic"
      ],
      "text": "REPDEM presents the comparative data collection efforts undertaken by various research and data infrastructure projects on political institutions, political parties, cabinets and governments in Europe. Repdem offers a range of datasets available for free (without even a demand for registration)."
+    }
+   ]
+  },
+  "ucdp": {
+   "title": "Uppsala Conflict Data Program (UCDP)",
+   "url": "https://ucdp.uu.se/",
+   "citations": [
+    {
+     "text": "Davies, S., Pettersson, T., Sollenberg, M. & Öberg, M. (2025), ‘Organized violence 1989–2024, and the challenges of identifying civilian victims’, Journal of Peace Research 62(4).",
+     "url": null
+    },
+    {
+     "text": "Sundberg, R. & Melander, E. (2013), ‘Introducing the ucdp georeferenced event dataset’, Journal of Peace Research 50(4).",
+     "url": null
+    }
+   ],
+   "sourceCitations": [],
+   "licenses": [
+    {
+     "sources": [
+      null
+     ],
+     "text": "UCDP offers a web-based system for visualising, handling and downloading data, including ready-made datasets on organized violence and peacemaking. All UCDP data are free of charge."
     }
    ]
   },
