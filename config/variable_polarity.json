@@ -5,6 +5,7 @@
   "dataset_defaults": {
     "qog": "positive",
     "repdem": "negative",
+    "ucdp": "negative",
     "v_dem": "positive"
   },
   "variable_overrides": {

@@ -2,6 +2,7 @@ import { BaseController } from "../core/BaseController.js";
 import { formatLegendValue } from "./MapController.js";
 import { boundaryLabelFor } from "../core/attribution.js";
 import { downloadCountryRowsCsv } from "../core/csv.js";
+import { describePartOfYear } from "../core/partOfYear.js";
 
 // The other way of showing the same thing.
 //
@@ -620,6 +621,10 @@ export class TableViewController extends BaseController {
           // can carry several periods of one entity, so two rows may share a
           // name and must not share an element.
           rowKey: `${row.country}\u0000${row.validFromYear ?? ""}`,
+          // In a year a state begins, ends or breaks up, a note that this row
+          // may cover only part of it ({ short, full }, or null). Written once
+          // here: it depends on the row and the year only.
+          partOfYear: describePartOfYear(row.yearChanges, Number(year)),
         })),
       };
     } catch (error) {
@@ -1175,6 +1180,13 @@ export class TableViewController extends BaseController {
         // fillRow writes the country name by replacing text -- which would
         // take the mark with it if the two shared a node.
         cell.appendChild(document.createElement("span"));
+        // In a year a state begins, ends or breaks up, a note that the row
+        // may cover only part of it ("new state in 1991"); the full sentence
+        // is the cell's title. Part of the row's name, so a screen reader
+        // hears it too.
+        const period = document.createElement("span");
+        period.className = "table-view-period";
+        cell.appendChild(period);
         const marker = document.createElement("span");
         marker.className = "visually-hidden";
         marker.dataset.followMarker = "";
@@ -1222,10 +1234,13 @@ export class TableViewController extends BaseController {
       if (!cell) return;
       if (column.rowHeader) {
         const text = cell.firstChild;
+        const period = cell.children[1];
         const next = this.cellText(row, column.key, rank);
-        if (text.textContent !== next) {
+        const periodText = row.partOfYear ? ` ${row.partOfYear.short}` : "";
+        if (text.textContent !== next || period.textContent !== periodText) {
           text.textContent = next;
-          cell.title = next;
+          period.textContent = periodText;
+          cell.title = row.partOfYear ? `${next}: ${row.partOfYear.full}` : next;
         }
         return;
       }

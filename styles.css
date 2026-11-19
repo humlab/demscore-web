@@ -3032,6 +3032,12 @@ textarea {
   font-weight: 400;
 }
 
+/* "from 6 Sep" after a country whose row covers only part of the year. */
+.table-view-period {
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
 .table-view-table .is-numeric {
   font-family: var(--font-numeric);
   font-variant-numeric: tabular-nums;

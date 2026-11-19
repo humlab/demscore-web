@@ -7,6 +7,12 @@
     "direction": "low-to-high"
   },
   "dataset_defaults": {
+    "ucdp": {
+      "low": "Fewer deaths",
+      "high": "More deaths",
+      "note": "Ranked among the countries with any organised violence that year; countries with none are drawn white.",
+      "direction": "low-to-high"
+    },
     "v_dem": {
       "low": "Lower democratic performance",
       "high": "Higher democratic performance",
@@ -15,6 +21,14 @@
     }
   },
   "rules": [
+    {
+      "dataset": "ucdp",
+      "match": "_dyad_count$",
+      "low": "Fewer conflicts",
+      "high": "More conflicts",
+      "note": "Active conflicts, ranked among the countries with at least one that year; countries with none are drawn white.",
+      "direction": "low-to-high"
+    },
     {
       "dataset": "v_dem",
       "match": "(?:_sd|_osp_sd|_nr)$",
