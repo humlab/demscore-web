@@ -98,6 +98,14 @@ The app was refactored into a small class hierarchy with one top-level coordinat
   - one row per country, columns `±` / `#` / Country / ISO3 / Value / Class,
     sorted on any of them but the first two — each of those *is* a
     reading of the sort, so sorting on either is a question about its own answer
+  - **a row that may cover only part of the year says so.** In a year a state begins,
+    ends or breaks up (UCDP's Soviet Union and its republics in 1991), the country cell
+    carries a muted note after the name -- "new state in 1991", "broke up in 1991" -- and
+    the full sentence in its `title`, both from `core/partOfYear.js` over the row's
+    `yearChanges`. The map shows such rows one over the other, smaller on top, and cannot
+    say that the two numbers may count different parts of the year. The text names no date
+    and says "may": the dates are CShapes', and whether UCDP splits a year at them, or at
+    all, is unconfirmed
   - **`±` is movement, not value.** Whether the row is higher or lower in the
     table than it was in the previous year the series has, as a coloured
     triangle and nothing else: no figure, because a column of arrows and numbers
@@ -285,7 +293,8 @@ Runtime endpoints:
   without looking at it — the swatch labels, the summary, the announcement — comes from this
   one response, so none of them costs a request of its own
 - `GET /api/map-data?dataset=&variable=&year=` — one row per country on the map (name, ISO3,
-  value, class, no-data), for the table view. Fetched when that view is on, with the years
+  value, class, no-data, and `yearChanges` in a year its state begins, ends or breaks up),
+  for the table view. Fetched when that view is on, with the years
   around the one on screen read ahead, so an animation in it is paced by this route
 
 WMS source:

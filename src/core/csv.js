@@ -39,6 +39,9 @@ const COLUMNS = [
   { header: "value", of: (row) => row.value },
   { header: "class", of: (row) => row.classIndex },
   { header: "status", of: (row) => (row.value === null ? "no data" : "has value") },
+  // In a year a state begins, ends or breaks up, a note that the row may
+  // cover only part of it; empty otherwise. See core/partOfYear.js.
+  { header: "part_of_year", of: (row) => row.partOfYear?.full ?? "" },
   // The raw source key rather than the display label: a file that outlives this
   // page is more use joined back to the database than read aloud.
   { header: "boundary_source", of: (row) => row.geometrySource },
